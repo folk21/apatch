@@ -7,7 +7,7 @@ from pathlib import Path
 from .model import Abort
 
 
-LOG_FILENAME = "signalharvester_apply_patch.log"
+LOG_FILENAME = "apatch.log"
 LOGGER_NAME = "apatch"
 
 

@@ -14,10 +14,12 @@
 
 Download the `apatch` ZIP archive and extract it, or clone the `apatch` Git repository.
 
-Install the Python dependency in the environment used to run `apatch`:
+Create an isolated Python environment in the extracted `apatch` directory:
 
 ```bash
-python3 -m pip install -r /path/to/apatch/requirements.txt
+cd /path/to/apatch
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
 ```
 
 ## Run
@@ -25,10 +27,10 @@ python3 -m pip install -r /path/to/apatch/requirements.txt
 Start `apatch` **from the root of the project repository** whose development workflow you want to manage:
 
 ```bash
-python3 /path/to/apatch/apatch.py /path/to/change_params.json
+/path/to/apatch/apatch.sh /path/to/change_params.json
 ```
 
-The argument is a JSON file describing the intended change. Global configuration is read from `apatch.conf` next to `apatch.py`; verification commands are read from the target repository's `.apatch/config.yaml`. The tool presents the actions currently available, validates the repository state before each operation, and records progress so the workflow can resume on a later invocation.
+The argument is a JSON file describing the intended change. Global configuration is read from `apatch.conf` next to `apatch.py`; project verification commands and optional log directory overrides are read from the target repository's `.apatch/config.yaml`. The tool presents the actions currently available, validates the repository state before each operation, and records progress so the workflow can resume on a later invocation.
 
 ## Change description
 
@@ -87,7 +89,7 @@ An interrupted push can be retried without creating a second commit. If the remo
 | `downloads_dir` | Directory containing change archives. |
 | `state_file` | External file storing workflow progress. |
 | `applied_patches_file` | File recording previously applied archive filenames. |
-| `log_directory` | Directory for the command and workflow log. |
+| `log_directory` | Relative path below the target repository's `.apatch/` directory; defaults to `logs`. |
 | `remote` | Git remote used for validation and publishing. |
 | `base_branch` | Target branch for feature creation and pull requests. |
 | `require_patch_feature_branch` | When `true`, restrict direct patch application (option 3) to the `feature_branch` from the handoff file. Defaults to `false`. |
@@ -96,7 +98,7 @@ An interrupted push can be retried without creating a second commit. If the remo
 | `merge_method` | GitHub merge strategy: `merge`, `squash`, or `rebase`. |
 | `max_uncompressed_patch_bytes` | Maximum total extracted archive size. |
 
-Relative paths for state, history, and logs are resolved from the `apatch` directory, not the target repository. The global configuration does not define project verification commands.
+Relative paths for state and history are resolved from the installed `apatch` directory. Unlike them, `log_directory` is always relative to the target repository's `.apatch/` directory. Absolute paths, `..` traversal, and symlinked log directories are rejected. The global configuration does not define project verification commands.
 
 ### Project-specific verification
 
@@ -104,10 +106,13 @@ Each target repository must contain `.apatch/config.yaml` (not a symlink), for e
 
 ```yaml
 schema_version: 1
+log_directory: logs
 checks:
   - ["./gradlew", "test"]
   - ["./gradlew", "check"]
 ```
+
+`log_directory` is optional and overrides the global `log_directory` setting. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. Omit it to use the global relative setting (`logs` by default).
 
 `checks` must be a non-empty list. A command can be an argument list (recommended) or a single command string parsed with shell-style quoting:
 
@@ -118,7 +123,7 @@ checks:
   - ["python3", "-m", "unittest", "discover", "-s", "tests"]
 ```
 
-Commands run sequentially from the target repository root; execution stops on the first failure. Each command is executed directly **without a shell**, so pipelines, redirections, environment-variable expansion, and `&&` are not interpreted. Put compound shell logic in a project-owned script and call that script from `checks`.
+Commands run sequentially from the target repository root; execution stops on the first failure. Standard output and standard error from these project checks are displayed live and appended to the project log. Each command is executed directly **without a shell**, so pipelines, redirections, environment-variable expansion, and `&&` are not interpreted. Put compound shell logic in a project-owned script and call that script from `checks`.
 
 If the project configuration is missing, malformed, or has no commands, `apatch` stops with an explicit error. The supplied SignalHarvester `.apatch` archive is a starting configuration; verify that its command exists in your SignalHarvester checkout.
 
@@ -130,9 +135,11 @@ This history is independent of saved workflow progress. It detects duplicate **f
 
 ## Logging
 
-`apatch` uses Python's standard `logging` module and writes an append-only log to the directory specified by `log_directory`. Every entry includes a timestamp and the change archive's filename as its operation identifier, along with the repository, feature branch, severity, and relevant event details.
+`apatch` uses Python's standard `logging` module and writes an append-only log to `<repository>/.apatch/<log_directory>/apatch.log`. Every entry includes a timestamp and the change archive's filename as its operation identifier, along with the repository, feature branch, severity, and relevant event details.
 
-Command records include the executable and arguments, working directory, exit status, and duration. The complete commit message is recorded **only when the commit command runs**. Command output and other standard input are not recorded; common sensitive arguments are masked. Restrict access to the log because commit messages and command arguments may still contain sensitive information.
+Command records include the executable and arguments, working directory, exit status, and duration. The complete commit message is recorded **only when the commit command runs**. Output from canonical project checks is displayed live and retained in the log; output from Git and GitHub commands and other standard input is not retained. Common sensitive arguments are masked. The log file is restricted to the current user (mode `0600`); nevertheless, project-check output and commit messages may contain secrets and should not be shared without review.
+
+To keep runtime logs out of patches and commits, `apatch` checks the repository's ignore rules and, when needed, adds the precise log-directory path to that repository's local `.git/info/exclude`. This does not modify tracked `.gitignore` files and does not affect other repositories. The `.apatch/config.yaml` file itself should be committed as part of the project's normal configuration before starting a patch workflow.
 
 ## Safety and recovery
 

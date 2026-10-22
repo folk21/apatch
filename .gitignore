@@ -5,6 +5,7 @@ logs/
 .idea/
 *.iml
 .env
+.venv/
 *.state.json
 *.state.json.lock
 *_applied_patches.txt

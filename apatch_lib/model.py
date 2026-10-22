@@ -62,9 +62,7 @@ def load_config(script_dir: Path) -> Config:
     state = Path(section.get("state_file", "signalharvester_apply_patch.state.json")).expanduser()
     if not state.is_absolute():
         state = script_dir / state
-    log_directory = Path(section.get("log_directory", "logs")).expanduser()
-    if not log_directory.is_absolute():
-        log_directory = script_dir / log_directory
+    log_directory = validate_log_subdirectory(section.get("log_directory", "logs"))
     applied_patches = Path(section.get("applied_patches_file", "signalharvester_applied_patches.txt")).expanduser()
     if not applied_patches.is_absolute():
         applied_patches = script_dir / applied_patches
@@ -80,7 +78,7 @@ def load_config(script_dir: Path) -> Config:
     return Config(
         downloads=Path(section.get("downloads_dir", "~/Downloads")).expanduser().resolve(),
         state_path=state.resolve(),
-        log_directory=log_directory.resolve(),
+        log_directory=log_directory,
         applied_patches_path=applied_patches.parent.resolve() / applied_patches.name,
         remote=remote,
         base=base,
@@ -91,6 +89,17 @@ def load_config(script_dir: Path) -> Config:
         max_bytes=section.getint("max_uncompressed_patch_bytes", 52428800),
         require_patch_feature_branch=section.getboolean("require_patch_feature_branch", False),
     )
+
+
+def validate_log_subdirectory(value: str) -> Path:
+    """Require a relative log directory contained within the project .apatch directory."""
+    if (not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9._/-]+", value)
+            or any(part in {"", ".", ".."} for part in value.split("/"))):
+        raise Abort("log_directory must be a relative path inside the project .apatch directory")
+    directory = Path(value)
+    if directory.is_absolute():
+        raise Abort("log_directory must be a relative path inside the project .apatch directory")
+    return directory
 
 
 def load_project_config(root: Path, global_config: Config) -> Config:
@@ -112,8 +121,10 @@ def load_project_config(root: Path, global_config: Config) -> Config:
     except yaml.YAMLError as exc:
         raise Abort(f"Invalid project checks YAML: {exc}") from exc
 
-    if not isinstance(data, dict) or set(data) != {"schema_version", "checks"}:
-        raise Abort("Project config must contain only schema_version and checks")
+    required = {"schema_version", "checks"}
+    allowed = required | {"log_directory"}
+    if not isinstance(data, dict) or not required <= set(data) or set(data) - allowed:
+        raise Abort("Project config must contain schema_version and checks, with optional log_directory")
     if type(data["schema_version"]) is not int or data["schema_version"] != 1:
         raise Abort("Unsupported project checks schema_version")
     commands = data["checks"]
@@ -133,7 +144,12 @@ def load_project_config(root: Path, global_config: Config) -> Config:
         if not argv or any(not isinstance(arg, str) or not arg or "\x00" in arg for arg in argv):
             raise Abort(f"Project check {index} contains invalid arguments")
         parsed.append(tuple(argv))
-    return replace(global_config, checks=tuple(parsed))
+    subdirectory = validate_log_subdirectory(data.get("log_directory", str(global_config.log_directory)))
+    location = config_dir / subdirectory
+    for segment in (config_dir, *[config_dir.joinpath(*subdirectory.parts[:i]) for i in range(1, len(subdirectory.parts) + 1)]):
+        if segment.is_symlink():
+            raise Abort(f"Log directory must not contain symlinks: {segment}")
+    return replace(global_config, checks=tuple(parsed), log_directory=location)
 
 
 def safe_relative(path: str) -> str:

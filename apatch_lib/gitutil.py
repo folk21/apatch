@@ -6,6 +6,7 @@ import logging
 import os
 import shlex
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -35,7 +36,8 @@ def display_command(argv):
     return shlex.join(visible).replace("\n", "\\n").replace("\r", "\\r")
 
 
-def run(argv, cwd: Path, *, input_text=None, check=True, text=True, log_commit_message=None):
+def run(argv, cwd: Path, *, input_text=None, check=True, text=True, log_commit_message=None,
+        stream_output=False):
     command = display_command(argv)
     print("+", command, flush=True)
     if log_commit_message is not None:
@@ -47,8 +49,22 @@ def run(argv, cwd: Path, *, input_text=None, check=True, text=True, log_commit_m
         LOGGER.info("command start cwd=%s argv=%s", cwd, command)
     start = time.monotonic()
     try:
-        result = subprocess.run(argv, cwd=cwd, text=text, input=input_text,
-                                capture_output=True, check=False)
+        if stream_output:
+            if input_text is not None or not text:
+                raise Abort("Streaming commands must use text output without stdin")
+            with subprocess.Popen(argv, cwd=cwd, stdout=subprocess.PIPE,
+                                  stderr=subprocess.STDOUT, text=True, errors="replace",
+                                  bufsize=1) as process:
+                assert process.stdout is not None
+                for line in process.stdout:
+                    sys.stdout.write(line)
+                    sys.stdout.flush()
+                    LOGGER.info("check output: %s", line.rstrip("\r\n"))
+                returncode = process.wait()
+            result = subprocess.CompletedProcess(argv, returncode, "", "")
+        else:
+            result = subprocess.run(argv, cwd=cwd, text=text, input=input_text,
+                                    capture_output=True, check=False)
     except OSError as exc:
         LOGGER.error("command launch failed cwd=%s argv=%s error_type=%s", cwd, command, type(exc).__name__)
         raise Abort(f"Cannot execute {argv[0]}: {exc}") from exc
@@ -57,8 +73,8 @@ def run(argv, cwd: Path, *, input_text=None, check=True, text=True, log_commit_m
     LOGGER.log(level, "command finished exit=%d duration_s=%.3f argv=%s stdout_len=%d stderr_len=%d",
                result.returncode, duration, command, len(result.stdout), len(result.stderr))
     if check and result.returncode:
-        raise Abort(f"Command failed ({result.returncode}): {command}\n"
-                    f"{result.stdout}{result.stderr}")
+        details = "" if stream_output else f"\n{result.stdout}{result.stderr}"
+        raise Abort(f"Command failed ({result.returncode}): {command}{details}")
     return result
 
 

@@ -105,7 +105,7 @@ class Workflow:
         if not self.config.checks:
             raise Abort("No project verification commands configured")
         for command in self.config.checks:
-            run(list(command), self.root)
+            run(list(command), self.root, stream_output=True)
         after, _ = self.assert_expected_paths()
         if before != after:
             self.record["phase"] = "patch_applied"

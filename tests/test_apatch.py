@@ -49,8 +49,9 @@ class LocalGitWorkflowTest(unittest.TestCase):
         runner.chmod(0o755)
         config_dir = self.root / ".apatch"
         config_dir.mkdir()
+        self.log_path = config_dir / "logs" / "apatch.log"
         self.project_config = config_dir / "config.yaml"
-        self.project_config.write_text('schema_version: 1\nchecks:\n  - ["./run_checks.sh"]\n')
+        self.project_config.write_text('schema_version: 1\nlog_directory: logs\nchecks:\n  - ["./run_checks.sh"]\n')
         command("git", "add", "-A", cwd=self.root)
         command("git", "commit", "-m", "base", cwd=self.root)
         command("git", "push", "-u", "origin", "main", cwd=self.root)
@@ -108,9 +109,11 @@ class LocalGitWorkflowTest(unittest.TestCase):
 
     def test_project_config_parses_multiple_commands(self):
         self.project_config.write_text(
-            'schema_version: 1\nchecks:\n  - ./gradlew test\n  - ["python3", "-c", "print(42)"]\n')
+            'schema_version: 1\nlog_directory: build/checks\nchecks:\n'
+            '  - ./gradlew test\n  - ["python3", "-c", "print(42)"]\n')
         config = load_project_config(self.root, load_config(self.bin))
         self.assertEqual(config.checks, (("./gradlew", "test"), ("python3", "-c", "print(42)")))
+        self.assertEqual(config.log_directory, self.root / ".apatch" / "build" / "checks")
 
     def test_project_config_can_run_a_nonstandard_check_script(self):
         script = self.root / "custom_verify.sh"
@@ -120,9 +123,25 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(self.invoke("2\nYES\nYES\n").returncode, 0)
         result = self.invoke("4\n")
         self.assertEqual(result.returncode, 0, result.stderr)
-        log = (self.bin / "logs" / "signalharvester_apply_patch.log").read_text()
+        log = self.log_path.read_text()
         self.assertIn("./custom_verify.sh", log)
         self.assertNotIn("./run_checks.sh", log)
+
+    def test_project_check_output_is_visible_and_saved_to_project_log(self):
+        script = self.root / "custom_verify.sh"
+        script.write_text("#!/bin/sh\nset -eu\nprintf 'CHECK STDOUT\\n'\n"
+                          "printf 'CHECK STDERR\\n' >&2\ntest -f new.txt\n")
+        script.chmod(0o755)
+        self.configure_checks('schema_version: 1\nchecks:\n  - ["./custom_verify.sh"]\n')
+        self.assertEqual(self.invoke("2\nYES\nYES\n").returncode, 0)
+        result = self.invoke("4\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("CHECK STDOUT", result.stdout)
+        self.assertIn("CHECK STDERR", result.stdout)
+        self.assertIn("check output: CHECK STDOUT", self.log_path.read_text())
+        self.assertIn("check output: CHECK STDERR", self.log_path.read_text())
+        self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout,
+                         " M existing.txt\n?? new.txt\n")
 
     def test_menu_lists_every_action_even_when_git_state_blocks_actions(self):
         (self.root / "untracked.txt").write_text("dirty\n")
@@ -250,7 +269,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(accepted.returncode, 0, accepted.stderr)
         self.assertIn("Patch applied", accepted.stdout)
         self.assertEqual(history.read_text().count(self.zip.name), 1)
-        log = (self.bin / "logs" / "signalharvester_apply_patch.log").read_text()
+        log = self.log_path.read_text()
         self.assertIn("developer approved previously applied patch reapplication", log)
 
     def test_repeated_patch_on_existing_branch_warns(self):
@@ -377,7 +396,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(self.invoke("2\nYES\nYES\n").returncode, 0)
         self.assertEqual(self.invoke("4\n").returncode, 0)
         self.assertEqual(self.invoke("5\nYES\nYES\n").returncode, 0)
-        target = self.bin / "logs" / "signalharvester_apply_patch.log"
+        target = self.log_path
         self.assertTrue(target.is_file())
         self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o600)
         content = target.read_text(encoding="utf-8")
@@ -402,44 +421,94 @@ class LocalGitWorkflowTest(unittest.TestCase):
     def test_nonzero_exit_and_stop_are_logged(self):
         self.configure_checks(
             'schema_version: 1\nchecks:\n  - ["./run_checks.sh"]\n'
-            '  - ["python3", "-c", "raise SystemExit(17)"]\n')
+            '  - ["python3", "-c", "print(\'CHECK BEFORE FAILURE\'); raise SystemExit(17)"]\n')
         self.assertEqual(self.invoke("2\nYES\nYES\n").returncode, 0)
         failed = self.invoke("4\n")
         self.assertEqual(failed.returncode, 2)
         self.assertIn("Command failed (17)", failed.stderr)
-        content = (self.bin / "logs" / "signalharvester_apply_patch.log").read_text()
+        self.assertIn("CHECK BEFORE FAILURE", failed.stdout)
+        content = self.log_path.read_text()
+        self.assertIn("check output: CHECK BEFORE FAILURE", content)
         self.assertIn("command finished exit=17", content)
         self.assertIn("invocation stopped: Command failed (17)", content)
         self.assertNotIn("Traceback", content)
 
-    def test_configured_log_directory_can_be_absolute(self):
-        custom = self.base / "custom-logs"
-        conf = self.bin / "apatch.conf"
-        conf.write_text(conf.read_text().replace("log_directory = logs", f"log_directory = {custom}"))
+    def test_project_log_directory_is_relative_to_project_apatch(self):
+        custom = self.root / ".apatch" / "custom" / "checks"
+        self.project_config.write_text(
+            'schema_version: 1\nlog_directory: custom/checks\nchecks:\n  - ./run_checks.sh\n')
         result = self.invoke("0\n")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue((custom / "signalharvester_apply_patch.log").exists())
+        self.assertTrue((custom / "apatch.log").exists())
         self.assertFalse((self.bin / "logs").exists())
+        self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, " M .apatch/config.yaml\n")
 
-    def test_log_directory_inside_repository_rejected_without_creating_log(self):
+    def test_global_log_directory_is_resolved_from_project_apatch(self):
         conf = self.bin / "apatch.conf"
-        log_dir = self.root / "logs"
-        conf.write_text(conf.read_text().replace("log_directory = logs", f"log_directory = {log_dir}"))
+        conf.write_text(conf.read_text().replace("log_directory = logs", "log_directory = runtime/logs"))
+        self.project_config.write_text('schema_version: 1\nchecks:\n  - ./run_checks.sh\n')
+        result = self.invoke("0\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.root / ".apatch" / "runtime" / "logs" / "apatch.log").exists())
+
+    def test_absolute_or_parent_log_paths_are_rejected(self):
+        for path in ("/tmp/unwanted", "../escape", "logs/../escape", "~/.cache", ""):
+            with self.subTest(path=path):
+                self.project_config.write_text(
+                    f'schema_version: 1\nlog_directory: "{path}"\nchecks:\n  - ./run_checks.sh\n')
+                result = self.invoke("0\n")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("relative path inside the project .apatch", result.stderr)
+        self.assertFalse(self.log_path.exists())
+
+    def test_absolute_global_log_path_rejected(self):
+        conf = self.bin / "apatch.conf"
+        conf.write_text(conf.read_text().replace("log_directory = logs", f"log_directory = {self.base}"))
         result = self.invoke("0\n")
         self.assertEqual(result.returncode, 2)
-        self.assertIn("Log directory must be outside", result.stderr)
-        self.assertFalse(log_dir.exists())
+        self.assertIn("relative path inside the project .apatch", result.stderr)
+
+    def test_project_logs_are_automatically_ignored_only_locally(self):
+        result = self.invoke("0\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(self.log_path.is_file())
+        self.assertIn(str(self.log_path), result.stdout)
+        self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, "")
+        self.assertEqual(command("git", "check-ignore", ".apatch/logs/apatch.log",
+                                 cwd=self.root).stdout.strip(), ".apatch/logs/apatch.log")
+        info_exclude = (self.root / ".git" / "info" / "exclude").read_text()
+        self.assertIn("/.apatch/logs/", info_exclude)
+        self.assertEqual(self.invoke("0\n").returncode, 0)
+        self.assertEqual((self.root / ".git" / "info" / "exclude").read_text(), info_exclude)
 
     def test_existing_log_symlink_is_rejected(self):
-        log_dir = self.bin / "logs"
+        log_dir = self.root / ".apatch" / "logs"
         log_dir.mkdir()
         target = self.base / "protected.txt"
         target.write_text("protected")
-        (log_dir / "signalharvester_apply_patch.log").symlink_to(target)
+        (log_dir / "apatch.log").symlink_to(target)
         result = self.invoke("0\n")
         self.assertEqual(result.returncode, 2)
         self.assertIn("Log destination must be a regular file", result.stderr)
         self.assertEqual(target.read_text(), "protected")
+
+    def test_symlink_in_log_subdirectory_is_rejected(self):
+        (self.root / ".apatch" / "logs").symlink_to(self.base, target_is_directory=True)
+        result = self.invoke("0\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Log directory must not contain symlinks", result.stderr)
+
+    def test_symlinked_git_exclude_is_rejected_without_overwriting_target(self):
+        exclude = self.root / ".git" / "info" / "exclude"
+        protected = self.base / "protected-excludes.txt"
+        protected.write_text("unchanged\n")
+        exclude.unlink()
+        exclude.symlink_to(protected)
+        result = self.invoke("0\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Unsafe local Git exclude file", result.stderr)
+        self.assertEqual(protected.read_text(), "unchanged\n")
+        self.assertFalse(self.log_path.exists())
 
     def test_unverified_changed_bytes_cannot_be_committed(self):
         self.assertEqual(self.invoke("2\nYES\nYES\n").returncode, 0)
