@@ -59,13 +59,10 @@ def load_config(script_dir: Path) -> Config:
     if loaded != [str(config_path)]:
         raise Abort(f"Missing configuration: {config_path}")
     section = parser["apatch"]
-    state = Path(section.get("state_file", "signalharvester_apply_patch.state.json")).expanduser()
-    if not state.is_absolute():
-        state = script_dir / state
+    state = validate_runtime_filename(section.get("state_file", "signalharvester_apply_patch.state.json"))
     log_directory = validate_log_subdirectory(section.get("log_directory", "logs"))
-    applied_patches = Path(section.get("applied_patches_file", "signalharvester_applied_patches.txt")).expanduser()
-    if not applied_patches.is_absolute():
-        applied_patches = script_dir / applied_patches
+    applied_patches = validate_runtime_filename(
+        section.get("applied_patches_file", "signalharvester_applied_patches.txt"))
     remote = section.get("remote", "origin")
     base = section.get("base_branch", "main")
     method = section.get("merge_method", "merge")
@@ -77,9 +74,9 @@ def load_config(script_dir: Path) -> Config:
         raise Abort("merge_method must be merge, squash or rebase")
     return Config(
         downloads=Path(section.get("downloads_dir", "~/Downloads")).expanduser().resolve(),
-        state_path=state.resolve(),
+        state_path=state,
         log_directory=log_directory,
-        applied_patches_path=applied_patches.parent.resolve() / applied_patches.name,
+        applied_patches_path=applied_patches,
         remote=remote,
         base=base,
         checks=(),
@@ -102,6 +99,14 @@ def validate_log_subdirectory(value: str) -> Path:
     return directory
 
 
+def validate_runtime_filename(value: str) -> Path:
+    """Require a single filename for a per-project state or history artifact."""
+    if (not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", value)
+            or value in {".", "..", "config.yaml"}):
+        raise Abort("state_file and applied_patches_file must be plain filenames inside .apatch")
+    return Path(value)
+
+
 def load_project_config(root: Path, global_config: Config) -> Config:
     config_dir = root / ".apatch"
     config_path = config_dir / "config.yaml"
@@ -122,9 +127,9 @@ def load_project_config(root: Path, global_config: Config) -> Config:
         raise Abort(f"Invalid project checks YAML: {exc}") from exc
 
     required = {"schema_version", "checks"}
-    allowed = required | {"log_directory"}
+    allowed = required | {"log_directory", "state_file", "applied_patches_file"}
     if not isinstance(data, dict) or not required <= set(data) or set(data) - allowed:
-        raise Abort("Project config must contain schema_version and checks, with optional log_directory")
+        raise Abort("Project config must contain schema_version and checks, with optional local paths")
     if type(data["schema_version"]) is not int or data["schema_version"] != 1:
         raise Abort("Unsupported project checks schema_version")
     commands = data["checks"]
@@ -145,11 +150,19 @@ def load_project_config(root: Path, global_config: Config) -> Config:
             raise Abort(f"Project check {index} contains invalid arguments")
         parsed.append(tuple(argv))
     subdirectory = validate_log_subdirectory(data.get("log_directory", str(global_config.log_directory)))
+    state = validate_runtime_filename(data.get("state_file", str(global_config.state_path)))
+    history = validate_runtime_filename(data.get("applied_patches_file", str(global_config.applied_patches_path)))
+    if state == history or state.name + ".lock" == history.name:
+        raise Abort("State and applied-patch history must have separate filenames")
     location = config_dir / subdirectory
     for segment in (config_dir, *[config_dir.joinpath(*subdirectory.parts[:i]) for i in range(1, len(subdirectory.parts) + 1)]):
         if segment.is_symlink():
             raise Abort(f"Log directory must not contain symlinks: {segment}")
-    return replace(global_config, checks=tuple(parsed), log_directory=location)
+    for path in (config_dir / state, config_dir / (state.name + ".lock"), config_dir / history):
+        if path.is_symlink():
+            raise Abort(f"Runtime state and history files must not be symlinks: {path}")
+    return replace(global_config, checks=tuple(parsed), log_directory=location,
+                   state_path=config_dir / state, applied_patches_path=config_dir / history)
 
 
 def safe_relative(path: str) -> str:

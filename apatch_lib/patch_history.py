@@ -1,4 +1,4 @@
-"""External applied-patch name journal with advisory locking and durable append."""
+"""Project-local applied-patch journal with advisory locking and durable append."""
 
 import fcntl
 import logging

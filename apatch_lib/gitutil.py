@@ -1,5 +1,6 @@
 """Subprocess and repository checks. All commands use argv, never shell=True."""
 
+from collections import deque
 import hashlib
 import json
 import logging
@@ -15,6 +16,8 @@ from .model import Abort
 
 LOGGER = logging.getLogger("apatch.commands")
 REDACT_FLAGS = {"--body", "--token", "--password", "--secret", "--api-key", "--authorization"}
+FAILURE_TAIL_LINES = 20
+FAILURE_TAIL_LINE_CHARS = 500
 
 
 def display_command(argv):
@@ -52,6 +55,7 @@ def run(argv, cwd: Path, *, input_text=None, check=True, text=True, log_commit_m
         if stream_output:
             if input_text is not None or not text:
                 raise Abort("Streaming commands must use text output without stdin")
+            failure_tail = deque(maxlen=FAILURE_TAIL_LINES)
             with subprocess.Popen(argv, cwd=cwd, stdout=subprocess.PIPE,
                                   stderr=subprocess.STDOUT, text=True, errors="replace",
                                   bufsize=1) as process:
@@ -59,7 +63,7 @@ def run(argv, cwd: Path, *, input_text=None, check=True, text=True, log_commit_m
                 for line in process.stdout:
                     sys.stdout.write(line)
                     sys.stdout.flush()
-                    LOGGER.info("check output: %s", line.rstrip("\r\n"))
+                    failure_tail.append(line.rstrip("\r\n")[-FAILURE_TAIL_LINE_CHARS:])
                 returncode = process.wait()
             result = subprocess.CompletedProcess(argv, returncode, "", "")
         else:
@@ -69,9 +73,15 @@ def run(argv, cwd: Path, *, input_text=None, check=True, text=True, log_commit_m
         LOGGER.error("command launch failed cwd=%s argv=%s error_type=%s", cwd, command, type(exc).__name__)
         raise Abort(f"Cannot execute {argv[0]}: {exc}") from exc
     duration = time.monotonic() - start
-    level = logging.INFO if result.returncode == 0 else logging.WARNING
-    LOGGER.log(level, "command finished exit=%d duration_s=%.3f argv=%s stdout_len=%d stderr_len=%d",
-               result.returncode, duration, command, len(result.stdout), len(result.stderr))
+    if stream_output:
+        if result.returncode:
+            LOGGER.error("check command failed exit=%d duration_s=%.3f argv=%s recent_output=%s",
+                         result.returncode, duration, command,
+                         json.dumps("\n".join(failure_tail), ensure_ascii=False))
+    else:
+        level = logging.INFO if result.returncode == 0 else logging.WARNING
+        LOGGER.log(level, "command finished exit=%d duration_s=%.3f argv=%s stdout_len=%d stderr_len=%d",
+                   result.returncode, duration, command, len(result.stdout), len(result.stderr))
     if check and result.returncode:
         details = "" if stream_output else f"\n{result.stdout}{result.stderr}"
         raise Abort(f"Command failed ({result.returncode}): {command}{details}")

@@ -32,6 +32,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.bin.mkdir()
         shutil.copytree(TOOL / "apatch_lib", self.bin / "apatch_lib", ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copy(TOOL / "apatch.py", self.bin / "apatch.py")
+        shutil.copy(TOOL / "apatch.sh", self.bin / "apatch.sh")
         config = (TOOL / "apatch.conf").read_text().replace("~/Downloads", str(self.base / "downloads"))
         (self.bin / "apatch.conf").write_text(config)
         (self.base / "downloads").mkdir()
@@ -50,8 +51,15 @@ class LocalGitWorkflowTest(unittest.TestCase):
         config_dir = self.root / ".apatch"
         config_dir.mkdir()
         self.log_path = config_dir / "logs" / "apatch.log"
+        self.state_path = config_dir / "signalharvester_apply_patch.state.json"
+        self.lock_path = config_dir / "signalharvester_apply_patch.state.json.lock"
+        self.history_path = config_dir / "signalharvester_applied_patches.txt"
         self.project_config = config_dir / "config.yaml"
-        self.project_config.write_text('schema_version: 1\nlog_directory: logs\nchecks:\n  - ["./run_checks.sh"]\n')
+        self.project_config.write_text(
+            'schema_version: 1\nlog_directory: logs\n'
+            'state_file: signalharvester_apply_patch.state.json\n'
+            'applied_patches_file: signalharvester_applied_patches.txt\n'
+            'checks:\n  - ["./run_checks.sh"]\n')
         command("git", "add", "-A", cwd=self.root)
         command("git", "commit", "-m", "base", cwd=self.root)
         command("git", "push", "-u", "origin", "main", cwd=self.root)
@@ -72,9 +80,12 @@ class LocalGitWorkflowTest(unittest.TestCase):
         }
         self.params.write_text(json.dumps(self.payload))
 
-    def invoke(self, text):
-        return subprocess.run([sys.executable, str(self.bin / "apatch.py"), str(self.params)],
+    def invoke(self, text, *options):
+        return subprocess.run([sys.executable, str(self.bin / "apatch.py"), str(self.params), *options],
                               cwd=self.root, input=text, capture_output=True, text=True)
+
+    def invoke_force(self, text):
+        return self.invoke(text, "--force")
 
     def configure_checks(self, yaml_text):
         self.project_config.write_text(yaml_text)
@@ -127,7 +138,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertIn("./custom_verify.sh", log)
         self.assertNotIn("./run_checks.sh", log)
 
-    def test_project_check_output_is_visible_and_saved_to_project_log(self):
+    def test_successful_project_check_output_is_visible_but_not_logged(self):
         script = self.root / "custom_verify.sh"
         script.write_text("#!/bin/sh\nset -eu\nprintf 'CHECK STDOUT\\n'\n"
                           "printf 'CHECK STDERR\\n' >&2\ntest -f new.txt\n")
@@ -138,8 +149,15 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("CHECK STDOUT", result.stdout)
         self.assertIn("CHECK STDERR", result.stdout)
-        self.assertIn("check output: CHECK STDOUT", self.log_path.read_text())
-        self.assertIn("check output: CHECK STDERR", self.log_path.read_text())
+        log = self.log_path.read_text()
+        self.assertIn("command start", log)
+        self.assertIn("argv=./custom_verify.sh", log)
+        self.assertNotIn("CHECK STDOUT", log)
+        self.assertNotIn("CHECK STDERR", log)
+        self.assertNotIn("check command failed", log)
+        check_events = [line for line in log.splitlines() if "argv=./custom_verify.sh" in line]
+        self.assertEqual(len(check_events), 1)
+        self.assertIn("command start", check_events[0])
         self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout,
                          " M existing.txt\n?? new.txt\n")
 
@@ -175,6 +193,174 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(), "main")
         self.assertFalse((self.root / "new.txt").exists())
 
+    def test_force_menu_exposes_all_actions_without_phase_blockers(self):
+        (self.root / "untracked.txt").write_text("uncommitted\n")
+        result = self.invoke_force("0\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Mode: FORCE (manual recovery)", result.stdout)
+        self.assertIn(" 1. Create/adopt a feature branch\n", result.stdout)
+        self.assertIn(" 9. Synchronize local main after merge\n", result.stdout)
+        self.assertNotIn("requires phase:", result.stdout)
+
+    def test_shell_launcher_accepts_force_as_first_or_second_argument(self):
+        executable = self.bin / ".venv" / "bin" / "python"
+        executable.parent.mkdir(parents=True)
+        executable.symlink_to(sys.executable)
+        for args in (("force", str(self.params)), (str(self.params), "force"),
+                     ("--force", str(self.params))):
+            with self.subTest(args=args):
+                result = subprocess.run(["sh", str(self.bin / "apatch.sh"), *args],
+                                        cwd=self.root, input="0\n", capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("Mode: FORCE", result.stdout)
+
+    def test_force_adopts_manually_created_feature_branch(self):
+        command("git", "switch", "-c", self.payload["feature_branch"], cwd=self.root)
+        result = self.invoke_force("1\nYES\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        record = next(iter(json.loads(self.state_path.read_text())["workflows"].values()))
+        self.assertEqual(record["phase"], "branch_created")
+        self.assertEqual(record["applied_branch"], self.payload["feature_branch"])
+        self.assertEqual(record["branch_base"], self.head)
+        self.assertEqual(record["force_events"][-1]["action"], "branch prepared")
+
+    def test_force_switches_to_preexisting_local_feature_branch(self):
+        command("git", "branch", self.payload["feature_branch"], cwd=self.root)
+        result = self.invoke_force("1\nYES\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         self.payload["feature_branch"])
+        self.assertEqual(len(command("git", "branch", "--list", self.payload["feature_branch"],
+                                     cwd=self.root).stdout.splitlines()), 1)
+
+    def test_force_tracks_branch_preexisting_only_on_remote(self):
+        command("git", "push", "origin", f"HEAD:refs/heads/{self.payload['feature_branch']}", cwd=self.root)
+        self.assertFalse(command("git", "branch", "--list", self.payload["feature_branch"],
+                                 cwd=self.root).stdout.strip())
+        result = self.invoke_force("1\nYES\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         self.payload["feature_branch"])
+        self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(), self.head)
+
+    def test_force_adopts_manually_extracted_patch_without_overwriting(self):
+        (self.root / "existing.txt").write_text("updated\n")
+        (self.root / "new.txt").write_text("new\n")
+        result = self.invoke_force("3\nYES\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / "existing.txt").read_text(), "updated\n")
+        self.assertEqual((self.root / "new.txt").read_text(), "new\n")
+        state = json.loads(self.state_path.read_text())
+        record = next(iter(state["workflows"].values()))
+        self.assertEqual(record["phase"], "patch_applied")
+        self.assertEqual(set(record["changed_paths"]), {"existing.txt", "new.txt"})
+        self.assertEqual(self.history_path.read_text(), self.zip.name + "\n")
+        result = self.invoke_force("4\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Canonical checks passed", result.stdout)
+        self.assertEqual(next(iter(json.loads(self.state_path.read_text())["workflows"].values()))["phase"],
+                         "verified")
+
+    def test_force_warns_when_manual_worktree_differs_from_zip_contents(self):
+        (self.root / "existing.txt").write_text("manual edits\n")
+        (self.root / "new.txt").write_text("new\n")
+        result = self.invoke_force("3\nYES\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("manual override", result.stdout)
+        record = next(iter(json.loads(self.state_path.read_text())["workflows"].values()))
+        self.assertTrue(record["manually_adopted"])
+        self.assertEqual((self.root / "existing.txt").read_text(), "manual edits\n")
+
+    def test_force_can_apply_after_manual_head_changes(self):
+        command("git", "commit", "--allow-empty", "-m", "Manual baseline", cwd=self.root)
+        result = self.invoke_force("3\nYES\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Patch applied in FORCE mode", result.stdout)
+        self.assertEqual((self.root / "existing.txt").read_text(), "updated\n")
+
+    def test_force_reconciles_manual_commit_and_push(self):
+        command("git", "switch", "-c", self.payload["feature_branch"], cwd=self.root)
+        (self.root / "existing.txt").write_text("updated\n")
+        (self.root / "new.txt").write_text("new\n")
+        command("git", "add", "-A", cwd=self.root)
+        command("git", "commit", "-m", "Manual patch commit", cwd=self.root)
+        command("git", "push", "-u", "origin", self.payload["feature_branch"], cwd=self.root)
+        result = self.invoke_force("6\nYES\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("already matches", result.stdout)
+        record = next(iter(json.loads(self.state_path.read_text())["workflows"].values()))
+        self.assertEqual(record["phase"], "pushed")
+        self.assertEqual(record["commit_sha"], command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip())
+        self.assertEqual(record["pushed_sha"], record["commit_sha"])
+
+    def test_force_pushes_manually_committed_changes_without_rewriting_history(self):
+        command("git", "switch", "-c", self.payload["feature_branch"], cwd=self.root)
+        (self.root / "existing.txt").write_text("updated\n")
+        (self.root / "new.txt").write_text("new\n")
+        command("git", "add", "-A", cwd=self.root)
+        command("git", "commit", "-m", "Manual patch commit", cwd=self.root)
+        result = self.invoke_force("6\nYES\nYES\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("FORCE push completed", result.stdout)
+        current = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        self.assertEqual(command("git", "ls-remote", "--heads", "origin",
+                                 f"refs/heads/{self.payload['feature_branch']}",
+                                 cwd=self.root).stdout.split()[0], current)
+
+    def test_force_rejects_non_fast_forward_remote_push(self):
+        command("git", "switch", "-c", self.payload["feature_branch"], cwd=self.root)
+        (self.root / "existing.txt").write_text("updated\n")
+        (self.root / "new.txt").write_text("new\n")
+        command("git", "add", "-A", cwd=self.root)
+        command("git", "commit", "-m", "Manual patch commit", cwd=self.root)
+        local_commit = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        command("git", "switch", "main", cwd=self.root)
+        command("git", "commit", "--allow-empty", "-m", "Conflicting remote commit", cwd=self.root)
+        command("git", "push", "origin", f"HEAD:refs/heads/{self.payload['feature_branch']}", cwd=self.root)
+        command("git", "switch", self.payload["feature_branch"], cwd=self.root)
+        result = self.invoke_force("6\nYES\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("never rewrites remote history", result.stderr)
+        self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(), local_commit)
+
+    def test_force_commits_and_pushes_on_current_branch_without_verification(self):
+        (self.root / "existing.txt").write_text("updated\n")
+        (self.root / "new.txt").write_text("new\n")
+        result = self.invoke_force("5\nYES\nYES\nYES\nYES\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        record = next(iter(json.loads(self.state_path.read_text())["workflows"].values()))
+        self.assertEqual(record["phase"], "pushed")
+        self.assertEqual(record["applied_branch"], "main")
+        self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, "")
+        self.assertEqual(command("git", "ls-remote", "--heads", "origin", "refs/heads/main",
+                                 cwd=self.root).stdout.split()[0], record["pushed_sha"])
+
+    def test_new_patch_cycle_requests_confirmation_and_preserves_previous_state(self):
+        self.assertEqual(self.invoke("3\nYES\n").returncode, 0)
+        original = json.loads(self.state_path.read_text())
+        second_zip = self.base / "downloads" / "signalharvester-PATCH-next.zip"
+        with zipfile.ZipFile(second_zip, "w") as archive:
+            archive.writestr("signalharvester/another.txt", "next\n")
+        self.payload["patch_file"] = second_zip.name
+        self.payload["patch_sha256"] = hashlib.sha256(second_zip.read_bytes()).hexdigest()
+        self.params.write_text(json.dumps(self.payload))
+        cancelled = self.invoke("no\n")
+        self.assertEqual(cancelled.returncode, 2)
+        self.assertIn("New patch cycle cancelled", cancelled.stderr)
+        self.assertEqual(json.loads(self.state_path.read_text()), original)
+        accepted = self.invoke("YES\n0\n")
+        self.assertEqual(accepted.returncode, 0, accepted.stderr)
+        self.assertIn("Unfinished workflows", accepted.stdout)
+        self.assertIn(second_zip.name, accepted.stdout)
+        new_state = json.loads(self.state_path.read_text())
+        self.assertEqual(len(new_state["workflows"]), 1)
+        previous = next(iter(new_state["workflows"].values()))
+        self.assertEqual(previous["phase"], "patch_applied")
+        self.assertEqual(previous["superseded_patch"], second_zip.name)
+        menu_again = self.invoke("0\n")
+        self.assertEqual(menu_again.returncode, 0, menu_again.stderr)
+        self.assertNotIn("Unfinished workflows", menu_again.stdout)
+
     def test_apply_patch_to_main_and_verify_without_creating_feature_branch(self):
         menu = self.invoke("0\n")
         self.assertEqual(menu.returncode, 0, menu.stderr)
@@ -188,7 +374,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual((self.root / "existing.txt").read_text(), "updated\n")
         self.assertFalse(command("git", "branch", "--list", self.payload["feature_branch"],
                                  cwd=self.root).stdout.strip())
-        state = json.loads((self.bin / "signalharvester_apply_patch.state.json").read_text())
+        state = json.loads(self.state_path.read_text())
         self.assertEqual(next(iter(state["workflows"].values()))["applied_branch"], "main")
         verified = self.invoke("4\n")
         self.assertEqual(verified.returncode, 0, verified.stderr)
@@ -243,7 +429,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertIn("requires a checked-out branch", blocked.stderr)
 
     def test_applied_patch_history_created_only_after_success(self):
-        history = self.bin / "signalharvester_applied_patches.txt"
+        history = self.history_path
         self.assertFalse(history.exists())
         cancelled = self.invoke("2\nYES\nno\n")
         self.assertEqual(cancelled.returncode, 0, cancelled.stderr)
@@ -253,8 +439,44 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(history.read_text(), self.zip.name + "\n")
         self.assertEqual(stat.S_IMODE(history.stat().st_mode), 0o600)
 
+    def test_legacy_state_and_history_migrate_without_deleting_originals(self):
+        applied = self.invoke("2\nYES\nYES\n")
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        old_state = self.bin / self.state_path.name
+        old_history = self.bin / self.history_path.name
+        original_state = json.loads(self.state_path.read_text())
+        original_state["workflows"]["foreign-project"] = {"repository": str(self.base / "another-repo")}
+        old_state.write_text(json.dumps(original_state))
+        old_history.write_bytes(self.history_path.read_bytes())
+        self.state_path.unlink()
+        self.history_path.unlink()
+
+        verified = self.invoke("4\n")
+        self.assertEqual(verified.returncode, 0, verified.stderr)
+        self.assertIn("Imported 1 workflow checkpoint(s)", verified.stdout)
+        self.assertIn("Imported 1 applied-patch history", verified.stdout)
+        migrated = json.loads(self.state_path.read_text())
+        self.assertEqual(len(migrated["workflows"]), 1)
+        self.assertEqual(next(iter(migrated["workflows"].values()))["phase"], "verified")
+        self.assertEqual(self.history_path.read_text(), old_history.read_text())
+        self.assertTrue(old_state.exists())
+        self.assertTrue(old_history.exists())
+        self.assertTrue(self.lock_path.exists())
+        self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout,
+                         " M existing.txt\n?? new.txt\n")
+
+    def test_existing_project_state_is_not_replaced_by_legacy_state(self):
+        self.assertEqual(self.invoke("2\nYES\nYES\n").returncode, 0)
+        original = self.state_path.read_bytes()
+        old_state = self.bin / self.state_path.name
+        old_state.write_text(json.dumps({"schema_version": 1, "workflows": {"foreign": {
+            "repository": str(self.base / "another-repo")}}}))
+        result = self.invoke("0\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.state_path.read_bytes(), original)
+
     def test_previously_applied_patch_warns_and_requires_yes_no(self):
-        history = self.bin / "signalharvester_applied_patches.txt"
+        history = self.history_path
         history.write_text(self.zip.name + "\n")
         denied = self.invoke("2\nno\n")
         self.assertEqual(denied.returncode, 0, denied.stderr)
@@ -274,7 +496,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
 
     def test_repeated_patch_on_existing_branch_warns(self):
         command("git", "switch", "-c", self.payload["feature_branch"], cwd=self.root)
-        history = self.bin / "signalharvester_applied_patches.txt"
+        history = self.history_path
         history.write_text(self.zip.name + "\n")
         denied = self.invoke("3\nno\n")
         self.assertEqual(denied.returncode, 0, denied.stderr)
@@ -307,29 +529,54 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertIn("Local base HEAD differs", result.stderr)
 
     def test_corrupt_patch_history_rejects_without_branch_creation(self):
-        history = self.bin / "signalharvester_applied_patches.txt"
+        history = self.history_path
         history.write_text("invalid/entry.zip\n")
         result = self.invoke("2\n")
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertIn("history contains an invalid entry", result.stderr)
         self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(), "main")
 
-    def test_history_path_inside_repository_rejected(self):
+    def test_runtime_state_and_history_paths_must_be_relative_filenames(self):
         conf = self.bin / "apatch.conf"
         conf.write_text(conf.read_text().replace("applied_patches_file = signalharvester_applied_patches.txt",
                                                 f"applied_patches_file = {self.root / 'patches.txt'}"))
         result = self.invoke("0\n")
         self.assertEqual(result.returncode, 2, result.stderr)
-        self.assertIn("history must be outside the Git repository", result.stderr)
+        self.assertIn("plain filenames inside .apatch", result.stderr)
         self.assertFalse((self.root / "patches.txt").exists())
+
+    def test_project_can_override_runtime_filenames(self):
+        self.project_config.write_text(
+            'schema_version: 1\nstate_file: checkpoint.json\n'
+            'applied_patches_file: history.txt\nchecks:\n  - ./run_checks.sh\n')
+        result = self.invoke("0\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.root / ".apatch" / "checkpoint.json.lock").exists())
+        self.assertFalse(self.lock_path.exists())
+        self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout,
+                         " M .apatch/config.yaml\n")
+
+    def test_project_rejects_traversing_or_conflicting_runtime_names(self):
+        cases = [
+            ('state_file: ../escape\n', "plain filenames inside .apatch"),
+            ('applied_patches_file: /tmp/history\n', "plain filenames inside .apatch"),
+            ('state_file: duplicate.txt\napplied_patches_file: duplicate.txt\n', "separate filenames"),
+        ]
+        for settings, message in cases:
+            with self.subTest(settings=settings):
+                self.project_config.write_text(
+                    f'schema_version: 1\n{settings}checks:\n  - ./run_checks.sh\n')
+                result = self.invoke("0\n")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn(message, result.stderr)
 
     def test_symlink_patch_history_is_rejected(self):
         protected = self.base / "protected.txt"
         protected.write_text("original")
-        (self.bin / "signalharvester_applied_patches.txt").symlink_to(protected)
+        self.history_path.symlink_to(protected)
         result = self.invoke("2\n")
         self.assertEqual(result.returncode, 2, result.stderr)
-        self.assertIn("History destination must be a regular file", result.stderr)
+        self.assertIn("Runtime state and history files must not be symlinks", result.stderr)
         self.assertEqual(protected.read_text(), "original")
 
     def test_remote_url_drift_blocks_commit(self):
@@ -353,12 +600,12 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertIn("unexpected history", result.stderr)
         self.assertEqual(command("git", "log", "-1", "--format=%s", cwd=self.root).stdout.strip(),
                          "test: apply guarded patch")
-        state = json.loads((self.bin / "signalharvester_apply_patch.state.json").read_text())
+        state = json.loads(self.state_path.read_text())
         self.assertEqual(next(iter(state["workflows"].values()))["phase"], "committed")
 
     def test_history_lock_rejects_concurrent_use(self):
         from apatch_lib.patch_history import locked_history
-        path = self.bin / "signalharvester_applied_patches.txt"
+        path = self.history_path
         with locked_history(path) as history:
             self.assertFalse(history.contains(self.zip.name))
             with self.assertRaises(Abort):
@@ -387,7 +634,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(set(changed), {"existing.txt", "new.txt"})
         self.assertIn("Add new file.", command("git", "log", "-1", "--format=%B", cwd=self.root).stdout)
         self.assertIn("Create/find PR", self.invoke("0\n").stdout)
-        state = json.loads((self.bin / "signalharvester_apply_patch.state.json").read_text())
+        state = json.loads(self.state_path.read_text())
         self.assertEqual(next(iter(state["workflows"].values()))["phase"], "pushed")
 
     def test_log_records_patch_identity_and_commit_body_only_on_commit(self):
@@ -418,7 +665,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertIn('git commit -F - commit_message=',
                       next(line for line in lines if "Secret-in-commit-body-should-not-be-logged" in line))
 
-    def test_nonzero_exit_and_stop_are_logged(self):
+    def test_nonzero_exit_and_failure_diagnostics_are_logged(self):
         self.configure_checks(
             'schema_version: 1\nchecks:\n  - ["./run_checks.sh"]\n'
             '  - ["python3", "-c", "print(\'CHECK BEFORE FAILURE\'); raise SystemExit(17)"]\n')
@@ -428,10 +675,33 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertIn("Command failed (17)", failed.stderr)
         self.assertIn("CHECK BEFORE FAILURE", failed.stdout)
         content = self.log_path.read_text()
-        self.assertIn("check output: CHECK BEFORE FAILURE", content)
-        self.assertIn("command finished exit=17", content)
+        self.assertIn("check command failed exit=17", content)
+        self.assertIn('recent_output="CHECK BEFORE FAILURE"', content)
         self.assertIn("invocation stopped: Command failed (17)", content)
         self.assertNotIn("Traceback", content)
+
+    def test_failed_check_logs_only_bounded_recent_output(self):
+        script = self.root / "verbose_checks.py"
+        script.write_text(
+            "import sys\n"
+            "print('PROGRESS BEFORE ERROR')\n"
+            "for i in range(40):\n"
+            "    print(f'step-{i}')\n"
+            "print('FAILURE DETAIL')\n"
+            "sys.exit(9)\n")
+        self.configure_checks(
+            'schema_version: 1\nchecks:\n'
+            '  - ["python3", "verbose_checks.py"]\n')
+        self.assertEqual(self.invoke("2\nYES\nYES\n").returncode, 0)
+        failed = self.invoke("4\n")
+        self.assertEqual(failed.returncode, 2)
+        self.assertIn("PROGRESS BEFORE ERROR", failed.stdout)
+        self.assertIn("FAILURE DETAIL", failed.stdout)
+        log = self.log_path.read_text()
+        self.assertIn("check command failed exit=9", log)
+        self.assertIn("FAILURE DETAIL", log)
+        self.assertNotIn("PROGRESS BEFORE ERROR", log)
+        self.assertNotIn("step-0\\n", log)
 
     def test_project_log_directory_is_relative_to_project_apatch(self):
         custom = self.root / ".apatch" / "custom" / "checks"
@@ -472,12 +742,19 @@ class LocalGitWorkflowTest(unittest.TestCase):
         result = self.invoke("0\n")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(self.log_path.is_file())
+        self.assertTrue(self.lock_path.is_file())
+        self.assertFalse(self.state_path.exists())
         self.assertIn(str(self.log_path), result.stdout)
         self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, "")
         self.assertEqual(command("git", "check-ignore", ".apatch/logs/apatch.log",
                                  cwd=self.root).stdout.strip(), ".apatch/logs/apatch.log")
         info_exclude = (self.root / ".git" / "info" / "exclude").read_text()
         self.assertIn("/.apatch/logs/", info_exclude)
+        for file in (self.state_path, self.lock_path, self.history_path):
+            relative = file.relative_to(self.root).as_posix()
+            self.assertIn(f"/{relative}", info_exclude)
+            self.assertEqual(command("git", "check-ignore", relative, cwd=self.root).stdout.strip(),
+                             relative)
         self.assertEqual(self.invoke("0\n").returncode, 0)
         self.assertEqual((self.root / ".git" / "info" / "exclude").read_text(), info_exclude)
 
@@ -509,6 +786,18 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertIn("Unsafe local Git exclude file", result.stderr)
         self.assertEqual(protected.read_text(), "unchanged\n")
         self.assertFalse(self.log_path.exists())
+
+    def test_symlinked_state_and_lock_files_are_rejected(self):
+        for path in (self.state_path, self.lock_path):
+            with self.subTest(path=path):
+                protected = self.base / "protected-state.txt"
+                protected.write_text("unchanged\n")
+                path.symlink_to(protected)
+                result = self.invoke("0\n")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("Runtime state and history files must not be symlinks", result.stderr)
+                self.assertEqual(protected.read_text(), "unchanged\n")
+                path.unlink()
 
     def test_unverified_changed_bytes_cannot_be_committed(self):
         self.assertEqual(self.invoke("2\nYES\nYES\n").returncode, 0)

@@ -32,6 +32,23 @@ Start `apatch` **from the root of the project repository** whose development wor
 
 The argument is a JSON file describing the intended change. Global configuration is read from `apatch.conf` next to `apatch.py`; project verification commands and optional log directory overrides are read from the target repository's `.apatch/config.yaml`. The tool presents the actions currently available, validates the repository state before each operation, and records progress so the workflow can resume on a later invocation.
 
+To recover after manually creating a feature branch, extracting a patch, committing, or pushing, use the explicit FORCE mode:
+
+```bash
+# Use the default handoff in ~/Downloads.
+/path/to/apatch/apatch.sh force
+
+# Use a specific handoff file.
+/path/to/apatch/apatch.sh /path/to/change_params.json force
+
+# The standard long option is also accepted.
+/path/to/apatch/apatch.sh --force /path/to/change_params.json
+```
+
+FORCE displays all menu actions without phase restrictions and requests explicit confirmation before recovering or changing repository state. A previously created local feature branch can be adopted; an existing clean commit or push can be associated with the handoff; uncommitted worktree changes can be adopted without overwriting them; and Git commits and fast-forward pushes can be made from the checked-out named branch without a previously verified phase. FORCE also supports re-running configured checks and recovering PR/merge state from GitHub. Every state reconciliation is recorded in the project's state file and audit log.
+
+FORCE is **not** a Git `--force` push. It never rewrites remote history, overwrites a dirty worktree with ZIP contents, allows a detached-HEAD patch application, skips ZIP path/digest validation, or bypasses GitHub mergeability, review, or CI requirements. When associating existing files or commits whose contents differ from the ZIP, the tool warns about a manual override and requires confirmation. This mode should be used deliberately: it can intentionally associate manually edited files or commits with a handoff that no longer precisely describes their contents. Use ordinary mode whenever possible.
+
 ## Change description
 
 The JSON file identifies the target repository, feature branch, archive containing project changes, and commit message. For example:
@@ -80,6 +97,10 @@ The interactive menu supports the following operations, subject to current Git s
 
 An interrupted push can be retried without creating a second commit. If the remote merge succeeds but local synchronization fails, synchronization can be resumed separately.
 
+### Starting another patch before the previous cycle finishes
+
+Each ZIP filename has a separate workflow checkpoint. If a newly selected ZIP differs from an unfinished patch for the same repository, `apatch` lists the previous checkpoints and asks whether to start a separate cycle. Declining leaves all checkpoints unchanged; accepting marks the older records as superseded by the new ZIP while preserving their original phases and data for inspection or later recovery. The new cycle has its own state record when its first action saves progress. Applied-patch history is not reset. A dirty working tree is never automatically discarded or overwritten when starting another cycle, even in FORCE mode.
+
 ## Configuration
 
 `apatch.conf` is located beside `apatch.py`. Its `[apatch]` section controls:
@@ -87,8 +108,8 @@ An interrupted push can be retried without creating a second commit. If the remo
 | Setting | Purpose |
 | --- | --- |
 | `downloads_dir` | Directory containing change archives. |
-| `state_file` | External file storing workflow progress. |
-| `applied_patches_file` | File recording previously applied archive filenames. |
+| `state_file` | Filename for workflow progress under the target repository's `.apatch/` directory. |
+| `applied_patches_file` | Filename for applied-patch history under the target repository's `.apatch/` directory. |
 | `log_directory` | Relative path below the target repository's `.apatch/` directory; defaults to `logs`. |
 | `remote` | Git remote used for validation and publishing. |
 | `base_branch` | Target branch for feature creation and pull requests. |
@@ -98,7 +119,7 @@ An interrupted push can be retried without creating a second commit. If the remo
 | `merge_method` | GitHub merge strategy: `merge`, `squash`, or `rebase`. |
 | `max_uncompressed_patch_bytes` | Maximum total extracted archive size. |
 
-Relative paths for state and history are resolved from the installed `apatch` directory. Unlike them, `log_directory` is always relative to the target repository's `.apatch/` directory. Absolute paths, `..` traversal, and symlinked log directories are rejected. The global configuration does not define project verification commands.
+All three runtime settings—`state_file`, `applied_patches_file`, and `log_directory`—are now resolved relative to the target repository's `.apatch/` directory. State and history settings must be plain filenames; the log setting may be a relative subdirectory. Absolute paths, `..` traversal, and symlinked destinations are rejected. The global configuration does not define project verification commands.
 
 ### Project-specific verification
 
@@ -107,12 +128,14 @@ Each target repository must contain `.apatch/config.yaml` (not a symlink), for e
 ```yaml
 schema_version: 1
 log_directory: logs
+state_file: signalharvester_apply_patch.state.json
+applied_patches_file: signalharvester_applied_patches.txt
 checks:
   - ["./gradlew", "test"]
   - ["./gradlew", "check"]
 ```
 
-`log_directory` is optional and overrides the global `log_directory` setting. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. Omit it to use the global relative setting (`logs` by default).
+`log_directory`, `state_file`, and `applied_patches_file` are optional and override their global counterparts. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. A lock file named `<state_file>.lock` is created automatically in `.apatch/`. Omit these settings to use the global names.
 
 `checks` must be a non-empty list. A command can be an argument list (recommended) or a single command string parsed with shell-style quoting:
 
@@ -123,7 +146,7 @@ checks:
   - ["python3", "-m", "unittest", "discover", "-s", "tests"]
 ```
 
-Commands run sequentially from the target repository root; execution stops on the first failure. Standard output and standard error from these project checks are displayed live and appended to the project log. Each command is executed directly **without a shell**, so pipelines, redirections, environment-variable expansion, and `&&` are not interpreted. Put compound shell logic in a project-owned script and call that script from `checks`.
+Commands run sequentially from the target repository root; execution stops on the first failure. Standard output and standard error from these project checks are displayed live in the terminal, but successful checks do not write their output to the project log. Each command is executed directly **without a shell**, so pipelines, redirections, environment-variable expansion, and `&&` are not interpreted. Put compound shell logic in a project-owned script and call that script from `checks`.
 
 If the project configuration is missing, malformed, or has no commands, `apatch` stops with an explicit error. The supplied SignalHarvester `.apatch` archive is a starting configuration; verify that its command exists in your SignalHarvester checkout.
 
@@ -133,13 +156,19 @@ The file configured by `applied_patches_file` records one successfully applied a
 
 This history is independent of saved workflow progress. It detects duplicate **filenames**, not identical archive contents, and does not bypass Git or archive safety checks. Writes are locked and synchronized to disk.
 
+### Migration from older installations
+
+Earlier versions stored workflow state, its `.lock` file, and applied-patch history beside the installed `apatch` tool. When a project-local state file does not exist, the new version looks for the former state file in the tool directory and imports only workflow records whose stored repository path matches the current repository. If project-local history is absent, the existing history journal is copied to the new project-local journal. The old files are preserved as a backup and are never deleted automatically; a fresh project-local lock is created rather than copying an obsolete lock file.
+
+If a project already has its own `.apatch` state or history file, it takes precedence and is never overwritten by legacy data. When migrating from a previously shared history, review the imported filenames; old journals do not distinguish projects.
+
 ## Logging
 
 `apatch` uses Python's standard `logging` module and writes an append-only log to `<repository>/.apatch/<log_directory>/apatch.log`. Every entry includes a timestamp and the change archive's filename as its operation identifier, along with the repository, feature branch, severity, and relevant event details.
 
-Command records include the executable and arguments, working directory, exit status, and duration. The complete commit message is recorded **only when the commit command runs**. Output from canonical project checks is displayed live and retained in the log; output from Git and GitHub commands and other standard input is not retained. Common sensitive arguments are masked. The log file is restricted to the current user (mode `0600`); nevertheless, project-check output and commit messages may contain secrets and should not be shared without review.
+Command records include the executable and arguments, working directory, and (for non-check commands) exit status and duration. The complete commit message is recorded **only when the commit command runs**. For canonical checks, the log records command starts and failures only: a failed check records its exit status, duration, and at most the last 20 lines of combined output (up to 500 characters per line). Successful check output is shown live in the terminal but is not written to the log. Output from Git and GitHub commands and other standard input is not retained. Common sensitive arguments are masked. The log file is restricted to the current user (mode `0600`); nevertheless, failure diagnostics and commit messages may contain secrets and should not be shared without review.
 
-To keep runtime logs out of patches and commits, `apatch` checks the repository's ignore rules and, when needed, adds the precise log-directory path to that repository's local `.git/info/exclude`. This does not modify tracked `.gitignore` files and does not affect other repositories. The `.apatch/config.yaml` file itself should be committed as part of the project's normal configuration before starting a patch workflow.
+To keep runtime files out of patches and commits, `apatch` checks the repository's ignore rules and, when needed, adds precise entries for the log directory, state file, lock file, and applied-patch history to that repository's local `.git/info/exclude`. This does not modify tracked `.gitignore` files and does not affect other repositories. The `.apatch/config.yaml` file itself should be committed as part of the project's normal configuration before starting a patch workflow.
 
 ## Safety and recovery
 

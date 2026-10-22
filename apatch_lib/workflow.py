@@ -7,6 +7,7 @@ from pathlib import Path
 
 from . import github
 from .branch_patch import BranchPatchActions
+from .force import ForceActions
 from .gitutil import (confirm, current_branch, head, is_clean, output, remote_head,
                       require_branch, require_clean, run, worktree_fingerprint)
 from .model import Abort
@@ -21,11 +22,12 @@ PHASES = {"new", "branch_created", "applying", "patch_applied", "verified",
 
 
 class Workflow:
-    def __init__(self, root: Path, config, handoff, state):
+    def __init__(self, root: Path, config, handoff, state, *, force=False):
         self.root = root
         self.config = config
         self.handoff = handoff
         self.state = state
+        self.force = force
         key_data = f"{root.resolve()}\0{handoff.branch}\0{handoff.patch}"
         self.key = hashlib.sha256(key_data.encode()).hexdigest()
         self.record = state["workflows"].get(self.key, {})
@@ -50,6 +52,33 @@ class Workflow:
         if self.record.get("phase") == "synced":
             print("This patch workflow has already completed.")
         self.branch_patch = BranchPatchActions(self)
+        self.force_actions = ForceActions(self)
+        self.handle_previous_cycles()
+
+    def handle_previous_cycles(self):
+        """Keep older checkpoints but explicitly acknowledge switching patch cycles."""
+        previous = [
+            (key, record) for key, record in self.state["workflows"].items()
+            if key != self.key and isinstance(record, dict)
+            and record.get("repository") == str(self.root.resolve())
+            and record.get("patch_file") != self.handoff.patch
+            and record.get("phase") != "synced" and not record.get("superseded_by")
+        ]
+        if not previous:
+            return
+        print("\nUnfinished workflows for this repository:")
+        for _, record in previous:
+            print(f"  {record.get('patch_file')} | branch={record.get('branch')} "
+                  f"| phase={record.get('phase', 'new')}")
+        print(f"New patch: {self.handoff.patch}")
+        if not confirm("Start a separate patch cycle and retain the previous checkpoints?"):
+            raise Abort("New patch cycle cancelled; previous checkpoints are unchanged")
+        for _, record in previous:
+            record["superseded_by"] = self.key
+            record["superseded_patch"] = self.handoff.patch
+        save(self.config.state_path, self.state)
+        LOGGER.warning("superseded %d unfinished workflow(s) with patch=%s",
+                       len(previous), self.handoff.patch)
 
     @property
     def phase(self):
@@ -199,6 +228,22 @@ class Workflow:
         github.sync_base(self.config, self.handoff, self.root, self.record, self.persist)
 
     def options(self):
+        if self.force:
+            branch = current_branch(self.root)
+            actions = self.force_actions
+            return [
+                ("Create/adopt a feature branch", actions.prepare_branch, None),
+                ("Create/adopt a feature branch and apply/adopt patch",
+                 lambda: actions.prepare_branch(with_patch=True), None),
+                (f"Apply/adopt patch on current branch ({branch or 'detached HEAD'})",
+                 actions.apply_or_adopt, None),
+                ("Run/re-run canonical checks", actions.verify, None),
+                ("Commit and push current changes", actions.commit_push, None),
+                ("Retry/reconcile push", actions.push, None),
+                (f"Create/find PR for current patch branch -> {self.config.base}", actions.pr, None),
+                (f"Merge PR into {self.config.base}", actions.merge, None),
+                (f"Synchronize local {self.config.base} after merge", actions.sync, None),
+            ]
         phase = self.phase
         branch = current_branch(self.root)
         clean = is_clean(self.root)
@@ -249,7 +294,13 @@ class Workflow:
     def interactive(self):
         print(f"\n-----\nRepository: {self.root}\nFeature branch: {self.handoff.branch}\n"
               f"Patch: {self.handoff.patch}\nPhase: {self.phase}\n"
-              f"Current branch: {current_branch(self.root)}\n-----")
+              f"Current branch: {current_branch(self.root)}")
+        if self.force:
+            print("Mode: FORCE (manual recovery)")
+        print("-----")
+        if self.force:
+            print("FORCE bypasses workflow-phase checks, not Git integrity, archive safety, "
+                  "non-fast-forward protection, or GitHub review/CI rules.")
         options = self.options()
         print("\nActions (* = currently unavailable):")
         for index, (label, _, reason) in enumerate(options, start=1):
