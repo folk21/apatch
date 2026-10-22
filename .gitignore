@@ -1,0 +1,13 @@
+build/
+**/build/
+logs/
+**/logs/
+.idea/
+*.iml
+.env
+
+# Python-generated local bytecode/cache
+**/__pycache__/
+*.py[cod]
+*.lock
+archive.sh
