@@ -5,13 +5,20 @@
 ## Requirements
 
 - Python 3.10 or newer.
+- PyYAML (`python3 -m pip install -r requirements.txt`).
 - `git` for repository operations.
 - GitHub CLI (`gh`), installed and authenticated, for pull-request operations.
-- A target Git repository with a configured remote and a repository-root `run_checks.sh` verification script.
+- A target Git repository with a configured remote and `.apatch/config.yaml` specifying its verification commands.
 
 ## Get apatch
 
 Download the `apatch` ZIP archive and extract it, or clone the `apatch` Git repository.
+
+Install the Python dependency in the environment used to run `apatch`:
+
+```bash
+python3 -m pip install -r /path/to/apatch/requirements.txt
+```
 
 ## Run
 
@@ -21,7 +28,7 @@ Start `apatch` **from the root of the project repository** whose development wor
 python3 /path/to/apatch/apatch.py /path/to/change_params.json
 ```
 
-The argument is a JSON file describing the intended change. Configuration is read from `apatch.conf` next to `apatch.py`. The tool presents the actions currently available, validates the repository state before each operation, and records progress so the workflow can resume on a later invocation.
+The argument is a JSON file describing the intended change. Global configuration is read from `apatch.conf` next to `apatch.py`; verification commands are read from the target repository's `.apatch/config.yaml`. The tool presents the actions currently available, validates the repository state before each operation, and records progress so the workflow can resume on a later invocation.
 
 ## Change description
 
@@ -84,14 +91,36 @@ An interrupted push can be retried without creating a second commit. If the remo
 | `remote` | Git remote used for validation and publishing. |
 | `base_branch` | Target branch for feature creation and pull requests. |
 | `require_patch_feature_branch` | When `true`, restrict direct patch application (option 3) to the `feature_branch` from the handoff file. Defaults to `false`. |
-| `check_command` | Required repository verification command. |
-| `extra_check_commands_json` | Additional checks, represented as a JSON array of argument arrays. |
 | `require_review_approval` | Require approved review before merging. |
 | `require_required_checks` | Require successful GitHub checks before merging. |
 | `merge_method` | GitHub merge strategy: `merge`, `squash`, or `rebase`. |
 | `max_uncompressed_patch_bytes` | Maximum total extracted archive size. |
 
-Relative paths for state, history, and logs are resolved from the `apatch` directory, not the target repository. The current version requires `check_command` to begin with `./run_checks.sh`; the target repository must provide that executable command. Additional checks can be configured with `extra_check_commands_json`.
+Relative paths for state, history, and logs are resolved from the `apatch` directory, not the target repository. The global configuration does not define project verification commands.
+
+### Project-specific verification
+
+Each target repository must contain `.apatch/config.yaml` (not a symlink), for example:
+
+```yaml
+schema_version: 1
+checks:
+  - ["./gradlew", "test"]
+  - ["./gradlew", "check"]
+```
+
+`checks` must be a non-empty list. A command can be an argument list (recommended) or a single command string parsed with shell-style quoting:
+
+```yaml
+schema_version: 1
+checks:
+  - ./run_checks.sh
+  - ["python3", "-m", "unittest", "discover", "-s", "tests"]
+```
+
+Commands run sequentially from the target repository root; execution stops on the first failure. Each command is executed directly **without a shell**, so pipelines, redirections, environment-variable expansion, and `&&` are not interpreted. Put compound shell logic in a project-owned script and call that script from `checks`.
+
+If the project configuration is missing, malformed, or has no commands, `apatch` stops with an explicit error. The supplied SignalHarvester `.apatch` archive is a starting configuration; verify that its command exists in your SignalHarvester checkout.
 
 ## Applied-change history
 

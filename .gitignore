@@ -5,9 +5,10 @@ logs/
 .idea/
 *.iml
 .env
+*.state.json
+*.state.json.lock
+*_applied_patches.txt
 
 # Python-generated local bytecode/cache
 **/__pycache__/
 *.py[cod]
-*.lock
-archive.sh

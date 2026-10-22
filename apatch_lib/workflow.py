@@ -102,8 +102,9 @@ class Workflow:
         self.assert_patch_identity()
         before, _ = self.assert_expected_paths()
         run(["git", "diff", "--check"], self.root)
-        run(list(self.config.checks), self.root)
-        for command in self.config.extra_checks:
+        if not self.config.checks:
+            raise Abort("No project verification commands configured")
+        for command in self.config.checks:
             run(list(command), self.root)
         after, _ = self.assert_expected_paths()
         if before != after:

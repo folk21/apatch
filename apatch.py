@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Apply a SignalHarvester PATCH through a guarded, interactive Git workflow."""
+"""Apply a project PATCH through a guarded, interactive Git workflow."""
 
 import argparse
 import logging
@@ -8,14 +8,14 @@ from pathlib import Path
 
 from apatch_lib.gitutil import repository_root
 from apatch_lib.logging_setup import configure, set_context
-from apatch_lib.model import Abort, load_config, load_handoff
+from apatch_lib.model import Abort, load_config, load_handoff, load_project_config
 from apatch_lib.state import locked_state
 from apatch_lib.workflow import Workflow
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("handoff", type=Path, help="Path to signalharvester_patch_params.json")
+    parser.add_argument("handoff", type=Path, help="Path to a patch handoff JSON file")
     args = parser.parse_args()
     script_dir = Path(__file__).resolve().parent
     try:
@@ -29,6 +29,7 @@ def main():
         logger.info("invocation handoff=%s working_directory=%s", args.handoff.expanduser(), Path.cwd())
         root = repository_root(Path.cwd(), handoff.repository)
         logger.info("repository=%s feature=%s patch=%s", root, handoff.branch, handoff.patch)
+        config = load_project_config(root, config)
         if config.state_path.is_relative_to(root):
             raise Abort("The checkpoint state file must be outside the Git repository")
         if config.downloads.is_relative_to(root):

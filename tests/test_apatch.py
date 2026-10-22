@@ -14,7 +14,7 @@ from pathlib import Path
 
 TOOL = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL))
-from apatch_lib.model import Abort, load_handoff, safe_relative
+from apatch_lib.model import Abort, load_handoff, load_project_config, safe_relative
 from apatch_lib.patch import inspect
 from apatch_lib.model import load_config
 
@@ -47,6 +47,10 @@ class LocalGitWorkflowTest(unittest.TestCase):
         runner = self.root / "run_checks.sh"
         runner.write_text("#!/bin/sh\nset -eu\ntest -f new.txt\n")
         runner.chmod(0o755)
+        config_dir = self.root / ".apatch"
+        config_dir.mkdir()
+        self.project_config = config_dir / "config.yaml"
+        self.project_config.write_text('schema_version: 1\nchecks:\n  - ["./run_checks.sh"]\n')
         command("git", "add", "-A", cwd=self.root)
         command("git", "commit", "-m", "base", cwd=self.root)
         command("git", "push", "-u", "origin", "main", cwd=self.root)
@@ -70,6 +74,55 @@ class LocalGitWorkflowTest(unittest.TestCase):
     def invoke(self, text):
         return subprocess.run([sys.executable, str(self.bin / "apatch.py"), str(self.params)],
                               cwd=self.root, input=text, capture_output=True, text=True)
+
+    def configure_checks(self, yaml_text):
+        self.project_config.write_text(yaml_text)
+        command("git", "add", "-A", cwd=self.root)
+        command("git", "commit", "-m", "Configure project verification", cwd=self.root)
+        command("git", "push", cwd=self.root)
+        self.head = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        self.payload["base_commit"] = self.head
+        self.params.write_text(json.dumps(self.payload))
+
+    def test_project_config_is_required(self):
+        self.project_config.unlink()
+        result = self.invoke("0\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Missing project checks config", result.stderr)
+
+    def test_empty_and_invalid_project_checks_are_rejected(self):
+        cases = [
+            ("schema_version: 1\nchecks: []\n", "non-empty list"),
+            ("schema_version: 1\nchecks: [42]\n", "command string or argv list"),
+            ("schema_version: 1\nchecks:\n  - []\n", "invalid arguments"),
+            ("schema_version: 2\nchecks:\n  - echo ok\n", "schema_version"),
+            ("checks: [echo ok]\n", "schema_version and checks"),
+            ("schema_version: [\n", "Invalid project checks YAML"),
+        ]
+        for yaml_text, reason in cases:
+            with self.subTest(yaml_text=yaml_text):
+                self.project_config.write_text(yaml_text)
+                result = self.invoke("0\n")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn(reason, result.stderr)
+
+    def test_project_config_parses_multiple_commands(self):
+        self.project_config.write_text(
+            'schema_version: 1\nchecks:\n  - ./gradlew test\n  - ["python3", "-c", "print(42)"]\n')
+        config = load_project_config(self.root, load_config(self.bin))
+        self.assertEqual(config.checks, (("./gradlew", "test"), ("python3", "-c", "print(42)")))
+
+    def test_project_config_can_run_a_nonstandard_check_script(self):
+        script = self.root / "custom_verify.sh"
+        script.write_text("#!/bin/sh\nset -eu\ntest -f new.txt\n")
+        script.chmod(0o755)
+        self.configure_checks('schema_version: 1\nchecks:\n  - ["./custom_verify.sh"]\n')
+        self.assertEqual(self.invoke("2\nYES\nYES\n").returncode, 0)
+        result = self.invoke("4\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        log = (self.bin / "logs" / "signalharvester_apply_patch.log").read_text()
+        self.assertIn("./custom_verify.sh", log)
+        self.assertNotIn("./run_checks.sh", log)
 
     def test_menu_lists_every_action_even_when_git_state_blocks_actions(self):
         (self.root / "untracked.txt").write_text("dirty\n")
@@ -151,7 +204,8 @@ class LocalGitWorkflowTest(unittest.TestCase):
 
     def test_patch_branch_restriction_can_be_enabled_in_config(self):
         conf = self.bin / "apatch.conf"
-        conf.write_text(conf.read_text() + "\nrequire_patch_feature_branch = true\n")
+        conf.write_text(conf.read_text().replace("require_patch_feature_branch = false",
+                                                "require_patch_feature_branch = true"))
         menu = self.invoke("0\n")
         self.assertIn(" 3. Apply patch to current branch (main) * (requires current branch: "
                       + self.payload["feature_branch"] + ")", menu.stdout)
@@ -346,10 +400,10 @@ class LocalGitWorkflowTest(unittest.TestCase):
                       next(line for line in lines if "Secret-in-commit-body-should-not-be-logged" in line))
 
     def test_nonzero_exit_and_stop_are_logged(self):
+        self.configure_checks(
+            'schema_version: 1\nchecks:\n  - ["./run_checks.sh"]\n'
+            '  - ["python3", "-c", "raise SystemExit(17)"]\n')
         self.assertEqual(self.invoke("2\nYES\nYES\n").returncode, 0)
-        conf = self.bin / "apatch.conf"
-        conf.write_text(conf.read_text().replace("extra_check_commands_json = []",
-                           'extra_check_commands_json = [["python3", "-c", "raise SystemExit(17)"]]'))
         failed = self.invoke("4\n")
         self.assertEqual(failed.returncode, 2)
         self.assertIn("Command failed (17)", failed.stderr)
@@ -486,7 +540,7 @@ class GithubGuardTest(unittest.TestCase):
         self.sha = "a" * 40
         from apatch_lib.model import Config, Handoff
         self.config = Config(self.root, self.root / "state.json", self.root / "logs", self.root / "history.txt", "origin", "main",
-                             ("./run_checks.sh",), (), True, True, "merge", 10000)
+                             (("./run_checks.sh",),), True, True, "merge", 10000)
         self.handoff = Handoff("signalharvester", self.branch, "patch.zip", "test: message\n", None, None, ())
         self.record = {"phase": "pr_created", "pushed_sha": self.sha, "pr_number": 4}
         self.details = {"number": 4, "state": "OPEN", "headRefName": self.branch,

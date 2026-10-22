@@ -3,7 +3,8 @@
 import configparser
 import json
 import re
-from dataclasses import dataclass
+import shlex
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 
@@ -25,8 +26,7 @@ class Config:
     applied_patches_path: Path
     remote: str
     base: str
-    checks: tuple[str, ...]
-    extra_checks: tuple[tuple[str, ...], ...]
+    checks: tuple[tuple[str, ...], ...]
     require_approval: bool
     require_checks: bool
     merge_method: str
@@ -52,7 +52,11 @@ class Handoff:
 def load_config(script_dir: Path) -> Config:
     parser = configparser.ConfigParser(interpolation=None)
     config_path = script_dir / "apatch.conf"
-    if parser.read(config_path, encoding="utf-8") != [str(config_path)]:
+    try:
+        loaded = parser.read(config_path, encoding="utf-8")
+    except configparser.Error as exc:
+        raise Abort(f"Invalid global configuration: {exc}") from exc
+    if loaded != [str(config_path)]:
         raise Abort(f"Missing configuration: {config_path}")
     section = parser["apatch"]
     state = Path(section.get("state_file", "signalharvester_apply_patch.state.json")).expanduser()
@@ -64,9 +68,6 @@ def load_config(script_dir: Path) -> Config:
     applied_patches = Path(section.get("applied_patches_file", "signalharvester_applied_patches.txt")).expanduser()
     if not applied_patches.is_absolute():
         applied_patches = script_dir / applied_patches
-    checks = tuple(section.get("check_command", "./run_checks.sh").split())
-    if not checks or checks[0] != "./run_checks.sh":
-        raise Abort("check_command must start with ./run_checks.sh")
     remote = section.get("remote", "origin")
     base = section.get("base_branch", "main")
     method = section.get("merge_method", "merge")
@@ -76,15 +77,6 @@ def load_config(script_dir: Path) -> Config:
         raise Abort("Invalid base branch")
     if method not in {"merge", "squash", "rebase"}:
         raise Abort("merge_method must be merge, squash or rebase")
-    try:
-        extra = json.loads(section.get("extra_check_commands_json", "[]"))
-    except ValueError as exc:
-        raise Abort("Invalid extra_check_commands_json") from exc
-    if not isinstance(extra, list) or any(
-        not isinstance(cmd, list) or not cmd or
-        any(not isinstance(arg, str) or not arg for arg in cmd) for cmd in extra
-    ):
-        raise Abort("extra_check_commands_json must be an array of argv arrays")
     return Config(
         downloads=Path(section.get("downloads_dir", "~/Downloads")).expanduser().resolve(),
         state_path=state.resolve(),
@@ -92,14 +84,56 @@ def load_config(script_dir: Path) -> Config:
         applied_patches_path=applied_patches.parent.resolve() / applied_patches.name,
         remote=remote,
         base=base,
-        checks=checks,
-        extra_checks=tuple(tuple(command) for command in extra),
+        checks=(),
         require_approval=section.getboolean("require_review_approval", True),
         require_checks=section.getboolean("require_required_checks", True),
         merge_method=method,
         max_bytes=section.getint("max_uncompressed_patch_bytes", 52428800),
         require_patch_feature_branch=section.getboolean("require_patch_feature_branch", False),
     )
+
+
+def load_project_config(root: Path, global_config: Config) -> Config:
+    config_dir = root / ".apatch"
+    config_path = config_dir / "config.yaml"
+    if config_dir.is_symlink() or config_path.is_symlink():
+        raise Abort(f"Project config must not be a symlink: {config_path}")
+    if not config_path.is_file():
+        raise Abort(f"Missing project checks config: {config_path}")
+    try:
+        if config_path.stat().st_size > 65536:
+            raise Abort("Project checks config exceeds 64 KiB")
+        import yaml
+        data = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    except ImportError as exc:
+        raise Abort("PyYAML is required; install apatch/requirements.txt") from exc
+    except (OSError, UnicodeError) as exc:
+        raise Abort(f"Cannot read project checks config: {exc}") from exc
+    except yaml.YAMLError as exc:
+        raise Abort(f"Invalid project checks YAML: {exc}") from exc
+
+    if not isinstance(data, dict) or set(data) != {"schema_version", "checks"}:
+        raise Abort("Project config must contain only schema_version and checks")
+    if type(data["schema_version"]) is not int or data["schema_version"] != 1:
+        raise Abort("Unsupported project checks schema_version")
+    commands = data["checks"]
+    if not isinstance(commands, list) or not commands:
+        raise Abort("Project checks must be a non-empty list")
+    parsed = []
+    for index, command in enumerate(commands, start=1):
+        if isinstance(command, str):
+            try:
+                argv = shlex.split(command)
+            except ValueError as exc:
+                raise Abort(f"Invalid quoting in project check {index}") from exc
+        elif isinstance(command, list):
+            argv = command
+        else:
+            raise Abort(f"Project check {index} must be a command string or argv list")
+        if not argv or any(not isinstance(arg, str) or not arg or "\x00" in arg for arg in argv):
+            raise Abort(f"Project check {index} contains invalid arguments")
+        parsed.append(tuple(argv))
+    return replace(global_config, checks=tuple(parsed))
 
 
 def safe_relative(path: str) -> str:
