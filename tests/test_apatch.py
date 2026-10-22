@@ -225,6 +225,40 @@ class LocalGitWorkflowTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("Mode: FORCE", result.stdout)
 
+    def test_default_handoff_uses_current_project_directory(self):
+        executable = self.bin / ".venv" / "bin" / "python"
+        executable.parent.mkdir(parents=True)
+        executable.symlink_to(sys.executable)
+        downloads = self.base / "Downloads"
+        downloads.mkdir()
+        inferred_handoff = downloads / f"{self.root.name}_patch_params.json"
+        shutil.copy2(self.params, inferred_handoff)
+        environment = {**os.environ, "HOME": str(self.base)}
+        cases = (
+            (["sh", str(self.bin / "apatch.sh")], False),
+            (["sh", str(self.bin / "apatch.sh"), "force"], True),
+            (["sh", str(self.bin / "apatch.sh"), "--force"], True),
+            ([sys.executable, str(self.bin / "apatch.py")], False),
+            ([sys.executable, str(self.bin / "apatch.py"), "--force"], True),
+        )
+        for argv, force in cases:
+            with self.subTest(argv=argv):
+                result = subprocess.run(argv, cwd=self.root, env=environment,
+                                        input="0\n", capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(self.zip.name, result.stdout)
+                self.assertEqual("Mode: FORCE" in result.stdout, force)
+                self.assertIn(inferred_handoff.name, self.log_path.read_text())
+
+    def test_default_handoff_does_not_fall_back_to_unprefixed_name(self):
+        environment = {**os.environ, "HOME": str(self.base)}
+        result = subprocess.run([sys.executable, str(self.bin / "apatch.py")],
+                                cwd=self.root, env=environment,
+                                input="0\n", capture_output=True, text=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(f"{self.root.name}_patch_params.json", result.stderr)
+        self.assertNotIn("/Downloads/patch_params.json", result.stderr)
+
     def test_force_adopts_manually_created_feature_branch(self):
         command("git", "switch", "-c", self.payload["feature_branch"], cwd=self.root)
         result = self.invoke_force("1\nYES\n")

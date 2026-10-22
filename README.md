@@ -30,12 +30,14 @@ Start `apatch` **from the root of the project repository** whose development wor
 /path/to/apatch/apatch.sh /path/to/change_params.json
 ```
 
+When the handoff argument is omitted, the launcher derives the filename from the name of the current project directory. For example, running `apatch.sh` from the root of `example-service` reads `~/Downloads/example-service_patch_params.json`. The same default applies when invoking `apatch.py` directly; an explicit JSON path always takes precedence.
+
 The argument is a JSON file describing the intended change. Global configuration is read from `apatch.conf` next to `apatch.py`; project verification commands and optional log directory overrides are read from the target repository's `.apatch/config.yaml`. The tool presents the actions currently available, validates the repository state before each operation, and records progress so the workflow can resume on a later invocation.
 
 To recover after manually creating a feature branch, extracting a patch, committing, or pushing, use the explicit FORCE mode:
 
 ```bash
-# Use the default handoff in ~/Downloads/patch_params.json.
+# Use the default handoff in ~/Downloads/<project>_patch_params.json.
 /path/to/apatch/apatch.sh force
 
 # Use a specific handoff file.

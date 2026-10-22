@@ -18,15 +18,16 @@ from apatch_lib.workflow import Workflow
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("handoff", nargs="?", type=Path,
-                        default=Path.home() / "Downloads" / "patch_params.json",
-                        help="Path to a patch handoff JSON file")
+                        help="Path to a patch handoff JSON file (default: ~/Downloads/<project>_patch_params.json)")
     parser.add_argument("--force", action="store_true",
                         help="Recover from manual Git actions with explicit confirmation")
     args = parser.parse_args()
+    handoff_path = (args.handoff if args.handoff is not None else
+                    Path.home() / "Downloads" / f"{Path.cwd().resolve().name}_patch_params.json")
     script_dir = Path(__file__).resolve().parent
     try:
         config = load_config(script_dir)
-        handoff = load_handoff(args.handoff.expanduser())
+        handoff = load_handoff(handoff_path.expanduser())
         root = repository_root(Path.cwd(), handoff.repository)
         config = load_project_config(root, config)
         if config.downloads.is_relative_to(root):
@@ -39,7 +40,7 @@ def main():
         log_path = configure(config.log_directory)
         logger = logging.getLogger("apatch")
         logger.info("invocation handoff=%s working_directory=%s force=%s",
-                    args.handoff.expanduser(), root, args.force)
+                    handoff_path.expanduser(), root, args.force)
         logger.info("repository=%s feature=%s patch=%s", root, handoff.branch, handoff.patch)
         print(f"Log: {log_path}")
         with locked_state(config.state_path) as state:
