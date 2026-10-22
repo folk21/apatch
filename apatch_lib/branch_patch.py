@@ -127,7 +127,7 @@ class BranchPatchActions:
         w.persist()
         apply(w.config, w.handoff, w.root, archive)
         w.assert_expected_paths()
-        history.append(w.handoff.patch)
+        history.append(w.handoff.patch, w.handoff.branch, patch_branch)
         w.record["phase"] = "patch_applied"
         w.persist()
         print("Patch applied. Run verification before committing.")

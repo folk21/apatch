@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "repository": "signalharvester",
-  "feature_branch": "feature/agent-pipeline-modular-refactor",
-  "patch_file": "signalharvester-PATCH-2026-10-22-07-36-agent-pipeline-modular-refactor.zip",
-  "patch_sha256": "395f87b50ae8d1cb27b899ff48d0c86390bec8c56655c665190d68f460b7e073",
-  "base_commit": "21727f96d94e59181cff38b506ae090757dcb917",
-  "commit_message": "refactor(agent-pipeline): modularize Python orchestrator\n\n- Split the monolithic orchestrator into focused modules.\n- Preserve CLI and security contracts.\n- Keep import dependencies acyclic.\n- Add regression coverage for module layout."
-}

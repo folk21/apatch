@@ -12,6 +12,7 @@ from .gitutil import (confirm, current_branch, head, is_clean, output, remote_he
                       require_branch, require_clean, run, worktree_fingerprint)
 from .model import Abort
 from .patch import inspect
+from .patch_history import locked_history
 from .state import save
 
 
@@ -94,6 +95,12 @@ class Workflow:
         self.state["workflows"][self.key] = self.record
         save(self.config.state_path, self.state)
         LOGGER.info("checkpoint saved feature=%s phase=%s", self.handoff.branch, self.phase)
+
+    def record_committed_branch(self):
+        """Keep the applied-patch journal aligned with the current Git commit branch."""
+        with locked_history(self.config.applied_patches_path) as history:
+            history.record_commit_branch(self.handoff.patch, self.handoff.branch,
+                                         current_branch(self.root))
 
     def assert_base(self):
         if self.handoff.base_commit and head(self.root) != self.handoff.base_commit:
@@ -184,6 +191,7 @@ class Workflow:
         require_clean(self.root)
         self.record.update(phase="committed", commit_sha=head(self.root))
         self.persist()
+        self.record_committed_branch()
         self.push()
 
     def push(self):
@@ -194,6 +202,7 @@ class Workflow:
         self.assert_remote_unchanged()
         if head(self.root) != self.record.get("commit_sha"):
             raise Abort("Recorded committed HEAD has changed")
+        self.record_committed_branch()
         remote = remote_head(self.root, self.config, self.handoff.branch)
         allowed = {self.record.get("remote_before_patch_head"), self.record.get("commit_sha")}
         if remote not in allowed:

@@ -35,7 +35,7 @@ The argument is a JSON file describing the intended change. Global configuration
 To recover after manually creating a feature branch, extracting a patch, committing, or pushing, use the explicit FORCE mode:
 
 ```bash
-# Use the default handoff in ~/Downloads.
+# Use the default handoff in ~/Downloads/patch_params.json.
 /path/to/apatch/apatch.sh force
 
 # Use a specific handoff file.
@@ -121,6 +121,12 @@ Each ZIP filename has a separate workflow checkpoint. If a newly selected ZIP di
 
 All three runtime settings—`state_file`, `applied_patches_file`, and `log_directory`—are now resolved relative to the target repository's `.apatch/` directory. State and history settings must be plain filenames; the log setting may be a relative subdirectory. Absolute paths, `..` traversal, and symlinked destinations are rejected. The global configuration does not define project verification commands.
 
+By default, the runtime files have no repository-name prefix:
+
+- `.apatch/apply_patch.state.json` (and `.apatch/apply_patch.state.json.lock`)
+- `.apatch/applied_patches.txt` (and `.apatch/applied_patches.txt.lock`)
+- `.apatch/logs/apatch.log`
+
 ### Project-specific verification
 
 Each target repository must contain `.apatch/config.yaml` (not a symlink), for example:
@@ -128,14 +134,12 @@ Each target repository must contain `.apatch/config.yaml` (not a symlink), for e
 ```yaml
 schema_version: 1
 log_directory: logs
-state_file: signalharvester_apply_patch.state.json
-applied_patches_file: signalharvester_applied_patches.txt
 checks:
   - ["./gradlew", "test"]
   - ["./gradlew", "check"]
 ```
 
-`log_directory`, `state_file`, and `applied_patches_file` are optional and override their global counterparts. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. A lock file named `<state_file>.lock` is created automatically in `.apatch/`. Omit these settings to use the global names.
+`log_directory`, `state_file`, and `applied_patches_file` are optional and override their global counterparts. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. Separate lock files named `<state_file>.lock` and `<applied_patches_file>.lock` are created automatically in `.apatch/`. Omit these settings to use the generic global names.
 
 `checks` must be a non-empty list. A command can be an argument list (recommended) or a single command string parsed with shell-style quoting:
 
@@ -148,19 +152,30 @@ checks:
 
 Commands run sequentially from the target repository root; execution stops on the first failure. Standard output and standard error from these project checks are displayed live in the terminal, but successful checks do not write their output to the project log. Each command is executed directly **without a shell**, so pipelines, redirections, environment-variable expansion, and `&&` are not interpreted. Put compound shell logic in a project-owned script and call that script from `checks`.
 
-If the project configuration is missing, malformed, or has no commands, `apatch` stops with an explicit error. The supplied SignalHarvester `.apatch` archive is a starting configuration; verify that its command exists in your SignalHarvester checkout.
+If the project configuration is missing, malformed, or has no commands, `apatch` stops with an explicit error. Adjust the example commands to match each target repository.
 
 ## Applied-change history
 
-The file configured by `applied_patches_file` records one successfully applied archive filename per line. If the same filename is encountered again, `apatch` warns and asks for an explicit `yes/no` decision before making changes. For combined branch creation and extraction, this question appears before the branch is created.
+The file configured by `applied_patches_file` records successful patch applications in blocks separated by a blank line:
 
-This history is independent of saved workflow progress. It detects duplicate **filenames**, not identical archive contents, and does not bypass Git or archive safety checks. Writes are locked and synchronized to disk.
+```text
+Date: 2026-10-22T14:30:00+04:00
+Patch: example-service-changes.zip
+Planned feature branch: feature/improve-validation
+Real feature branch: main
+```
+
+`Date` is the local timestamp at initial application (including the UTC offset). The planned feature branch comes from the handoff JSON. The real feature branch initially records the branch on which the patch was applied, including manual FORCE adoption. When `apatch` commits or adopts an existing commit, it updates the real branch to the one containing that commit, preserving the original timestamp. The journal does not claim that a commit exists before the commit step completes.
+
+If the same ZIP filename is encountered again, `apatch` warns and asks for an explicit `yes/no` decision before making changes. For combined branch creation and extraction, this question appears before the branch is created.
+
+This history is independent of saved workflow progress. It detects duplicate **filenames**, not identical archive contents, and does not bypass Git or archive safety checks. Writes use a stable advisory lock and atomic file replacement. Older journals containing one ZIP filename per line remain readable; an entry is upgraded to the structured format if a corresponding commit is subsequently adopted.
 
 ### Migration from older installations
 
-Earlier versions stored workflow state, its `.lock` file, and applied-patch history beside the installed `apatch` tool. When a project-local state file does not exist, the new version looks for the former state file in the tool directory and imports only workflow records whose stored repository path matches the current repository. If project-local history is absent, the existing history journal is copied to the new project-local journal. The old files are preserved as a backup and are never deleted automatically; a fresh project-local lock is created rather than copying an obsolete lock file.
+Earlier versions used repository-prefixed filenames (such as `example-service_apply_patch.state.json` and `example-service_applied_patches.txt`) inside `.apatch/`, or stored files beside the installed `apatch` tool. When the generic project-local state file is absent, the new version checks those legacy locations and imports only workflow records whose stored repository path matches the current repository. If the generic journal is absent, existing patch history is imported without losing entry metadata. Old files are preserved as backups and never deleted automatically; new lock files are created instead of copying obsolete ones.
 
-If a project already has its own `.apatch` state or history file, it takes precedence and is never overwritten by legacy data. When migrating from a previously shared history, review the imported filenames; old journals do not distinguish projects.
+If a project already has its generic `.apatch` state or history file, it takes precedence and is never overwritten by legacy data. Remove old `state_file` and `applied_patches_file` overrides from `.apatch/config.yaml` to opt into the generic names; explicitly configured names remain authoritative. When migrating from a previously shared history, review the imported filenames; old journals do not distinguish projects.
 
 ## Logging
 

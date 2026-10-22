@@ -124,6 +124,7 @@ class ForceActions:
         require_clean(w.root)
         current = head(w.root)
         if w.record.get("commit_sha") == current and w.record.get("applied_branch") == branch:
+            w.record_committed_branch()
             return True
         archive = self.archive()
         paths = self._commit_paths()
@@ -144,6 +145,7 @@ class ForceActions:
                         archive_sha256=archive.sha256, remote_url=self.remote_url(),
                         remote_before_patch_head=self.previous_remote_head(branch),
                         manually_adopted=not matches)
+        w.record_committed_branch()
         return True
 
     def _adopt_changes(self, archive, fingerprint, paths):
@@ -169,7 +171,7 @@ class ForceActions:
                         remote_before_patch_head=self.previous_remote_head(branch),
                         manually_adopted=manual_override)
         with locked_history(w.config.applied_patches_path) as history:
-            history.append(w.handoff.patch)
+            history.append(w.handoff.patch, w.handoff.branch, branch)
         return True
 
     def apply_or_adopt(self):
@@ -202,7 +204,7 @@ class ForceActions:
             fingerprint, paths = worktree_fingerprint(w.root)
             if set(paths) != set(w.record["changed_paths"]):
                 raise Abort("Applied ZIP produced unexpected changes; inspect worktree manually")
-            history.append(w.handoff.patch)
+            history.append(w.handoff.patch, w.handoff.branch, branch)
             self.checkpoint("patch_applied", "apply completed")
             print("Patch applied in FORCE mode. Run checks before publishing if possible.")
 
@@ -284,6 +286,7 @@ class ForceActions:
         require_clean(w.root)
         self.checkpoint("committed", "commit created", applied_branch=branch,
                         before_patch_head=before, commit_sha=committed, remote_url=self.remote_url())
+        w.record_committed_branch()
         self._push_recorded_commit()
 
     def _push_recorded_commit(self):

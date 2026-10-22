@@ -28,4 +28,5 @@ zip -r "$ARCHIVE_NAME" "$PROJECT_DIR" \
      "*.log" \
      "*.lock" \
      "*.state.json" \
-     "*_applied_patches.txt"
+     "*_applied_patches.txt" \
+     "*/applied_patches.txt"

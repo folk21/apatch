@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 TOOL = Path(__file__).resolve().parents[1]
@@ -17,6 +18,7 @@ sys.path.insert(0, str(TOOL))
 from apatch_lib.model import Abort, load_handoff, load_project_config, safe_relative
 from apatch_lib.patch import inspect
 from apatch_lib.model import load_config
+from apatch_lib.patch_history import AppliedPatchHistory
 
 
 def command(*args, cwd):
@@ -36,7 +38,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
         config = (TOOL / "apatch.conf").read_text().replace("~/Downloads", str(self.base / "downloads"))
         (self.bin / "apatch.conf").write_text(config)
         (self.base / "downloads").mkdir()
-        self.root = self.base / "signalharvester"
+        self.root = self.base / "example_service"
         self.root.mkdir()
         self.remote = self.base / "remote.git"
         command("git", "init", "--bare", str(self.remote), cwd=self.base)
@@ -51,27 +53,25 @@ class LocalGitWorkflowTest(unittest.TestCase):
         config_dir = self.root / ".apatch"
         config_dir.mkdir()
         self.log_path = config_dir / "logs" / "apatch.log"
-        self.state_path = config_dir / "signalharvester_apply_patch.state.json"
-        self.lock_path = config_dir / "signalharvester_apply_patch.state.json.lock"
-        self.history_path = config_dir / "signalharvester_applied_patches.txt"
+        self.state_path = config_dir / "apply_patch.state.json"
+        self.lock_path = config_dir / "apply_patch.state.json.lock"
+        self.history_path = config_dir / "applied_patches.txt"
         self.project_config = config_dir / "config.yaml"
         self.project_config.write_text(
             'schema_version: 1\nlog_directory: logs\n'
-            'state_file: signalharvester_apply_patch.state.json\n'
-            'applied_patches_file: signalharvester_applied_patches.txt\n'
             'checks:\n  - ["./run_checks.sh"]\n')
         command("git", "add", "-A", cwd=self.root)
         command("git", "commit", "-m", "base", cwd=self.root)
         command("git", "push", "-u", "origin", "main", cwd=self.root)
         self.head = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
-        self.zip = self.base / "downloads" / "signalharvester-PATCH-2026-10-22-11-00-test.zip"
+        self.zip = self.base / "downloads" / "example_service-PATCH-2026-10-22-11-00-test.zip"
         with zipfile.ZipFile(self.zip, "w") as archive:
-            archive.writestr("signalharvester/existing.txt", "updated\n")
-            archive.writestr("signalharvester/new.txt", "new\n")
-        self.params = self.base / "downloads" / "signalharvester_patch_params.json"
+            archive.writestr("example_service/existing.txt", "updated\n")
+            archive.writestr("example_service/new.txt", "new\n")
+        self.params = self.base / "downloads" / "example_service_patch_params.json"
         self.payload = {
             "schema_version": 1,
-            "repository": "signalharvester",
+            "repository": "example_service",
             "feature_branch": "feature/test-local-handoff",
             "patch_file": self.zip.name,
             "patch_sha256": hashlib.sha256(self.zip.read_bytes()).hexdigest(),
@@ -95,6 +95,17 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.head = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
         self.payload["base_commit"] = self.head
         self.params.write_text(json.dumps(self.payload))
+
+    def assert_history(self, *, real_branch, planned_branch=None, patch_name=None):
+        entries = AppliedPatchHistory(self.history_path).entries
+        self.assertEqual(len(entries), 1)
+        entry = entries[0]
+        self.assertEqual(entry.patch, patch_name or self.zip.name)
+        self.assertEqual(entry.planned_branch, planned_branch or self.payload["feature_branch"])
+        self.assertEqual(entry.real_branch, real_branch)
+        self.assertIsNotNone(datetime.fromisoformat(entry.date).tzinfo)
+        self.assertIn(f"Date: {entry.date}\nPatch: {entry.patch}\n", self.history_path.read_text())
+        return entry
 
     def test_project_config_is_required(self):
         self.project_config.unlink()
@@ -254,7 +265,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
         record = next(iter(state["workflows"].values()))
         self.assertEqual(record["phase"], "patch_applied")
         self.assertEqual(set(record["changed_paths"]), {"existing.txt", "new.txt"})
-        self.assertEqual(self.history_path.read_text(), self.zip.name + "\n")
+        self.assert_history(real_branch="main")
         result = self.invoke_force("4\n")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Canonical checks passed", result.stdout)
@@ -292,6 +303,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(record["phase"], "pushed")
         self.assertEqual(record["commit_sha"], command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip())
         self.assertEqual(record["pushed_sha"], record["commit_sha"])
+        self.assert_history(real_branch=self.payload["feature_branch"])
 
     def test_force_pushes_manually_committed_changes_without_rewriting_history(self):
         command("git", "switch", "-c", self.payload["feature_branch"], cwd=self.root)
@@ -334,13 +346,14 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, "")
         self.assertEqual(command("git", "ls-remote", "--heads", "origin", "refs/heads/main",
                                  cwd=self.root).stdout.split()[0], record["pushed_sha"])
+        self.assert_history(real_branch="main")
 
     def test_new_patch_cycle_requests_confirmation_and_preserves_previous_state(self):
         self.assertEqual(self.invoke("3\nYES\n").returncode, 0)
         original = json.loads(self.state_path.read_text())
-        second_zip = self.base / "downloads" / "signalharvester-PATCH-next.zip"
+        second_zip = self.base / "downloads" / "example_service-PATCH-next.zip"
         with zipfile.ZipFile(second_zip, "w") as archive:
-            archive.writestr("signalharvester/another.txt", "next\n")
+            archive.writestr("example_service/another.txt", "next\n")
         self.payload["patch_file"] = second_zip.name
         self.payload["patch_sha256"] = hashlib.sha256(second_zip.read_bytes()).hexdigest()
         self.params.write_text(json.dumps(self.payload))
@@ -376,6 +389,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
                                  cwd=self.root).stdout.strip())
         state = json.loads(self.state_path.read_text())
         self.assertEqual(next(iter(state["workflows"].values()))["applied_branch"], "main")
+        self.assert_history(real_branch="main")
         verified = self.invoke("4\n")
         self.assertEqual(verified.returncode, 0, verified.stderr)
         self.assertIn("Canonical checks passed", verified.stdout)
@@ -436,7 +450,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertFalse(history.exists() and history.read_text().strip())
         result = self.invoke("3\nYES\n")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(history.read_text(), self.zip.name + "\n")
+        self.assert_history(real_branch=self.payload["feature_branch"])
         self.assertEqual(stat.S_IMODE(history.stat().st_mode), 0o600)
 
     def test_legacy_state_and_history_migrate_without_deleting_originals(self):
@@ -464,6 +478,68 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertTrue(self.lock_path.exists())
         self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout,
                          " M existing.txt\n?? new.txt\n")
+
+    def test_prefixed_project_local_state_and_history_migrate_without_deletion(self):
+        self.assertEqual(self.invoke("2\nYES\nYES\n").returncode, 0)
+        old_state = self.state_path.with_name(f"{self.root.name}_apply_patch.state.json")
+        old_history = self.history_path.with_name(f"{self.root.name}_applied_patches.txt")
+        shutil.copy2(self.state_path, old_state)
+        shutil.copy2(self.history_path, old_history)
+        self.state_path.unlink()
+        self.history_path.unlink()
+
+        result = self.invoke("4\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Imported 1 workflow checkpoint(s)", result.stdout)
+        self.assertIn("Imported 1 applied-patch history", result.stdout)
+        migrated = json.loads(self.state_path.read_text())
+        previous = json.loads(old_state.read_text())
+        self.assertEqual(migrated["workflows"].keys(), previous["workflows"].keys())
+        self.assertEqual(next(iter(migrated["workflows"].values()))["phase"], "verified")
+        self.assertEqual(next(iter(previous["workflows"].values()))["phase"], "patch_applied")
+        self.assertEqual(self.history_path.read_bytes(), old_history.read_bytes())
+        self.assertTrue(old_state.exists())
+        self.assertTrue(old_history.exists())
+
+    def test_prefixed_legacy_one_line_history_migrates_and_remains_readable(self):
+        old_history = self.history_path.with_name(f"{self.root.name}_applied_patches.txt")
+        old_history.write_text(self.zip.name + "\n")
+        result = self.invoke("0\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.history_path.read_text(), old_history.read_text())
+        entries = AppliedPatchHistory(self.history_path).entries
+        self.assertEqual(len(entries), 1)
+        self.assertIsNone(entries[0].date)
+
+    def test_structured_history_tracks_distinct_patches_and_dates(self):
+        from apatch_lib.patch_history import locked_history
+        with locked_history(self.history_path) as history:
+            self.assertTrue(history.append(self.zip.name, "feature/planned", "main"))
+            self.assertTrue(history.append("another-change.zip", "feature/other", "release/one"))
+            self.assertFalse(history.append(self.zip.name, "feature/planned", "main"))
+        entries = AppliedPatchHistory(self.history_path).entries
+        self.assertEqual(len(entries), 2)
+        self.assertEqual([entry.real_branch for entry in entries], ["main", "release/one"])
+        self.assertEqual(self.history_path.read_text().count("Date: "), 2)
+        self.assertIn("\n\nDate: ", self.history_path.read_text())
+
+    def test_malformed_structured_history_blocks_patch(self):
+        self.history_path.write_text(
+            "Date: not-a-date\nPatch: good.zip\n"
+            "Planned feature branch: feature/foo\nReal feature branch: main\n")
+        result = self.invoke("2\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("history contains an invalid date", result.stderr)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         "main")
+
+    def test_force_commit_updates_legacy_history_into_structured_entry(self):
+        (self.root / "existing.txt").write_text("updated\n")
+        (self.root / "new.txt").write_text("new\n")
+        self.history_path.write_text(self.zip.name + "\n")
+        result = self.invoke_force("5\nYES\nYES\nYES\nYES\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assert_history(real_branch="main")
 
     def test_existing_project_state_is_not_replaced_by_legacy_state(self):
         self.assertEqual(self.invoke("2\nYES\nYES\n").returncode, 0)
@@ -538,7 +614,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
 
     def test_runtime_state_and_history_paths_must_be_relative_filenames(self):
         conf = self.bin / "apatch.conf"
-        conf.write_text(conf.read_text().replace("applied_patches_file = signalharvester_applied_patches.txt",
+        conf.write_text(conf.read_text().replace("applied_patches_file = applied_patches.txt",
                                                 f"applied_patches_file = {self.root / 'patches.txt'}"))
         result = self.invoke("0\n")
         self.assertEqual(result.returncode, 2, result.stderr)
@@ -611,11 +687,11 @@ class LocalGitWorkflowTest(unittest.TestCase):
             with self.assertRaises(Abort):
                 with locked_history(path):
                     pass
-            history.append(self.zip.name)
+            history.append(self.zip.name, self.payload["feature_branch"], "main")
         with locked_history(path) as history:
             self.assertTrue(history.contains(self.zip.name))
-            history.append(self.zip.name)
-        self.assertEqual(path.read_text(), self.zip.name + "\n")
+            history.append(self.zip.name, self.payload["feature_branch"], "main")
+        self.assert_history(real_branch="main")
 
     def test_full_local_workflow_and_repeated_menu(self):
         result = self.invoke("2\nYES\nYES\n")
@@ -636,6 +712,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertIn("Create/find PR", self.invoke("0\n").stdout)
         state = json.loads(self.state_path.read_text())
         self.assertEqual(next(iter(state["workflows"].values()))["phase"], "pushed")
+        self.assert_history(real_branch=self.payload["feature_branch"])
 
     def test_log_records_patch_identity_and_commit_body_only_on_commit(self):
         self.payload["commit_message"] += "\nSecret-in-commit-body-should-not-be-logged"
@@ -824,7 +901,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
 
     def test_path_traversal_rejected_without_extracting(self):
         with zipfile.ZipFile(self.zip, "w") as archive:
-            archive.writestr("signalharvester/../escaped", "bad")
+            archive.writestr("example_service/../escaped", "bad")
         self.payload["patch_sha256"] = hashlib.sha256(self.zip.read_bytes()).hexdigest()
         self.params.write_text(json.dumps(self.payload))
         result = self.invoke("2\n")
@@ -834,7 +911,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
 
     def test_symlink_zip_member_rejected(self):
         with zipfile.ZipFile(self.zip, "w") as archive:
-            info = zipfile.ZipInfo("signalharvester/link")
+            info = zipfile.ZipInfo("example_service/link")
             info.create_system = 3
             info.external_attr = (0o120777 << 16)
             archive.writestr(info, "../../etc/passwd")
@@ -847,7 +924,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
     def test_deletion_from_handoff_is_part_of_commit(self):
         self.payload["delete_paths"] = ["existing.txt"]
         with zipfile.ZipFile(self.zip, "w") as archive:
-            archive.writestr("signalharvester/new.txt", "new\n")
+            archive.writestr("example_service/new.txt", "new\n")
         self.payload["patch_sha256"] = hashlib.sha256(self.zip.read_bytes()).hexdigest()
         self.params.write_text(json.dumps(self.payload))
         self.assertEqual(self.invoke("2\nYES\nYES\n").returncode, 0)
@@ -879,7 +956,7 @@ class ValidationTest(unittest.TestCase):
     def test_reject_paths_in_patch_basename(self):
         with tempfile.TemporaryDirectory() as name:
             path = Path(name) / "params.json"
-            path.write_text(json.dumps({"schema_version": 1, "repository": "signalharvester",
+            path.write_text(json.dumps({"schema_version": 1, "repository": "example_service",
                                         "feature_branch": "feature/test", "patch_file": "../patch.zip",
                                         "commit_message": "test: msg"}))
             with self.assertRaises(Abort):
@@ -899,7 +976,7 @@ class GithubGuardTest(unittest.TestCase):
         from apatch_lib.model import Config, Handoff
         self.config = Config(self.root, self.root / "state.json", self.root / "logs", self.root / "history.txt", "origin", "main",
                              (("./run_checks.sh",),), True, True, "merge", 10000)
-        self.handoff = Handoff("signalharvester", self.branch, "patch.zip", "test: message\n", None, None, ())
+        self.handoff = Handoff("example_service", self.branch, "patch.zip", "test: message\n", None, None, ())
         self.record = {"phase": "pr_created", "pushed_sha": self.sha, "pr_number": 4}
         self.details = {"number": 4, "state": "OPEN", "headRefName": self.branch,
                         "baseRefName": "main", "headRefOid": self.sha,

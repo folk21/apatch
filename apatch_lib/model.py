@@ -59,10 +59,10 @@ def load_config(script_dir: Path) -> Config:
     if loaded != [str(config_path)]:
         raise Abort(f"Missing configuration: {config_path}")
     section = parser["apatch"]
-    state = validate_runtime_filename(section.get("state_file", "signalharvester_apply_patch.state.json"))
+    state = validate_runtime_filename(section.get("state_file", "apply_patch.state.json"))
     log_directory = validate_log_subdirectory(section.get("log_directory", "logs"))
     applied_patches = validate_runtime_filename(
-        section.get("applied_patches_file", "signalharvester_applied_patches.txt"))
+        section.get("applied_patches_file", "applied_patches.txt"))
     remote = section.get("remote", "origin")
     base = section.get("base_branch", "main")
     method = section.get("merge_method", "merge")
@@ -152,13 +152,15 @@ def load_project_config(root: Path, global_config: Config) -> Config:
     subdirectory = validate_log_subdirectory(data.get("log_directory", str(global_config.log_directory)))
     state = validate_runtime_filename(data.get("state_file", str(global_config.state_path)))
     history = validate_runtime_filename(data.get("applied_patches_file", str(global_config.applied_patches_path)))
-    if state == history or state.name + ".lock" == history.name:
+    if (state == history or state.name + ".lock" == history.name
+            or history.name + ".lock" == state.name):
         raise Abort("State and applied-patch history must have separate filenames")
     location = config_dir / subdirectory
     for segment in (config_dir, *[config_dir.joinpath(*subdirectory.parts[:i]) for i in range(1, len(subdirectory.parts) + 1)]):
         if segment.is_symlink():
             raise Abort(f"Log directory must not contain symlinks: {segment}")
-    for path in (config_dir / state, config_dir / (state.name + ".lock"), config_dir / history):
+    for path in (config_dir / state, config_dir / (state.name + ".lock"), config_dir / history,
+                 config_dir / (history.name + ".lock")):
         if path.is_symlink():
             raise Abort(f"Runtime state and history files must not be symlinks: {path}")
     return replace(global_config, checks=tuple(parsed), log_directory=location,

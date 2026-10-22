@@ -18,7 +18,7 @@ from apatch_lib.workflow import Workflow
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("handoff", nargs="?", type=Path,
-                        default=Path.home() / "Downloads" / "signalharvester_patch_params.json",
+                        default=Path.home() / "Downloads" / "patch_params.json",
                         help="Path to a patch handoff JSON file")
     parser.add_argument("--force", action="store_true",
                         help="Recover from manual Git actions with explicit confirmation")
