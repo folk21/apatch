@@ -70,6 +70,7 @@ class ForceActions:
         require_clean(w.root)
         current = self.branch()
         target = w.handoff.branch
+        origin = "REUSED"
         if branch_exists(w.root, target):
             if current == target:
                 question = f"Adopt the already checked-out branch {target}?"
@@ -92,9 +93,11 @@ class ForceActions:
                 if not confirm(f"FORCE: Create {target} from current branch {current} at {head(w.root)}?"):
                     return
                 run(["git", "switch", "-c", target], w.root)
+                origin = "CREATED"
         self.checkpoint("branch_created", "branch prepared", applied_branch=target,
                         branch_base=head(w.root), remote_url=self.remote_url(),
-                        remote_before_patch_head=self.previous_remote_head(target))
+                        remote_before_patch_head=self.previous_remote_head(target),
+                        branch_origin=w.record.get("branch_origin", origin))
         if with_patch:
             self.apply_or_adopt()
 
@@ -144,7 +147,8 @@ class ForceActions:
                         before_patch_head=parent, commit_sha=current, changed_paths=sorted(paths),
                         archive_sha256=archive.sha256, remote_url=self.remote_url(),
                         remote_before_patch_head=self.previous_remote_head(branch),
-                        manually_adopted=not matches)
+                        manually_adopted=not matches,
+                        branch_origin=w.record.get("branch_origin", "REUSED"))
         w.record_committed_branch()
         return True
 
@@ -169,7 +173,8 @@ class ForceActions:
                         before_patch_head=head(w.root), changed_paths=sorted(paths),
                         archive_sha256=archive.sha256, remote_url=self.remote_url(),
                         remote_before_patch_head=self.previous_remote_head(branch),
-                        manually_adopted=manual_override)
+                        manually_adopted=manual_override,
+                        branch_origin=w.record.get("branch_origin", "REUSED"))
         with locked_history(w.config.applied_patches_path) as history:
             history.append(w.handoff.patch, w.handoff.branch, branch)
         return True
@@ -199,7 +204,8 @@ class ForceActions:
                             changed_paths=sorted(set(archive.changed) | set(w.handoff.delete_paths)),
                             remote_url=self.remote_url(),
                             remote_before_patch_head=self.previous_remote_head(branch),
-                            manually_adopted=False)
+                            manually_adopted=False,
+                            branch_origin=w.record.get("branch_origin", "REUSED"))
             apply(w.config, w.handoff, w.root, archive)
             fingerprint, paths = worktree_fingerprint(w.root)
             if set(paths) != set(w.record["changed_paths"]):

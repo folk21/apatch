@@ -22,6 +22,8 @@ Inputs include an untrusted handoff JSON, a ZIP patch archive, repository-local 
 4. `Workflow` chooses the relevant action under LOOSE, STRICT, or FORCE, reports the current branch/phase, and coordinates the owning helpers.
 5. Helpers inspect the actual filesystem/Git/GitHub state before side effects, update the workflow checkpoint/history, and emit console and audit events.
 
+`STS` takes an earlier, separate read-only path: it validates the repository and configuration, loads a snapshot without creating a state lock, and inspects local Git evidence. Interactive menu selection is also performed before opening the writable workflow state; choosing `STS` never enters the mutation path.
+
 The CLI can be invoked interactively or by a direct operation number or mnemonic. Canonical action identities are defined centrally in `apatch_lib/workflow.py`.
 
 ## Module ownership
@@ -36,6 +38,7 @@ The CLI can be invoked interactively or by a direct operation number or mnemonic
 | `apatch_lib/patch.py` | ZIP validation, safe member inspection, archive application |
 | `apatch_lib/model.py` | Handoff and configuration schema, path validation, shared records |
 | `apatch_lib/state.py` | Locked state persistence and atomic checkpoint updates |
+| `apatch_lib/status.py` | Read-only current patch evidence, cautious next-action suggestions, and report formatting |
 | `apatch_lib/patch_history.py` | Per-patch application journal and duplicate detection |
 | `apatch_lib/migration.py` | Compatibility with earlier runtime file locations and names |
 | `apatch_lib/gitutil.py` | Git subprocess wrappers, repository/branch/status helpers, canonical check execution |
@@ -69,6 +72,8 @@ The `skipApproves` option changes confirmation behavior; it does not disable val
 These are **not** source files in the `apatch` tool repository. They belong to each target repository separately and should remain outside version control. The committed `.apatch/config.yaml` is different: it is a project-owned contract describing checks.
 
 The workflow checkpoint tracks individual patch cycles; the applied-patch journal records successful applications with timestamp, ZIP name, planned branch, and actual branch. Journal entries are not evidence of a later commit or push. Migration preserves prior data rather than discarding older files.
+
+New branch actions record `branch_origin` as `CREATED` or `REUSED` once the decision has actually been made. Older checkpoints lacking this field show `UNKNOWN` instead of a guessed origin. `STS` compares checkpoints with local Git facts and distinguishes `VERIFIED`, `RECORDED`, `UNKNOWN`, and `CONFLICT`. Offline PR, push, and merge claims remain unverified. Recommendation logic depends on the actual saved phase, mode, branch, and observed conflicts, without granting any action new authority.
 
 ## Safety and recoverability
 

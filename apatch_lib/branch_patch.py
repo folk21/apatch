@@ -52,7 +52,8 @@ class BranchPatchActions:
                     raise Abort("Remote base branch changed before branch creation")
                 run(["git", "switch", "-c", w.handoff.branch], w.root)
                 require_branch(w.root, w.handoff.branch)
-                w.record.update(phase="branch_created", branch_base=head(w.root), remote_url=remote_url)
+                w.record.update(phase="branch_created", branch_base=head(w.root),
+                                remote_url=remote_url, branch_origin="CREATED")
                 w.persist()
                 self.unpack(archive, history=history, history_confirmed=True)
         else:
@@ -65,7 +66,8 @@ class BranchPatchActions:
                 raise Abort("Remote base branch changed before branch creation")
             run(["git", "switch", "-c", w.handoff.branch], w.root)
             require_branch(w.root, w.handoff.branch)
-            w.record.update(phase="branch_created", branch_base=head(w.root), remote_url=remote_url)
+            w.record.update(phase="branch_created", branch_base=head(w.root),
+                            remote_url=remote_url, branch_origin="CREATED")
             w.persist()
 
     def warn_if_previously_applied(self, history):
@@ -123,6 +125,7 @@ class BranchPatchActions:
             return
         if w.phase == "new":
             w.record["remote_url"] = remote_url
+            w.record.setdefault("branch_origin", "REUSED")
         w.record.update(
             phase="applying",
             archive_sha256=archive.sha256,

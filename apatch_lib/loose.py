@@ -34,6 +34,7 @@ class LooseActions:
         w = self.w
         target = w.handoff.branch
         current = self.branch()
+        origin = "REUSED"
         if current == target:
             print(f"LOOSE: already on {target}; using the existing branch.")
         elif branch_exists(w.root, target):
@@ -53,9 +54,10 @@ class LooseActions:
                 if not confirm(f"LOOSE: Create {target} from {current}, keeping working-tree changes?"):
                     return
                 run(["git", "switch", "-c", target], w.root)
+                origin = "CREATED"
         if w.phase in {"new", "branch_created"}:
             w.record.update(phase="branch_created", branch_base=head(w.root),
-                            applied_branch=target,
+                            applied_branch=target, branch_origin=w.record.get("branch_origin", origin),
                             remote_url=output(["git", "remote", "get-url", w.config.remote], w.root))
             w.persist()
         if with_patch:
@@ -120,6 +122,7 @@ class LooseActions:
                 remote_url=output(["git", "remote", "get-url", w.config.remote], w.root),
                 loose_backup=backup,
             )
+            w.record.setdefault("branch_origin", "REUSED")
             for field in ("verified_fingerprint", "verified_head", "verified_branch",
                           "commit_sha", "pushed_sha"):
                 w.record.pop(field, None)
@@ -222,6 +225,7 @@ class LooseActions:
         if w.key not in {key for key, _ in pending}:
             w.record.update(phase="committed", commit_sha=committed_sha,
                             applied_branch=branch, manual_commit_without_patch=True)
+            w.record.setdefault("branch_origin", "REUSED")
         w.persist()
         with locked_history(w.config.applied_patches_path) as history:
             for _, record in pending:

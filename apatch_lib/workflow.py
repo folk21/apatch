@@ -16,6 +16,7 @@ from .model import Abort
 from .patch import inspect
 from .patch_history import locked_history
 from .state import save
+from .status import display_recommendation, inspect_patch
 
 
 LOGGER = logging.getLogger("apatch.workflow")
@@ -23,7 +24,7 @@ LOGGER = logging.getLogger("apatch.workflow")
 PHASES = {"new", "branch_created", "applying", "patch_applied", "verified",
           "committed", "pushed", "pr_created", "merged", "synced"}
 
-ACTION_CODES = ("EXT", "BRN", "BAP", "APL", "CHK", "CMT", "PSH", "PR", "MRG", "SYN")
+ACTION_CODES = ("EXT", "BRN", "BAP", "APL", "CHK", "CMT", "PSH", "PR", "MRG", "SYN", "STS")
 
 
 def action_number(value):
@@ -34,11 +35,12 @@ def action_number(value):
     try:
         return ACTION_CODES.index(key)
     except ValueError as exc:
-        raise ValueError("Invalid action: use 0-9 or one of " + ", ".join(ACTION_CODES)) from exc
+        raise ValueError("Invalid action: use 0-10 or one of " + ", ".join(ACTION_CODES)) from exc
 
 
 class Workflow:
-    def __init__(self, root: Path, config, handoff, state, *, force=False, loose=False):
+    def __init__(self, root: Path, config, handoff, state, *, force=False, loose=False,
+                 skip_previous_cycles=False):
         self.root = root
         self.config = config
         self.handoff = handoff
@@ -56,19 +58,19 @@ class Workflow:
             "deletes": handoff.delete_paths,
         }, sort_keys=True).encode()).hexdigest()
         self.signature = signature
-        if self.record and self.record.get("handoff_signature") != signature:
+        if not skip_previous_cycles and self.record and self.record.get("handoff_signature") != signature:
             if not self.loose:
                 raise Abort("Handoff JSON differs from the persisted workflow; do not mutate it mid-run")
             print("WARNING: Handoff JSON changed since this workflow was recorded.")
             if not confirm("LOOSE: Use the updated handoff for this patch cycle?"):
                 raise Abort("Updated handoff was declined")
-        if self.record and (self.record.get("branch") != handoff.branch or
+        if not skip_previous_cycles and self.record and (self.record.get("branch") != handoff.branch or
                             self.record.get("patch_file") != handoff.patch or
                             self.record.get("repository") != str(root.resolve())):
             raise Abort("State record identity mismatch")
-        if self.record.get("phase", "new") not in PHASES:
+        if not skip_previous_cycles and self.record.get("phase", "new") not in PHASES:
             raise Abort("Unknown persisted workflow phase")
-        if self.record.get("phase") == "applying":
+        if not skip_previous_cycles and self.record.get("phase") == "applying":
             if not self.loose and not self.force:
                 raise Abort("Previous extraction was interrupted; inspect worktree manually")
             print("WARNING: Previous extraction was interrupted; inspect files before another apply.")
@@ -77,7 +79,7 @@ class Workflow:
         self.branch_patch = BranchPatchActions(self)
         self.force_actions = ForceActions(self)
         self.loose_actions = LooseActions(self)
-        self.handle_previous_cycles()
+        self.skip_previous_cycles = skip_previous_cycles
 
     def handle_previous_cycles(self):
         """Keep older checkpoints but explicitly acknowledge switching patch cycles."""
@@ -342,7 +344,21 @@ class Workflow:
              unavailable(("merged",))),
         ]
 
-    def interactive(self, selected_op=None):
+    def menu_choice(self):
+        self.print_header()
+        options = self.options()
+        print("\nActions (* = currently unavailable):")
+        for index, (label, _, reason) in enumerate(options, start=1):
+            suffix = f" * ({reason})" if reason else ""
+            print(f" {index}. [{ACTION_CODES[index]}] {label}{suffix}")
+        print(" 10. [STS] Inspect current patch status (read-only; offline)")
+        print(" 0. [EXT] Exit")
+        try:
+            return input("Choose an action (number or code): ").strip()
+        except EOFError as exc:
+            raise Abort("No action selected; use op=NUMBER or op=CODE to run non-interactively") from exc
+
+    def print_header(self):
         print(f"\n-----\nRepository: {self.root}\nFeature branch: {self.handoff.branch}\n"
               f"Patch: {self.handoff.patch}\nPhase: {self.phase}\n"
               f"Current branch: {current_branch(self.root)}")
@@ -360,19 +376,10 @@ class Workflow:
         if self.loose:
             print("LOOSE allows pending changes and deferred commit/push; unsafe ZIP paths, "
                   "unreviewed overwrites, and non-fast-forward pushes remain protected.")
-        options = self.options()
-        if selected_op is None:
-            print("\nActions (* = currently unavailable):")
-            for index, (label, _, reason) in enumerate(options, start=1):
-                suffix = f" * ({reason})" if reason else ""
-                print(f" {index}. [{ACTION_CODES[index]}] {label}{suffix}")
-            print(" 0. [EXT] Exit")
-            try:
-                choice = input("Choose an action (number or code): ").strip()
-            except EOFError as exc:
-                raise Abort("No action selected; use op=NUMBER or op=CODE to run non-interactively") from exc
-        else:
-            choice = str(selected_op).strip().upper()
+    def interactive(self, selected_op=None, *, show_header=True):
+        if selected_op is not None and show_header:
+            self.print_header()
+        choice = self.menu_choice() if selected_op is None else str(selected_op).strip().upper()
         try:
             number = action_number(choice)
         except ValueError as exc:
@@ -382,9 +389,18 @@ class Workflow:
         if number == 0:
             print("Exit selected. No action was run.")
             return
+        if number == 10:
+            from .status import display_status
+            display_status(inspect_patch(self.root, self.config, self.record,
+                                         self.handoff.patch, self.handoff.branch,
+                                         "loose" if self.loose else "force" if self.force else "strict"))
+            return
+        options = self.options()
         label, operation, reason = options[number - 1]
         if reason:
             raise Abort(f"Action unavailable: {reason}")
+        if not self.skip_previous_cycles:
+            self.handle_previous_cycles()
         before_branch = current_branch(self.root)
         before_head = head(self.root)
         before_phase = self.phase
@@ -404,12 +420,19 @@ class Workflow:
         print(f"    Branch: {before_branch or 'detached HEAD'} -> {after_branch or 'detached HEAD'}")
         print(f"    HEAD: {before_head[:12]} -> {after_head[:12]}")
         print(f"    Working-tree changes: {len(before_paths)} -> {len(after_paths)} path(s)")
-        if (before_branch == after_branch and before_head == after_head
-                and before_phase == self.phase and before_paths == after_paths):
+        unchanged = (before_branch == after_branch and before_head == after_head
+                     and before_phase == self.phase and before_paths == after_paths)
+        if unchanged:
             print("    No tracked workflow or Git-state transition detected; the action may have been "
                   "cancelled or already satisfied.")
         elif after_paths:
             preview = ", ".join(sorted(after_paths)[:10])
             remaining = len(after_paths) - min(len(after_paths), 10)
             print(f"    Changed paths: {preview}" + (f" (+{remaining} more)" if remaining else ""))
+        if unchanged:
+            print("Next suggested: NONE — This action may have been cancelled or already satisfied; inspect status with 10 [STS].")
+        else:
+            display_recommendation(inspect_patch(self.root, self.config, self.record,
+                                                  self.handoff.patch, self.handoff.branch,
+                                                  "loose" if self.loose else "force" if self.force else "strict"))
         LOGGER.info("action completed feature=%s phase=%s action=%s", self.handoff.branch, self.phase, label)

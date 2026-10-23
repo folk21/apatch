@@ -10,8 +10,10 @@ from apatch_lib.gitutil import repository_root, set_skip_approvals, reset_skip_a
 from apatch_lib.local_ignore import ensure_runtime_ignored
 from apatch_lib.logging_setup import LOG_FILENAME, configure, set_context
 from apatch_lib.migration import migrate_legacy_artifacts
-from apatch_lib.model import Abort, load_config, load_handoff, load_project_config
-from apatch_lib.state import locked_state
+from apatch_lib.model import Abort, BASENAME_PATTERN, load_config, load_handoff, load_project_config
+from apatch_lib.state import locked_state, read_state_snapshot
+from apatch_lib.status import (display_status, inspect_patch, local_repository,
+                               select_record)
 from apatch_lib.workflow import ACTION_CODES, Workflow, action_number
 
 
@@ -28,6 +30,8 @@ def normalize_arguments(arguments):
     for argument in arguments:
         if argument.startswith("op="):
             normalized.append("--op=" + argument[len("op="):])
+        elif argument.startswith("patch="):
+            normalized.append("--patch=" + argument[len("patch="):])
         elif argument.startswith("skipApproves="):
             normalized.append("--skip-approves=" + argument[len("skipApproves="):])
         else:
@@ -50,6 +54,7 @@ def main():
         epilog=("Examples:\n"
                 "  apatch.sh op=3 skipApproves=true\n"
                 "  apatch.sh op=APL skipApproves=true\n"
+                "  apatch.sh op=STS\n"
                 "  apatch.sh strict op=4\n"
                 "  apatch.sh strict op=CHK\n"
                 "  apatch.sh force op=5 skipApproves=true\n"
@@ -69,7 +74,9 @@ def main():
                        help="FORCE: reconcile manual Git operations without skipping safety checks")
     parser.set_defaults(mode="loose")
     parser.add_argument("--op", type=parse_operation, metavar="NUMBER|CODE",
-                        help="Run an action directly by number (0-9) or uppercase code (e.g. APL, CHK, PR)")
+                        help="Run an action directly by number (0-10) or uppercase code (e.g. APL, CHK, STS)")
+    parser.add_argument("--patch", metavar="NAME.zip",
+                        help="Select a recorded patch by ZIP basename for read-only STS without a handoff")
     parser.add_argument("--skip-approves", "--skipApproves", type=parse_boolean,
                         default=False, metavar="{true,false}",
                         help="Skip interactive confirmations (default: false); does not bypass safety checks")
@@ -79,13 +86,45 @@ def main():
     script_dir = Path(__file__).resolve().parent
     try:
         config = load_config(script_dir)
-        handoff = load_handoff(handoff_path.expanduser())
-        root = repository_root(Path.cwd(), handoff.repository)
+        if args.patch is not None and not BASENAME_PATTERN.fullmatch(args.patch):
+            raise Abort("--patch must be an ASCII-safe ZIP basename")
+        if args.patch is not None and args.op not in {"STS", "10"}:
+            raise Abort("--patch is only supported for op=STS")
+        status_only = args.op in {"STS", "10"}
+        explicit_handoff = args.handoff is not None
+        handoff = (load_handoff(handoff_path.expanduser()) if
+                   explicit_handoff or not status_only and args.patch is None
+                   or status_only and handoff_path.expanduser().exists() else None)
+        root = (repository_root(Path.cwd(), handoff.repository) if handoff is not None
+                else Path.cwd().resolve())
+        if handoff is None:
+            local_repository(root)
         config = load_project_config(root, config)
         if config.downloads.is_relative_to(root):
             raise Abort("The downloads directory must be outside the Git repository")
         if config.applied_patches_path == config.state_path:
             raise Abort("Applied patch history must have a dedicated path")
+        if status_only:
+            state = read_state_snapshot(config.state_path)
+            record, patch, planned = select_record(root, state, handoff, patch=args.patch)
+            display_status(inspect_patch(root, config, record, patch, planned, args.mode))
+            return 0
+        menu_shown = args.op is None
+        if menu_shown:
+            state = read_state_snapshot(config.state_path)
+            preview = Workflow(root, config, handoff, state,
+                               force=args.mode == "force", loose=args.mode == "loose",
+                               skip_previous_cycles=True)
+            selection = preview.menu_choice()
+            try:
+                action = action_number(selection)
+            except ValueError as exc:
+                raise Abort(str(exc)) from exc
+            if action == 10:
+                display_status(inspect_patch(root, config, preview.record, handoff.patch,
+                                             handoff.branch, args.mode))
+                return 0
+            args.op = ACTION_CODES[action]
         ensure_runtime_ignored(root, config.log_directory, LOG_FILENAME,
                                config.state_path, config.applied_patches_path)
         set_context(patch=handoff.patch, branch=handoff.branch, repository=handoff.repository)
@@ -100,7 +139,8 @@ def main():
             with locked_state(config.state_path) as state:
                 migrate_legacy_artifacts(root, script_dir, config, state)
                 Workflow(root, config, handoff, state,
-                         force=args.mode == "force", loose=args.mode == "loose").interactive(args.op)
+                         force=args.mode == "force", loose=args.mode == "loose").interactive(
+                             args.op, show_header=not menu_shown)
         finally:
             reset_skip_approvals(token)
     except (Abort, KeyboardInterrupt, BlockingIOError) as exc:
