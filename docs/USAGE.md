@@ -152,11 +152,19 @@ The action numbers are consistent across modes, although their behavior and phas
 | `6` | `PSH` | **Push** committed history on the current branch. | Retry/reconcile a previous push. |
 | `7` | `PR` | Create/find a pull request. | Create/find a pull request. |
 | `8` | `MRG` | Merge a reviewed pull request. | Merge a reviewed pull request. |
-| `9` | `SYN` | Synchronize the local base branch after merge. | Synchronize the local base branch after merge. |
+| `9` | `SYN` | Switch to and fast-forward the local base branch; reconcile PR status when GitHub is available. | FORCE: same as LOOSE. STRICT: requires an already confirmed merge. |
 
 STRICT requires the expected phase and Git state for each action. LOOSE allows manually changed files and an alternative branch, but backs up overlapping modifications before applying ZIP replacements. FORCE supports explicit reconciliation of existing Git operations. All modes retain archive integrity checks, safe Git operations, and GitHub review/CI requirements.
 
 An interrupted push can be retried without creating a second commit. If the remote merge succeeds but local synchronization fails, synchronization can be resumed separately.
+
+For action `PR`, `apatch` first queries GitHub for existing pull requests from the current feature branch, including PRs targeting other base branches. It reuses a unique matching open PR when its head matches the pushed commit; an open PR targeting another base branch or an ambiguous PR history blocks creation. A second lookup verifies a newly created PR. The initial discovery uses one `gh pr list` request, not separate requests for matching and alternate bases.
+
+Every `gh` CLI invocation has a configurable timeout (45 seconds by default). If PR creation times out or the verification lookup fails, GitHub may already have created the PR even if `apatch` has not persisted the `pr_created` phase. **Re-run `op=PR` when the connection recovers.** The operation searches for an existing PR before attempting creation, preventing an automatic duplicate in that recovery path. A timeout never counts as evidence of creation, review approval, or merge.
+
+In LOOSE and FORCE, `SYN` first verifies that the working tree is clean, switches to the configured local base branch, and updates it from the configured Git remote using fast-forward-only operations. If the local base branch does not exist, it fetches and creates a tracking branch. This Git synchronization does not require GitHub CLI authentication or API availability. After the Git update, the command attempts a single GitHub PR listing to confirm a matching merged PR. If that request fails, the PR remains open, or PR identity differs, `SYN` reports that PR reconciliation is pending and preserves the existing workflow phase. A successful Git update is not proof that the PR was merged. The new `local_base_head` checkpoint records the synchronized local commit, so a later `SYN` can retry reconciliation. A Git fetch/pull failure remains fatal; if the local branch was already switched, the command explicitly reports the incomplete remote update.
+
+STRICT retains its guarded behavior: the workflow must already be in the `merged` phase, and GitHub must confirm the merge before synchronization is accepted. Neither mode converts an unverified PR to `merged` or `synced` merely because a local branch was updated.
 
 ### Starting another patch before the previous cycle finishes
 
@@ -180,6 +188,7 @@ In LOOSE mode the new cycle is acknowledged automatically. Pending patches on th
 | `require_review_approval` | Require approved review before merging. |
 | `require_required_checks` | Require successful GitHub checks before merging. |
 | `merge_method` | GitHub merge strategy: `merge`, `squash`, or `rebase`. |
+| `github_timeout_seconds` | Maximum wait for each `gh` CLI call, including PR discovery, creation, and verification; default `45`, allowed `5`–`300`. Does not limit project tests. |
 | `max_uncompressed_patch_bytes` | Maximum total extracted archive size. |
 
 All three runtime settings—`state_file`, `applied_patches_file`, and `log_directory`—are now resolved relative to the target repository's `.apatch/` directory. State and history settings must be plain filenames; the log setting may be a relative subdirectory. Absolute paths, `..` traversal, and symlinked destinations are rejected. The global configuration does not define project verification commands.

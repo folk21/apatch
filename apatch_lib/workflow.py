@@ -277,7 +277,7 @@ class Workflow:
                 ("Push committed changes on current branch", actions.push, None),
                 (f"Create/find PR for current patch branch -> {self.config.base}", actions.pr, None),
                 (f"Merge PR into {self.config.base}", actions.merge, None),
-                (f"Synchronize local {self.config.base} after merge", actions.sync, None),
+                (f"Synchronize local {self.config.base} and reconcile PR status", actions.sync, None),
             ]
         if self.force:
             branch = current_branch(self.root)
@@ -293,7 +293,7 @@ class Workflow:
                 ("Retry/reconcile push", actions.push, None),
                 (f"Create/find PR for current patch branch -> {self.config.base}", actions.pr, None),
                 (f"Merge PR into {self.config.base}", actions.merge, None),
-                (f"Synchronize local {self.config.base} after merge", actions.sync, None),
+                (f"Synchronize local {self.config.base} and reconcile PR status", actions.sync, None),
             ]
         phase = self.phase
         branch = current_branch(self.root)

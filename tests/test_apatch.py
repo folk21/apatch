@@ -14,6 +14,7 @@ import unittest
 import zipfile
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 TOOL = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL))
@@ -248,8 +249,76 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Mode: FORCE (manual recovery)", result.stdout)
         self.assertIn(" 1. [BRN] Create/adopt a feature branch\n", result.stdout)
-        self.assertIn(" 9. [SYN] Synchronize local main after merge\n", result.stdout)
+        self.assertIn(" 9. [SYN] Synchronize local main and reconcile PR status\n", result.stdout)
         self.assertNotIn("requires phase:", result.stdout)
+
+    def test_loose_sync_switches_main_even_if_github_is_unavailable(self):
+        command("git", "switch", "-c", self.payload["feature_branch"], cwd=self.root)
+        result = self.invoke_cli("op=SYN", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(), "main")
+        self.assertIn("Local main synchronized with origin/main", result.stdout)
+        self.assertIn("PR merge verification is pending", result.stdout)
+        state = json.loads(self.state_path.read_text())
+        record = next(iter(state["workflows"].values()))
+        self.assertEqual(record["local_base_head"], self.head)
+        self.assertNotEqual(record.get("phase"), "synced")
+
+    def test_force_sync_switches_main_before_github_timeout(self):
+        from unittest.mock import patch
+        from apatch_lib import github
+        from apatch_lib.workflow import Workflow
+
+        config = load_project_config(self.root, load_config(self.bin))
+        handoff = load_handoff(self.params)
+        workflow = Workflow(self.root, config, handoff, {"schema_version": 1, "workflows": {}},
+                            force=True)
+        workflow.record.update(phase="pr_created", applied_branch=handoff.branch,
+                               pr_number=1, pushed_sha=self.head)
+        command("git", "switch", "-c", handoff.branch, cwd=self.root)
+        with patch.object(github, "confirmed_merged_pr", side_effect=Abort("GitHub API timeout")) as lookup:
+            workflow.force_actions.sync()
+        lookup.assert_called_once()
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(), "main")
+        self.assertEqual(workflow.phase, "pr_created")
+        saved = json.loads(self.state_path.read_text())["workflows"][workflow.key]
+        self.assertEqual(saved["local_base_head"], self.head)
+        self.assertEqual(saved["phase"], "pr_created")
+
+    def test_force_sync_reconciles_verified_merge_after_local_update(self):
+        from unittest.mock import patch
+        from apatch_lib import github
+        from apatch_lib.workflow import Workflow
+
+        config = load_project_config(self.root, load_config(self.bin))
+        handoff = load_handoff(self.params)
+        workflow = Workflow(self.root, config, handoff, {"schema_version": 1, "workflows": {}},
+                            force=True)
+        workflow.record.update(phase="pr_created", applied_branch=handoff.branch, pr_number=1)
+        command("git", "switch", "-c", handoff.branch, cwd=self.root)
+        with patch.object(github, "confirmed_merged_pr", return_value={"number": 1}) as lookup:
+            workflow.force_actions.sync()
+        lookup.assert_called_once()
+        self.assertEqual(workflow.phase, "synced")
+        self.assertEqual(workflow.record["local_base_head"], self.head)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(), "main")
+
+    def test_sync_git_failure_is_not_reported_as_success(self):
+        command("git", "switch", "-c", self.payload["feature_branch"], cwd=self.root)
+        command("git", "remote", "set-url", "origin", str(self.base / "missing-remote.git"), cwd=self.root)
+        result = self.invoke_cli("op=SYN", "skipApproves=true")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(), "main")
+        self.assertIn("remote synchronization is incomplete", result.stdout)
+        self.assertNotIn("PR merge verification is pending", result.stdout)
+
+    def test_sync_creates_missing_local_main_from_remote(self):
+        command("git", "switch", "-c", self.payload["feature_branch"], cwd=self.root)
+        command("git", "branch", "-D", "main", cwd=self.root)
+        result = self.invoke_cli("op=SYN", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(), "main")
+        self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(), self.head)
 
     def test_loose_menu_and_mutually_exclusive_modes(self):
         (self.root / "manual.txt").write_text("manual\n")
@@ -1461,3 +1530,141 @@ class GithubGuardTest(unittest.TestCase):
         self.assertEqual(record["pr_number"], 4)
         self.assertTrue(any(call.args[0][:3] == ["gh", "pr", "create"] for call in fake_run.call_args_list))
         self.assertFalse(any(call.args[0][:3] == ["gh", "pr", "merge"] for call in fake_run.call_args_list))
+
+    def test_pr_creation_uses_one_initial_listing_including_other_bases(self):
+        from apatch_lib import github
+        record = {"phase": "pushed", "pushed_sha": self.sha}
+        created = dict(self.details)
+        with patch.object(github, "require_clean"), patch.object(github, "head", return_value=self.sha), \
+             patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "gh_output", side_effect=["[]", json.dumps([created])]) as listing, \
+             patch.object(github, "gh_run") as execute, patch.object(github, "confirm", return_value=True):
+            github.create_pr(self.config, self.handoff, self.root, record, lambda: None)
+        self.assertEqual(record["pr_number"], created["number"])
+        self.assertEqual(listing.call_count, 2)
+        for listing_call in listing.call_args_list:
+            args = listing_call.args[2]
+            self.assertEqual(args[:3], ["gh", "pr", "list"])
+            self.assertEqual(args[args.index("--state") + 1], "all")
+            self.assertIn("--limit", args)
+        self.assertEqual(execute.call_count, 1)
+        self.assertEqual(execute.call_args.args[2][:3], ["gh", "pr", "create"])
+
+    def test_existing_matching_pr_is_adopted_without_creation(self):
+        from apatch_lib import github
+        record = {"phase": "pushed", "pushed_sha": self.sha}
+        with patch.object(github, "require_clean"), patch.object(github, "head", return_value=self.sha), \
+             patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "gh_output", return_value=json.dumps([self.details])) as listing, \
+             patch.object(github, "gh_run") as execute, patch.object(github, "confirm") as approval:
+            github.create_pr(self.config, self.handoff, self.root, record, lambda: None)
+        self.assertEqual(record["phase"], "pr_created")
+        self.assertEqual(record["pr_number"], self.details["number"])
+        listing.assert_called_once()
+        execute.assert_not_called()
+        approval.assert_not_called()
+
+    def test_open_pr_with_different_base_blocks_creation_without_second_lookup(self):
+        from apatch_lib import github
+        wrong_base = dict(self.details, baseRefName="develop")
+        record = {"phase": "pushed", "pushed_sha": self.sha}
+        with patch.object(github, "require_clean"), patch.object(github, "head", return_value=self.sha), \
+             patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "gh_output", return_value=json.dumps([wrong_base])) as listing, \
+             patch.object(github, "gh_run") as execute:
+            with self.assertRaisesRegex(Abort, "another base"):
+                github.create_pr(self.config, self.handoff, self.root, record, lambda: None)
+        listing.assert_called_once()
+        execute.assert_not_called()
+        self.assertEqual(record["phase"], "pushed")
+
+    def test_pr_create_timeout_can_be_reconciled_on_next_run_without_duplicate(self):
+        from apatch_lib import github
+        record = {"phase": "pushed", "pushed_sha": self.sha}
+        persist = []
+        with patch.object(github, "require_clean"), patch.object(github, "head", return_value=self.sha), \
+             patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "gh_output", side_effect=["[]", json.dumps([self.details])]) as listing, \
+             patch.object(github, "gh_run", side_effect=Abort("GitHub command timed out")) as execute, \
+             patch.object(github, "confirm", return_value=True):
+            with self.assertRaisesRegex(Abort, "timed out"):
+                github.create_pr(self.config, self.handoff, self.root, record,
+                                 lambda: persist.append(dict(record)))
+            self.assertEqual(record["phase"], "pushed")
+            self.assertEqual(persist, [])
+            github.create_pr(self.config, self.handoff, self.root, record,
+                             lambda: persist.append(dict(record)))
+        self.assertEqual(record["phase"], "pr_created")
+        self.assertEqual(record["pr_number"], self.details["number"])
+        self.assertEqual(len(persist), 1)
+        self.assertEqual(execute.call_count, 1)
+        self.assertEqual(listing.call_count, 2)
+
+    def test_all_gh_commands_receive_configured_timeout(self):
+        from apatch_lib import github
+        from dataclasses import replace
+        config = replace(self.config, github_timeout_seconds=19)
+        with patch.object(github, "run") as fake_run, patch.object(github, "output", return_value="ok") as fake_output:
+            github.gh_run(config, self.root, ["gh", "auth", "status"])
+            github.gh_output(config, self.root, ["gh", "pr", "list"])
+        self.assertEqual(fake_run.call_args.kwargs["timeout"], 19)
+        self.assertEqual(fake_output.call_args.kwargs["timeout"], 19)
+
+    def test_timeout_raises_abort_without_waiting_indefinitely(self):
+        from apatch_lib.gitutil import run
+        with patch("apatch_lib.gitutil.subprocess.run",
+                   side_effect=subprocess.TimeoutExpired(["gh", "pr", "list"], 0.1)):
+            with self.assertRaisesRegex(Abort, "timed out after 0.1s"):
+                run(["gh", "pr", "list"], self.root, timeout=0.1)
+
+    def test_global_github_timeout_is_validated(self):
+        original = (TOOL / "apatch.conf").read_text()
+        for value in ("0", "4", "301", "one-minute"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as folder:
+                path = Path(folder)
+                (path / "apatch.conf").write_text(original.replace("github_timeout_seconds = 45",
+                                                                   f"github_timeout_seconds = {value}"))
+                with self.assertRaisesRegex(Abort, "github_timeout_seconds"):
+                    load_config(path)
+
+    def test_sync_status_uses_one_pr_listing_and_validates_identity(self):
+        from unittest.mock import patch
+        from apatch_lib import github
+
+        merged = dict(self.details, state="MERGED")
+        with patch.object(github, "remote_repository", return_value="example/repo"), \
+             patch.object(github, "pr_list", return_value=[merged]) as list_prs, \
+             patch.object(github, "pr_details") as details:
+            result = github.confirmed_merged_pr(self.config, self.handoff, self.root, self.record)
+        self.assertEqual(result["number"], 4)
+        list_prs.assert_called_once()
+        details.assert_not_called()
+
+        with patch.object(github, "remote_repository", return_value="example/repo"), \
+             patch.object(github, "pr_list", return_value=[dict(merged, number=5)]):
+            with self.assertRaisesRegex(Abort, "recorded PR number"):
+                github.confirmed_merged_pr(self.config, self.handoff, self.root, self.record)
+
+    def test_unmerged_pr_does_not_confirm_synchronization(self):
+        from unittest.mock import patch
+        from apatch_lib import github
+
+        with patch.object(github, "remote_repository", return_value="example/repo"), \
+             patch.object(github, "pr_list", return_value=[self.details]):
+            with self.assertRaisesRegex(Abort, "not confirmed"):
+                github.confirmed_merged_pr(self.config, self.handoff, self.root, self.record)
+
+    def test_strict_sync_still_requires_live_merge_confirmation(self):
+        from unittest.mock import patch
+        from apatch_lib import github
+
+        with patch.object(github, "require_clean"), \
+             patch.object(github, "repository", side_effect=Abort("GitHub API timeout")), \
+             patch.object(github, "sync_local_base") as sync_git:
+            with self.assertRaisesRegex(Abort, "timeout"):
+                github.sync_base(self.config, self.handoff, self.root, self.record, lambda: None)
+        sync_git.assert_not_called()

@@ -354,13 +354,12 @@ class ForceActions:
             return
         github.create_pr(w.config, handoff, w.root, w.record, w.persist)
 
-    def _recover_pr(self, *, must_be_merged=False):
+    def _recover_pr(self):
         w = self.w
         handoff = self._effective_handoff()
         repo = github.repository(w.config, w.root)
         prs = github.pr_list(w.config, w.root, repo, handoff.branch)
-        matching = [item for item in prs if item["state"] in ({"MERGED"} if must_be_merged
-                                                       else {"OPEN", "MERGED"})]
+        matching = [item for item in prs if item["state"] in {"OPEN", "MERGED"}]
         if len(matching) != 1:
             raise Abort("Expected one matching GitHub PR; resolve missing or ambiguous PR manually")
         pr = matching[0]
@@ -370,7 +369,7 @@ class ForceActions:
             self.checkpoint("pr_created", "GitHub PR adopted", applied_branch=handoff.branch,
                             pr_number=pr["number"], pushed_sha=pr["headRefOid"])
         else:
-            details = github.pr_details(w.root, repo, pr["number"])
+            details = github.pr_details(w.config, w.root, repo, pr["number"])
             if details["state"] != "MERGED" or not details.get("mergedAt"):
                 raise Abort("GitHub does not confirm PR merge")
             self.checkpoint("merged", "GitHub merge adopted", applied_branch=handoff.branch,
@@ -387,5 +386,21 @@ class ForceActions:
 
     def sync(self):
         w = self.w
-        handoff, _ = self._recover_pr(must_be_merged=True)
-        github.sync_base(w.config, handoff, w.root, w.record, w.persist)
+        local_base_head = github.sync_local_base(w.config, w.root)
+        w.record["local_base_head"] = local_base_head
+        w.persist()
+        if w.phase == "synced":
+            print("PR merge was previously verified; local base synchronization refreshed.")
+            return
+        try:
+            handoff = self._effective_handoff()
+            pr = github.confirmed_merged_pr(w.config, handoff, w.root, w.record)
+        except Abort as exc:
+            LOGGER.warning("PR merge reconciliation pending after local base synchronization")
+            print(f"WARNING: Local {w.config.base} is synchronized, but PR merge verification "
+                  f"is pending: {exc}")
+            print("The workflow phase is unchanged. Retry SYN when GitHub is available.")
+            return
+        self.checkpoint("synced", "local base synchronized after confirmed PR merge",
+                        pr_number=pr["number"], local_base_head=local_base_head)
+        print(f"GitHub confirmed PR #{pr['number']} merged; workflow synchronization is complete.")

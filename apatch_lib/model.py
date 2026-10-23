@@ -32,6 +32,7 @@ class Config:
     merge_method: str
     max_bytes: int
     require_patch_feature_branch: bool = False
+    github_timeout_seconds: int = 45
 
 
 @dataclass(frozen=True)
@@ -72,6 +73,12 @@ def load_config(script_dir: Path) -> Config:
         raise Abort("Invalid base branch")
     if method not in {"merge", "squash", "rebase"}:
         raise Abort("merge_method must be merge, squash or rebase")
+    try:
+        github_timeout_seconds = section.getint("github_timeout_seconds", 45)
+    except ValueError as exc:
+        raise Abort("github_timeout_seconds must be an integer from 5 to 300") from exc
+    if not 5 <= github_timeout_seconds <= 300:
+        raise Abort("github_timeout_seconds must be an integer from 5 to 300")
     return Config(
         downloads=Path(section.get("downloads_dir", "~/Downloads")).expanduser().resolve(),
         state_path=state,
@@ -85,6 +92,7 @@ def load_config(script_dir: Path) -> Config:
         merge_method=method,
         max_bytes=section.getint("max_uncompressed_patch_bytes", 52428800),
         require_patch_feature_branch=section.getboolean("require_patch_feature_branch", False),
+        github_timeout_seconds=github_timeout_seconds,
     )
 
 

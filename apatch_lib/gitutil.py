@@ -62,7 +62,7 @@ def display_command(argv):
 
 
 def run(argv, cwd: Path, *, input_text=None, check=True, text=True, log_commit_message=None,
-        stream_output=False):
+        stream_output=False, timeout=None):
     command = display_command(argv)
     print("+", command, flush=True)
     if log_commit_message is not None:
@@ -90,7 +90,14 @@ def run(argv, cwd: Path, *, input_text=None, check=True, text=True, log_commit_m
             result = subprocess.CompletedProcess(argv, returncode, "", "")
         else:
             result = subprocess.run(argv, cwd=cwd, text=text, input=input_text,
-                                    capture_output=True, check=False)
+                                    capture_output=True, check=False, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        duration = time.monotonic() - start
+        LOGGER.error("command timed out duration_s=%.3f limit_s=%s argv=%s",
+                     duration, timeout, command)
+        print(f"[TIMEOUT] {command} ({duration:.2f}s)", file=sys.stderr, flush=True)
+        raise Abort(f"Command timed out after {timeout:g}s: {command}. "
+                    "The remote operation may have completed; check its status before retrying.") from exc
     except OSError as exc:
         LOGGER.error("command launch failed cwd=%s argv=%s error_type=%s", cwd, command, type(exc).__name__)
         raise Abort(f"Cannot execute {argv[0]}: {exc}") from exc
@@ -116,8 +123,8 @@ def run(argv, cwd: Path, *, input_text=None, check=True, text=True, log_commit_m
     return result
 
 
-def output(argv, cwd: Path):
-    return run(argv, cwd).stdout.strip()
+def output(argv, cwd: Path, *, timeout=None):
+    return run(argv, cwd, timeout=timeout).stdout.strip()
 
 
 def repository_root(cwd: Path, expected_name: str):
