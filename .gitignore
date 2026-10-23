@@ -9,6 +9,7 @@ logs/
 *.state.json
 *.state.json.lock
 *_applied_patches.txt
+.apatch/
 
 # Python-generated local bytecode/cache
 **/__pycache__/
