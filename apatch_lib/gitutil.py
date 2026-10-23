@@ -1,6 +1,7 @@
 """Subprocess and repository checks. All commands use argv, never shell=True."""
 
 from collections import deque
+from contextvars import ContextVar
 import hashlib
 import json
 import logging
@@ -15,9 +16,30 @@ from .model import Abort
 
 
 LOGGER = logging.getLogger("apatch.commands")
+_SKIP_APPROVALS = ContextVar("apatch_skip_approvals", default=False)
 REDACT_FLAGS = {"--body", "--token", "--password", "--secret", "--api-key", "--authorization"}
 FAILURE_TAIL_LINES = 20
 FAILURE_TAIL_LINE_CHARS = 500
+
+COMMAND_DESCRIPTIONS = {
+    "switch": "Git branch switch completed",
+    "checkout": "Git checkout completed",
+    "add": "Git staging completed",
+    "commit": "Git commit completed",
+    "push": "Git push completed",
+    "fetch": "Git fetch completed",
+    "pull": "Git pull completed",
+    "merge": "Git merge completed",
+}
+
+
+def command_description(argv):
+    """Describe significant changes without exposing captured command output."""
+    if len(argv) >= 2 and argv[0] == "git":
+        return COMMAND_DESCRIPTIONS.get(argv[1])
+    if len(argv) >= 3 and argv[:2] == ["gh", "pr"] and argv[2] in {"create", "merge"}:
+        return f"GitHub pull request {argv[2]} completed"
+    return None
 
 
 def display_command(argv):
@@ -82,6 +104,12 @@ def run(argv, cwd: Path, *, input_text=None, check=True, text=True, log_commit_m
         level = logging.INFO if result.returncode == 0 else logging.WARNING
         LOGGER.log(level, "command finished exit=%d duration_s=%.3f argv=%s stdout_len=%d stderr_len=%d",
                    result.returncode, duration, command, len(result.stdout), len(result.stderr))
+    description = ("Project check completed" if stream_output else command_description(argv))
+    if description and result.returncode == 0:
+        print(f"[OK] {description} ({duration:.2f}s)", flush=True)
+    elif description and result.returncode and check:
+        print(f"[FAILED] {description} (exit {result.returncode}, {duration:.2f}s)",
+              file=sys.stderr, flush=True)
     if check and result.returncode:
         details = "" if stream_output else f"\n{result.stdout}{result.stderr}"
         raise Abort(f"Command failed ({result.returncode}): {command}{details}")
@@ -180,5 +208,24 @@ def worktree_fingerprint(root):
     return digest.hexdigest(), paths
 
 
+def set_skip_approvals(enabled):
+    return _SKIP_APPROVALS.set(enabled)
+
+
+def reset_skip_approvals(token):
+    _SKIP_APPROVALS.reset(token)
+
+
+def skip_approvals_enabled():
+    return _SKIP_APPROVALS.get()
+
+
 def confirm(question):
-    return input(f"{question} Type YES to continue: ").strip() == "YES"
+    if skip_approvals_enabled():
+        print(f"{question} [auto-approved: skipApproves=true]")
+        LOGGER.warning("confirmation auto-approved question=%s", question)
+        return True
+    try:
+        return input(f"{question} Type YES to continue: ").strip() == "YES"
+    except EOFError as exc:
+        raise Abort("Interactive confirmation required; use skipApproves=true to automate approvals") from exc

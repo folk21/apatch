@@ -3,7 +3,7 @@
 import logging
 
 from .gitutil import (branch_exists, confirm, current_branch, head, remote_head,
-                      require_branch, require_clean, run)
+                      require_branch, require_clean, run, skip_approvals_enabled)
 from .model import Abort
 from .patch import apply
 from .patch_history import locked_history
@@ -74,7 +74,14 @@ class BranchPatchActions:
             return True
         LOGGER.warning("previously applied patch selected for reapplication name=%s", w.handoff.patch)
         print(f"WARNING: Patch {w.handoff.patch} is already in the applied-patch history.")
-        response = input("Apply this patch again? [yes/no]: ").strip().lower()
+        if skip_approvals_enabled():
+            print("Duplicate patch reapplication [auto-approved: skipApproves=true]")
+            LOGGER.warning("duplicate patch reapplication auto-approved")
+            return True
+        try:
+            response = input("Apply this patch again? [yes/no]: ").strip().lower()
+        except EOFError as exc:
+            raise Abort("Interactive confirmation required; use skipApproves=true to automate approvals") from exc
         if response not in {"yes", "no"}:
             raise Abort("Expected yes or no; patch was not applied")
         if response == "no":

@@ -1,6 +1,6 @@
 # apatch
 
-`apatch` automates and orchestrates repository changes, validation, commits, publishing, pull requests, and merges through an interactive, state-aware workflow.
+`apatch` automates and orchestrates repository changes, validation, commits, publishing, pull requests, and merges through a state-aware workflow with interactive and direct-action interfaces.
 
 ## Requirements
 
@@ -22,6 +22,25 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 ```
 
+## Running the apatch tests
+
+Run the tests from the `apatch` directory after installing the dependencies:
+
+```bash
+cd /path/to/apatch
+sh ./run_tests.sh
+```
+
+The script uses `.venv/bin/python` when available and otherwise falls back to `python3`. It checks that PyYAML is installed in the selected interpreter before running the suite. If PyYAML is missing, install the dependencies with `.venv/bin/python -m pip install -r requirements.txt`; activating a virtual environment alone does not install its dependencies.
+
+To run the tests directly with the project virtual environment:
+
+```bash
+.venv/bin/python -B -m unittest discover -s tests -v
+```
+
+`-B` prevents Python bytecode cache files, and `-v` prints each test result. The suite uses temporary local Git repositories; its GitHub interactions are mocked. No changes are made to your actual project repositories. Python, PyYAML, and Git are required; GitHub CLI access is not required to run the tests. The tests also support case-insensitive filesystems, including typical macOS installations.
+
 ## Run
 
 Start `apatch` **from the root of the project repository** whose development workflow you want to manage:
@@ -33,6 +52,78 @@ Start `apatch` **from the root of the project repository** whose development wor
 When the handoff argument is omitted, the launcher derives the filename from the name of the current project directory. For example, running `apatch.sh` from the root of `example-service` reads `~/Downloads/example-service_patch_params.json`. The same default applies when invoking `apatch.py` directly; an explicit JSON path always takes precedence.
 
 The argument is a JSON file describing the intended change. Global configuration is read from `apatch.conf` next to `apatch.py`; project verification commands and optional log directory overrides are read from the target repository's `.apatch/config.yaml`. The tool presents the actions currently available, validates the repository state before each operation, and records progress so the workflow can resume on a later invocation.
+
+**LOOSE is the default execution mode.** Modes can be selected on the command line:
+
+| Mode | Invocation | Behavior |
+| --- | --- | --- |
+| **LOOSE (default)** | `apatch.sh` or `apatch.sh loose` | Allows manual edits, different branches, several patches per commit, and deferred push. |
+| **STRICT** | `apatch.sh strict` or `apatch.sh --strict` | Enforces the expected workflow phase, branch, and verification requirements. |
+| **FORCE** | `apatch.sh force` or `apatch.sh --force` | Reconciles externally performed Git operations, retaining integrity checks. |
+
+Use `apatch.sh --help` to see the modes, direct-action selection, and automation parameters. The interactive menu also displays the active mode and the other available modes.
+
+### Direct actions and unattended automation
+
+Every menu action can be invoked directly by number or by its mnemonic code (2-4 letters, shown beside the action number in the menu):
+
+```bash
+# Apply a patch in the default LOOSE mode; ask for any needed approvals.
+/path/to/apatch/apatch.sh op=3
+
+# Apply a patch without interactive confirmation prompts.
+/path/to/apatch/apatch.sh op=3 skipApproves=true
+
+# Equivalent mnemonic form (case-insensitive; displayed as APL).
+/path/to/apatch/apatch.sh op=APL skipApproves=true
+
+# Verify, then commit without pushing, then push in separate invocations.
+/path/to/apatch/apatch.sh op=4 skipApproves=true
+/path/to/apatch/apatch.sh op=5 skipApproves=true
+/path/to/apatch/apatch.sh op=6 skipApproves=true
+
+# The same sequence using action mnemonics.
+/path/to/apatch/apatch.sh op=CHK skipApproves=true
+/path/to/apatch/apatch.sh op=CMT skipApproves=true
+/path/to/apatch/apatch.sh op=PSH skipApproves=true
+
+# Choose STRICT or FORCE explicitly when necessary.
+/path/to/apatch/apatch.sh strict op=4
+/path/to/apatch/apatch.sh force op=5 skipApproves=true
+
+# Use a nondefault handoff file with automation parameters.
+/path/to/apatch/apatch.sh /path/to/change_params.json strict op=4 skipApproves=false
+```
+
+`op=0` or `op=EXT` exits. Numbers `1`-`9` and their codes select the corresponding action for the current mode. Without `op`, the menu stays interactive and accepts either numbers or codes (for example `APL`). The Python entry point also accepts `--op=3`, `--op=APL`, `--skip-approves=true`, `--strict`, `--loose`, and `--force`.
+
+**`skipApproves=false` is the default.** With `skipApproves=false`, direct actions still request their normal confirmations. With `skipApproves=true`, the tool records and auto-approves confirmations, including warnings about a different destination branch, duplicate patches, manual changes, and the current Git remote. It does **not** skip ZIP validation, working-tree checks, backup creation for overlapping edits, remote fast-forward checks, STRICT phase gates, or GitHub review/CI policies. All files selected by a commit action are still staged together. Review the affected paths and repository destination before running unattended actions; there is no automatic rollback of an executed commit or push.
+
+### Console progress and results
+
+The console shows the selected action and its mnemonic, the starting branch and phase, and the number of modified paths. Important Git operations (switching branches, staging, committing, fetching, pushing, and pulling) report completion. Canonical checks stream their output live and end with a success or failure marker.
+
+When an action returns, `apatch` prints a result summary with elapsed time, phase transition, branch, before/after HEAD commit IDs, and the number of changed paths. When appropriate, it lists up to ten changed paths. If an action returns without a detectable transition, the summary explicitly notes that it may have been cancelled or already satisfied. Command failures still stop the action; the script does not claim success for failed operations.
+
+### LOOSE (default): incremental development with manual edits
+
+LOOSE is active automatically and is useful when several patches should accumulate on one branch, when you intend to edit additional files manually, or when committing and pushing should happen at different times:
+
+```bash
+/path/to/apatch/apatch.sh loose
+/path/to/apatch/apatch.sh /path/to/change_params.json loose
+/path/to/apatch/apatch.sh --loose /path/to/change_params.json
+```
+
+LOOSE keeps the Git and ZIP integrity guards but treats workflow drift as a warning. It permits a checked-out branch other than the handoff's suggested branch, an existing dirty worktree, changed files after verification, and a stale handoff `base_commit`. Such mismatches are displayed before the relevant action; commits require explicit confirmation unless `skipApproves=true`. LOOSE never uses `git push --force`.
+
+To combine patches, apply the first ZIP using action 3 and leave the changes uncommitted. Update the handoff JSON to reference the next ZIP, run `apatch.sh loose` again from the **same branch**, and select action 3 again. Existing unrelated edits remain untouched. If the new archive contains a path with uncommitted changes, `apatch` lists those paths, requires approval, and backs up their previous contents under `.apatch/backups/` before replacing them. These backups are Git-ignored and are not deleted automatically. The archive still contains whole replacement files, not line-based merges: inspect overlapping edits before approving replacement.
+
+After the final patch, action 4 runs the project's canonical checks. Git whitespace warnings are reported but do not prevent those checks from running. Action 5 reviews and commits **all** currently changed and staged paths using the active handoff's `commit_message`, without pushing. Check that the message describes the combined change. Action 6 pushes the current branch separately, either now or in a later invocation. Pushes must be fast-forward operations and can only publish committed Git history; any remaining dirty files stay local.
+
+Applied patch history keeps one entry per ZIP. When multiple pending patches on the same branch are committed together, their workflow checkpoints record the same commit SHA and are reconciled together when that commit is pushed. Switching ZIPs in LOOSE preserves earlier checkpoints automatically; nothing is reset or discarded. To apply a new ZIP that intentionally reuses a filename, the duplicate-history warning still requires confirmation unless `skipApproves=true`.
+
+LOOSE, STRICT, and FORCE are mutually exclusive. Prefer the default LOOSE for ongoing development, STRICT for strict phase enforcement, and FORCE for reconciling work already committed or pushed manually.
 
 To recover after manually creating a feature branch, extracting a patch, committing, or pushing, use the explicit FORCE mode:
 
@@ -47,9 +138,9 @@ To recover after manually creating a feature branch, extracting a patch, committ
 /path/to/apatch/apatch.sh --force /path/to/change_params.json
 ```
 
-FORCE displays all menu actions without phase restrictions and requests explicit confirmation before recovering or changing repository state. A previously created local feature branch can be adopted; an existing clean commit or push can be associated with the handoff; uncommitted worktree changes can be adopted without overwriting them; and Git commits and fast-forward pushes can be made from the checked-out named branch without a previously verified phase. FORCE also supports re-running configured checks and recovering PR/merge state from GitHub. Every state reconciliation is recorded in the project's state file and audit log.
+FORCE displays all menu actions without phase restrictions and requests explicit confirmation before recovering or changing repository state unless `skipApproves=true`. A previously created local feature branch can be adopted; an existing clean commit or push can be associated with the handoff; uncommitted worktree changes can be adopted without overwriting them; and Git commits and fast-forward pushes can be made from the checked-out named branch without a previously verified phase. FORCE also supports re-running configured checks and recovering PR/merge state from GitHub. Every state reconciliation is recorded in the project's state file and audit log.
 
-FORCE is **not** a Git `--force` push. It never rewrites remote history, overwrites a dirty worktree with ZIP contents, allows a detached-HEAD patch application, skips ZIP path/digest validation, or bypasses GitHub mergeability, review, or CI requirements. When associating existing files or commits whose contents differ from the ZIP, the tool warns about a manual override and requires confirmation. This mode should be used deliberately: it can intentionally associate manually edited files or commits with a handoff that no longer precisely describes their contents. Use ordinary mode whenever possible.
+FORCE is **not** a Git `--force` push. It never rewrites remote history, overwrites a dirty worktree with ZIP contents, allows a detached-HEAD patch application, skips ZIP path/digest validation, or bypasses GitHub mergeability, review, or CI requirements. When associating existing files or commits whose contents differ from the ZIP, the tool warns about a manual override and requires confirmation unless `skipApproves=true`. This mode should be used deliberately: it can intentionally associate manually edited files or commits with a handoff that no longer precisely describes their contents. Use LOOSE or STRICT whenever possible.
 
 ## Change description
 
@@ -87,21 +178,30 @@ The archive is located using `downloads_dir` from `apatch.conf`. Its entries mus
 
 ## Workflow
 
-The interactive menu supports the following operations, subject to current Git state and saved progress:
+The action numbers are consistent across modes, although their behavior and phase requirements differ:
 
-1. **Create a feature branch.** Start from a clean, synchronized target branch; refuse creation if the named feature branch already exists locally or on the configured remote.
-2. **Create a branch and apply changes.** Perform the branch checks and extract the change archive as one guarded operation.
-3. **Apply changes to the current branch.** By default, the checked-out branch may be any named branch, including `main`. The menu displays its name. Check the baseline, archive contents, and clean working tree before modifying files. Automated commit/push and PR operations remain limited to the configured feature branch.
-4. **Run project checks.** Execute the configured verification commands and associate a successful result with the exact working-tree content.
-5. **Commit and push.** Stage the intended changed, added, and removed files; commit using the provided message; push only when repository and remote-branch checks pass.
-6. **Create a pull request.** Find or create a GitHub pull request from the feature branch to the configured target branch. Review and CI remain separate from this action.
-7. **Merge and synchronize.** Verify the pull request, approvals, CI, and remote commit identity; merge through `gh`; then switch to the target branch and synchronize with a fast-forward-only pull.
+| `op` | Code | Default LOOSE behavior | STRICT / FORCE behavior |
+| --- | --- | --- | --- |
+| `0` | `EXT` | Exit | Exit |
+| `1` | `BRN` | Create or adopt the planned feature branch. | Create a new branch (STRICT); create/adopt (FORCE). |
+| `2` | `BAP` | Create/adopt the branch and apply the patch. | Create and apply (STRICT); create/adopt and apply/adopt (FORCE). |
+| `3` | `APL` | Apply another patch to the **current named branch**, retaining unrelated edits. | Apply to the current branch (STRICT); apply/adopt (FORCE). |
+| `4` | `CHK` | Run/re-run configured checks, allowing manual edits. | Run/re-run configured checks, subject to STRICT phase rules. |
+| `5` | `CMT` | **Commit accumulated changes without pushing.** | Commit **and push** (STRICT and FORCE). |
+| `6` | `PSH` | **Push** committed history on the current branch. | Retry/reconcile a previous push. |
+| `7` | `PR` | Create/find a pull request. | Create/find a pull request. |
+| `8` | `MRG` | Merge a reviewed pull request. | Merge a reviewed pull request. |
+| `9` | `SYN` | Synchronize the local base branch after merge. | Synchronize the local base branch after merge. |
+
+STRICT requires the expected phase and Git state for each action. LOOSE allows manually changed files and an alternative branch, but backs up overlapping modifications before applying ZIP replacements. FORCE supports explicit reconciliation of existing Git operations. All modes retain archive integrity checks, safe Git operations, and GitHub review/CI requirements.
 
 An interrupted push can be retried without creating a second commit. If the remote merge succeeds but local synchronization fails, synchronization can be resumed separately.
 
 ### Starting another patch before the previous cycle finishes
 
 Each ZIP filename has a separate workflow checkpoint. If a newly selected ZIP differs from an unfinished patch for the same repository, `apatch` lists the previous checkpoints and asks whether to start a separate cycle. Declining leaves all checkpoints unchanged; accepting marks the older records as superseded by the new ZIP while preserving their original phases and data for inspection or later recovery. The new cycle has its own state record when its first action saves progress. Applied-patch history is not reset. A dirty working tree is never automatically discarded or overwritten when starting another cycle, even in FORCE mode.
+
+In LOOSE mode the new cycle is acknowledged automatically. Pending patches on the current branch may be applied and eventually committed together. Any overlapping dirty files are backed up before replacement and require confirmation unless `skipApproves=true`.
 
 ## Configuration
 
@@ -128,6 +228,7 @@ By default, the runtime files have no repository-name prefix:
 - `.apatch/apply_patch.state.json` (and `.apatch/apply_patch.state.json.lock`)
 - `.apatch/applied_patches.txt` (and `.apatch/applied_patches.txt.lock`)
 - `.apatch/logs/apatch.log`
+- `.apatch/backups/` (created only when LOOSE replaces overlapping dirty files)
 
 ### Project-specific verification
 

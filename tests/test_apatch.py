@@ -3,6 +3,8 @@
 import hashlib
 import json
 import os
+import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -19,6 +21,7 @@ from apatch_lib.model import Abort, load_handoff, load_project_config, safe_rela
 from apatch_lib.patch import inspect
 from apatch_lib.model import load_config
 from apatch_lib.patch_history import AppliedPatchHistory
+from apatch_lib.workflow import ACTION_CODES, action_number
 
 
 def command(*args, cwd):
@@ -26,6 +29,17 @@ def command(*args, cwd):
 
 
 class LocalGitWorkflowTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        try:
+            import yaml
+        except ImportError as exc:
+            raise RuntimeError(
+                "PyYAML is missing from the test interpreter. Install requirements with "
+                "'.venv/bin/python -m pip install -r requirements.txt' and run the tests "
+                "with '.venv/bin/python -B -m unittest discover -s tests -v'."
+            ) from exc
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -80,12 +94,36 @@ class LocalGitWorkflowTest(unittest.TestCase):
         }
         self.params.write_text(json.dumps(self.payload))
 
+    def prepare_default_handoff_home(self):
+        """Isolate ~/Downloads from fixture downloads on case-insensitive filesystems."""
+        home_dir = self.base / "test_home"
+        downloads = home_dir / "Downloads"
+        downloads.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(self.params, downloads / f"{self.root.name}_patch_params.json")
+        return home_dir
+
+    def prepare_test_launcher(self):
+        """Retain the test interpreter's venv context when exercising the shell launcher."""
+        executable = self.bin / ".venv" / "bin" / "python"
+        executable.parent.mkdir(parents=True, exist_ok=True)
+        executable.write_text(f"#!/bin/sh\nexec {shlex.quote(sys.executable)} \"$@\"\n")
+        executable.chmod(0o755)
+
     def invoke(self, text, *options):
+        if not any(option in {"--strict", "--loose", "--force"} for option in options):
+            options = ("--strict", *options)
         return subprocess.run([sys.executable, str(self.bin / "apatch.py"), str(self.params), *options],
                               cwd=self.root, input=text, capture_output=True, text=True)
 
     def invoke_force(self, text):
         return self.invoke(text, "--force")
+
+    def invoke_loose(self, text):
+        return self.invoke(text, "--loose")
+
+    def invoke_cli(self, *options, text=""):
+        return subprocess.run([sys.executable, str(self.bin / "apatch.py"), str(self.params), *options],
+                              cwd=self.root, input=text, capture_output=True, text=True)
 
     def configure_checks(self, yaml_text):
         self.project_config.write_text(yaml_text)
@@ -176,10 +214,10 @@ class LocalGitWorkflowTest(unittest.TestCase):
         (self.root / "untracked.txt").write_text("dirty\n")
         result = self.invoke("0\n")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(f"\n-----\nRepository: {self.root}\n"
+        self.assertIn(f"\n-----\nRepository: {self.root.resolve()}\n"
                       f"Feature branch: {self.payload['feature_branch']}\n"
                       f"Patch: {self.zip.name}\nPhase: new\n"
-                      "Current branch: main\n-----\n", result.stdout)
+                      "Current branch: main\nMode: STRICT", result.stdout)
         expected_labels = [
             "Create a feature branch",
             "Create a feature branch and apply patch",
@@ -192,8 +230,8 @@ class LocalGitWorkflowTest(unittest.TestCase):
             "Resume synchronization of local",
         ]
         for index, label in enumerate(expected_labels, start=1):
-            self.assertIn(f" {index}. {label}", result.stdout)
-        self.assertIn(" 0. Exit", result.stdout)
+            self.assertIn(f" {index}. [{ACTION_CODES[index]}] {label}", result.stdout)
+        self.assertIn(" 0. [EXT] Exit", result.stdout)
         self.assertIn("requires a clean working tree", result.stdout)
 
     def test_unavailable_action_reports_reason_without_mutating_git(self):
@@ -209,14 +247,342 @@ class LocalGitWorkflowTest(unittest.TestCase):
         result = self.invoke_force("0\n")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Mode: FORCE (manual recovery)", result.stdout)
-        self.assertIn(" 1. Create/adopt a feature branch\n", result.stdout)
-        self.assertIn(" 9. Synchronize local main after merge\n", result.stdout)
+        self.assertIn(" 1. [BRN] Create/adopt a feature branch\n", result.stdout)
+        self.assertIn(" 9. [SYN] Synchronize local main after merge\n", result.stdout)
         self.assertNotIn("requires phase:", result.stdout)
 
+    def test_loose_menu_and_mutually_exclusive_modes(self):
+        (self.root / "manual.txt").write_text("manual\n")
+        result = self.invoke_loose("0\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Mode: LOOSE", result.stdout)
+        self.assertIn(" 3. [APL] Apply another patch to current branch (main)\n", result.stdout)
+        self.assertIn(" 5. [CMT] Commit accumulated changes (do not push)\n", result.stdout)
+        self.assertIn(" 6. [PSH] Push committed changes on current branch\n", result.stdout)
+        self.assertNotIn("requires phase:", result.stdout)
+        rejected = self.invoke("0\n", "--loose", "--force")
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn("not allowed with argument", rejected.stderr)
+
+    def test_default_mode_is_loose_and_help_documents_all_modes_and_automation(self):
+        result = self.invoke_cli(text="0\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Mode: LOOSE (default", result.stdout)
+        self.assertIn("Available modes: LOOSE (default), STRICT, FORCE", result.stdout)
+        self.assertIn(" 5. [CMT] Commit accumulated changes (do not push)", result.stdout)
+        help_result = subprocess.run([sys.executable, str(self.bin / "apatch.py"), "--help"],
+                                     cwd=self.root, capture_output=True, text=True)
+        self.assertEqual(help_result.returncode, 0, help_result.stderr)
+        plain_help = re.sub(r"\x1b\[[0-9;]*m", "", help_result.stdout)
+        for fragment in ("LOOSE (default)", "STRICT", "FORCE", "op=3", "op=APL",
+                         "skipApproves=true", "default: false", "--op NUMBER|CODE"):
+            self.assertIn(fragment, plain_help)
+
+    def test_mnemonic_direct_actions_and_verbose_result_summary(self):
+        applied = self.invoke_cli("op=APL", "skipApproves=true")
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        self.assertIn("Selected action via op=APL (#3, APL)", applied.stdout)
+        self.assertIn("==> START 3 [APL]", applied.stdout)
+        self.assertIn("==> RESULT 3 [APL]", applied.stdout)
+        self.assertIn("Phase: new -> patch_applied", applied.stdout)
+        self.assertIn("Working-tree changes: 0 -> 2 path(s)", applied.stdout)
+        self.assertEqual((self.root / "existing.txt").read_text(), "updated\n")
+        checked = self.invoke_cli("--op=chk", "skipApproves=true")
+        self.assertEqual(checked.returncode, 0, checked.stderr)
+        self.assertIn("Selected action via op=CHK", checked.stdout)
+        self.assertIn("[OK] Project check completed", checked.stdout)
+        self.assertIn("Phase: patch_applied -> verified", checked.stdout)
+        committed = self.invoke_cli("op=CMT", "skipApproves=true")
+        self.assertEqual(committed.returncode, 0, committed.stderr)
+        self.assertIn("[OK] Git staging completed", committed.stdout)
+        self.assertIn("[OK] Git commit completed", committed.stdout)
+        self.assertIn("Phase: verified -> committed", committed.stdout)
+        self.assertIn("Working-tree changes: 2 -> 0 path(s)", committed.stdout)
+        pushed = self.invoke_cli("op=PSH", "skipApproves=true")
+        self.assertEqual(pushed.returncode, 0, pushed.stderr)
+        self.assertIn("[OK] Git push completed", pushed.stdout)
+        self.assertIn("Phase: committed -> pushed", pushed.stdout)
+
+    def test_mnemonic_interactive_selection_and_exit(self):
+        exited = self.invoke_cli("op=EXT")
+        self.assertEqual(exited.returncode, 0, exited.stderr)
+        self.assertIn("Exit selected. No action was run.", exited.stdout)
+        applied = self.invoke_loose("APL\nYES\n")
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        self.assertIn("==> START 3 [APL]", applied.stdout)
+        self.assertEqual((self.root / "new.txt").read_text(), "new\n")
+
+    def test_direct_action_without_approvals_applies_checks_commits_and_pushes(self):
+        applied = self.invoke_cli("op=3", "skipApproves=true")
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        self.assertIn("Selected action via op=3", applied.stdout)
+        self.assertIn("auto-approved: skipApproves=true", applied.stdout)
+        self.assertEqual((self.root / "new.txt").read_text(), "new\n")
+        self.assert_history(real_branch="main")
+        checked = self.invoke_cli("--op=4", "--skip-approves=true")
+        self.assertEqual(checked.returncode, 0, checked.stderr)
+        self.assertIn("Canonical checks passed", checked.stdout)
+        committed = self.invoke_cli("op=5", "skipApproves=true")
+        self.assertEqual(committed.returncode, 0, committed.stderr)
+        self.assertIn("Push remains a separate action", committed.stdout)
+        sha = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        self.assertNotEqual(sha, self.head)
+        remote_sha_before = command("git", "ls-remote", "--heads", "origin", "refs/heads/main",
+                                    cwd=self.root).stdout.split()[0]
+        self.assertEqual(remote_sha_before, self.head)
+        pushed = self.invoke_cli("op=6", "skipApproves=true")
+        self.assertEqual(pushed.returncode, 0, pushed.stderr)
+        self.assertIn("Push reconciled", pushed.stdout)
+        remote_sha_after = command("git", "ls-remote", "--heads", "origin", "refs/heads/main",
+                                   cwd=self.root).stdout.split()[0]
+        self.assertEqual(remote_sha_after, sha)
+        self.assertEqual(next(iter(json.loads(self.state_path.read_text())["workflows"].values()))["phase"],
+                         "pushed")
+
+    def test_direct_action_with_default_approvals_still_requires_confirmation(self):
+        result = self.invoke_cli("op=3", "skipApproves=false")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Interactive confirmation required", result.stderr)
+        self.assertFalse((self.root / "new.txt").exists())
+
+    def test_direct_action_rejects_invalid_options_and_strict_guard_is_not_skipped(self):
+        for arguments in (("op=10",), ("op=UNKNOWN",), ("skipApproves=sometimes",)):
+            with self.subTest(arguments=arguments):
+                result = self.invoke_cli(*arguments)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("error:", result.stderr)
+        rejected = self.invoke_cli("--strict", "op=5", "skipApproves=true")
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn("Action unavailable: requires phase: verified", rejected.stderr)
+
+    def test_direct_action_reapply_duplicate_auto_approves_duplicate_prompt(self):
+        self.history_path.write_text(f"{self.zip.name}\n")
+        result = self.invoke_cli("op=3", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Duplicate patch reapplication [auto-approved", result.stdout)
+        self.assertEqual(len(AppliedPatchHistory(self.history_path).entries), 1)
+
+    def test_direct_action_auto_approval_still_backs_up_overlapping_manual_edits(self):
+        (self.root / "existing.txt").write_text("manual changes before patch\n")
+        result = self.invoke_cli("op=3", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Backed up 1 overlapping file", result.stdout)
+        backups = list((self.root / ".apatch" / "backups").glob("overlap-*/existing.txt"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_text(), "manual changes before patch\n")
+        self.assertEqual((self.root / "existing.txt").read_text(), "updated\n")
+
+    def test_direct_action_auto_approval_never_overrides_non_fast_forward_safety(self):
+        self.assertEqual(self.invoke_cli("op=3", "skipApproves=true").returncode, 0)
+        self.assertEqual(self.invoke_cli("op=5", "skipApproves=true").returncode, 0)
+        other = self.base / "another_checkout"
+        command("git", "clone", "-b", "main", str(self.remote), str(other), cwd=self.base)
+        command("git", "config", "user.email", "other@example.test", cwd=other)
+        command("git", "config", "user.name", "Other Developer", cwd=other)
+        command("git", "commit", "--allow-empty", "-m", "Remote changed", cwd=other)
+        command("git", "push", "origin", "main", cwd=other)
+        remote_sha = command("git", "ls-remote", "--heads", "origin", "refs/heads/main",
+                             cwd=self.root).stdout.split()[0]
+        rejected = self.invoke_cli("op=6", "skipApproves=true")
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn("never force-pushes", rejected.stderr)
+        self.assertEqual(command("git", "ls-remote", "--heads", "origin", "refs/heads/main",
+                                 cwd=self.root).stdout.split()[0], remote_sha)
+
+    def test_shell_launcher_accepts_loose_without_explicit_handoff(self):
+        self.prepare_test_launcher()
+        home_dir = self.prepare_default_handoff_home()
+        for args in (("loose",), ("--loose",), (str(self.params), "loose")):
+            with self.subTest(args=args):
+                result = subprocess.run(["sh", str(self.bin / "apatch.sh"), *args],
+                                        cwd=self.root, env={**os.environ, "HOME": str(home_dir)},
+                                        input="0\n", capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("Mode: LOOSE", result.stdout)
+
+    def test_shell_launcher_handles_direct_actions_and_strict_mode(self):
+        self.prepare_test_launcher()
+        home_dir = self.prepare_default_handoff_home()
+        for arguments, expected_mode in (((), "LOOSE"),
+                                         (("op=0",), "LOOSE"),
+                                         (("strict", "op=0"), "STRICT"),
+                                         ((str(self.params), "strict", "op=0"), "STRICT"),
+                                         (("force", "op=0", "skipApproves=true"), "FORCE")):
+            with self.subTest(arguments=arguments):
+                result = subprocess.run(["sh", str(self.bin / "apatch.sh"), *arguments],
+                                        cwd=self.root, env={**os.environ, "HOME": str(home_dir)},
+                                        input="0\n" if not arguments else "", capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f"Mode: {expected_mode}", result.stdout)
+                if arguments and "op=0" in arguments:
+                    self.assertIn("Selected action via op=0", result.stdout)
+
+    def test_loose_applies_on_another_branch_and_commits_without_pushing(self):
+        applied = self.invoke_loose("3\nYES\n")
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        self.assertIn("not the planned branch", applied.stdout)
+        self.assert_history(real_branch="main")
+        checked = self.invoke_loose("4\n")
+        self.assertEqual(checked.returncode, 0, checked.stderr)
+        committed = self.invoke_loose("5\nYES\nYES\n")
+        self.assertEqual(committed.returncode, 0, committed.stderr)
+        self.assertIn("Push remains a separate action", committed.stdout)
+        local_sha = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        remote_before = command("git", "ls-remote", "--heads", "origin", "refs/heads/main",
+                                cwd=self.root).stdout.split()[0]
+        self.assertNotEqual(local_sha, remote_before)
+        self.assert_history(real_branch="main")
+        pushed = self.invoke_loose("6\nYES\n")
+        self.assertEqual(pushed.returncode, 0, pushed.stderr)
+        remote_after = command("git", "ls-remote", "--heads", "origin", "refs/heads/main",
+                               cwd=self.root).stdout.split()[0]
+        self.assertEqual(local_sha, remote_after)
+
+    def test_loose_accepts_manual_edits_after_verification(self):
+        self.assertEqual(self.invoke_loose("3\nYES\n").returncode, 0)
+        self.assertEqual(self.invoke_loose("4\n").returncode, 0)
+        (self.root / "manual.txt").write_text("added by developer\n")
+        (self.root / "existing.txt").write_text("edited after verification\n")
+        committed = self.invoke_loose("5\nYES\nYES\n")
+        self.assertEqual(committed.returncode, 0, committed.stderr)
+        self.assertIn("have not passed canonical checks", committed.stdout)
+        changed = command("git", "show", "--pretty=", "--name-only", "HEAD",
+                          cwd=self.root).stdout.splitlines()
+        self.assertEqual(set(changed), {"existing.txt", "new.txt", "manual.txt"})
+
+    def test_loose_preserves_preexisting_unrelated_edits_when_applying_patch(self):
+        (self.root / "manual.txt").write_text("untouched manual work\n")
+        applied = self.invoke_loose("3\nYES\n")
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        self.assertIn("pre-existing changed path", applied.stdout)
+        self.assertEqual((self.root / "manual.txt").read_text(), "untouched manual work\n")
+        self.assertEqual((self.root / "existing.txt").read_text(), "updated\n")
+        committed = self.invoke_loose("5\nYES\nYES\n")
+        self.assertEqual(committed.returncode, 0, committed.stderr)
+        changed = command("git", "show", "--pretty=", "--name-only", "HEAD",
+                          cwd=self.root).stdout.splitlines()
+        self.assertIn("manual.txt", changed)
+
+    def test_loose_allows_committing_on_different_branch_after_manual_switch(self):
+        self.assertEqual(self.invoke_loose("3\nYES\n").returncode, 0)
+        command("git", "switch", "-c", "feature/manual-destination", cwd=self.root)
+        result = self.invoke_loose("5\nYES\nYES\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("not the planned branch", result.stdout)
+        self.assert_history(real_branch="feature/manual-destination")
+        state = json.loads(self.state_path.read_text())
+        record = next(iter(state["workflows"].values()))
+        self.assertEqual(record["phase"], "committed")
+        self.assertEqual(record["applied_branch"], "feature/manual-destination")
+
+    def test_loose_manual_commit_does_not_invent_applied_patch_history(self):
+        (self.root / "manual.txt").write_text("manual\n")
+        command("git", "add", "manual.txt", cwd=self.root)
+        committed = self.invoke_loose("5\nYES\nYES\n")
+        self.assertEqual(committed.returncode, 0, committed.stderr)
+        self.assertFalse(self.history_path.exists())
+        self.assertEqual(command("git", "log", "-1", "--format=%s",
+                                 cwd=self.root).stdout.strip(), "test: apply guarded patch")
+
+    def test_loose_allows_multiple_patches_one_commit_with_overlap_backup(self):
+        self.assertEqual(self.invoke_loose("3\nYES\n").returncode, 0)
+        second_zip = self.base / "downloads" / "example_service-PATCH-batched.zip"
+        with zipfile.ZipFile(second_zip, "w") as archive:
+            archive.writestr("example_service/existing.txt", "updated twice\n")
+            archive.writestr("example_service/another.txt", "extra\n")
+        self.payload["patch_file"] = second_zip.name
+        self.payload["patch_sha256"] = hashlib.sha256(second_zip.read_bytes()).hexdigest()
+        self.params.write_text(json.dumps(self.payload))
+        applied = self.invoke_loose("3\nYES\nYES\n")
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        self.assertIn("pre-existing changed", applied.stdout)
+        self.assertIn("Backed up 1 overlapping file", applied.stdout)
+        self.assertEqual((self.root / "existing.txt").read_text(), "updated twice\n")
+        backups = list((self.root / ".apatch" / "backups").glob("overlap-*/existing.txt"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_text(), "updated\n")
+        self.assertEqual(len(AppliedPatchHistory(self.history_path).entries), 2)
+        self.assertEqual(self.invoke_loose("4\n").returncode, 0)
+        committed = self.invoke_loose("5\nYES\nYES\n")
+        self.assertEqual(committed.returncode, 0, committed.stderr)
+        self.assertIn("Associated pending patches", committed.stdout)
+        changed = command("git", "show", "--pretty=", "--name-only", "HEAD",
+                          cwd=self.root).stdout.splitlines()
+        self.assertEqual(set(changed), {"existing.txt", "new.txt", "another.txt"})
+        self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, "")
+        state = json.loads(self.state_path.read_text())
+        self.assertEqual(len(state["workflows"]), 2)
+        self.assertTrue(all(item["phase"] == "committed" for item in state["workflows"].values()))
+        self.assertEqual(self.invoke_loose("6\nYES\n").returncode, 0)
+        updated = json.loads(self.state_path.read_text())
+        self.assertTrue(all(item["phase"] == "pushed" for item in updated["workflows"].values()))
+
+    def test_loose_can_push_multiple_local_commits_together(self):
+        self.assertEqual(self.invoke_loose("3\nYES\n").returncode, 0)
+        self.assertEqual(self.invoke_loose("5\nYES\nYES\n").returncode, 0)
+        first_sha = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        second_zip = self.base / "downloads" / "example_service-PATCH-followup.zip"
+        with zipfile.ZipFile(second_zip, "w") as archive:
+            archive.writestr("example_service/followup.txt", "followup\n")
+        self.payload["patch_file"] = second_zip.name
+        self.payload["patch_sha256"] = hashlib.sha256(second_zip.read_bytes()).hexdigest()
+        self.payload["base_commit"] = first_sha
+        self.params.write_text(json.dumps(self.payload))
+        self.assertEqual(self.invoke_loose("3\nYES\n").returncode, 0)
+        self.assertEqual(self.invoke_loose("5\nYES\nYES\n").returncode, 0)
+        second_sha = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        self.assertNotEqual(first_sha, second_sha)
+        self.assertEqual(self.invoke_loose("6\nYES\n").returncode, 0)
+        state = json.loads(self.state_path.read_text())
+        self.assertEqual(len(state["workflows"]), 2)
+        self.assertTrue(all(item["phase"] == "pushed" for item in state["workflows"].values()))
+        self.assertEqual(command("git", "ls-remote", "--heads", "origin", "refs/heads/main",
+                                 cwd=self.root).stdout.split()[0], second_sha)
+
+    def test_loose_rejects_overwrite_when_developer_declines(self):
+        self.assertEqual(self.invoke_loose("3\nYES\n").returncode, 0)
+        second_zip = self.base / "downloads" / "example_service-PATCH-overlap.zip"
+        with zipfile.ZipFile(second_zip, "w") as archive:
+            archive.writestr("example_service/existing.txt", "should not overwrite\n")
+        self.payload["patch_file"] = second_zip.name
+        self.payload["patch_sha256"] = hashlib.sha256(second_zip.read_bytes()).hexdigest()
+        self.params.write_text(json.dumps(self.payload))
+        rejected = self.invoke_loose("3\nno\n")
+        self.assertEqual(rejected.returncode, 0, rejected.stderr)
+        self.assertEqual((self.root / "existing.txt").read_text(), "updated\n")
+        self.assertEqual(len(AppliedPatchHistory(self.history_path).entries), 1)
+
+    def test_loose_whitespace_warnings_do_not_block_checks_or_commit(self):
+        self.assertEqual(self.invoke_loose("3\nYES\n").returncode, 0)
+        (self.root / "existing.txt").write_text("updated\n\n")
+        checked = self.invoke_loose("4\n")
+        self.assertEqual(checked.returncode, 0, checked.stderr)
+        self.assertIn("Git whitespace check reported problems", checked.stdout)
+        committed = self.invoke_loose("5\nYES\nYES\n")
+        self.assertEqual(committed.returncode, 0, committed.stderr)
+        self.assertIn("Staged changes contain Git whitespace warnings", committed.stdout)
+
+    def test_loose_never_pushes_diverged_remote_history(self):
+        self.assertEqual(self.invoke_loose("3\nYES\n").returncode, 0)
+        self.assertEqual(self.invoke_loose("5\nYES\nYES\n").returncode, 0)
+        local_sha = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        other = self.base / "another_checkout"
+        command("git", "clone", "-b", "main", str(self.remote), str(other), cwd=self.base)
+        command("git", "config", "user.email", "other@example.test", cwd=other)
+        command("git", "config", "user.name", "Other Developer", cwd=other)
+        command("git", "commit", "--allow-empty", "-m", "Divergent remote change", cwd=other)
+        command("git", "push", "origin", "main", cwd=other)
+        remote_sha = command("git", "ls-remote", "--heads", "origin", "refs/heads/main",
+                             cwd=self.root).stdout.split()[0]
+        self.assertNotEqual(local_sha, remote_sha)
+        rejected = self.invoke_loose("6\n")
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn("never force-pushes", rejected.stderr)
+        self.assertEqual(command("git", "ls-remote", "--heads", "origin", "refs/heads/main",
+                                 cwd=self.root).stdout.split()[0], remote_sha)
+
     def test_shell_launcher_accepts_force_as_first_or_second_argument(self):
-        executable = self.bin / ".venv" / "bin" / "python"
-        executable.parent.mkdir(parents=True)
-        executable.symlink_to(sys.executable)
+        self.prepare_test_launcher()
         for args in (("force", str(self.params)), (str(self.params), "force"),
                      ("--force", str(self.params))):
             with self.subTest(args=args):
@@ -226,14 +592,11 @@ class LocalGitWorkflowTest(unittest.TestCase):
                 self.assertIn("Mode: FORCE", result.stdout)
 
     def test_default_handoff_uses_current_project_directory(self):
-        executable = self.bin / ".venv" / "bin" / "python"
-        executable.parent.mkdir(parents=True)
-        executable.symlink_to(sys.executable)
-        downloads = self.base / "Downloads"
-        downloads.mkdir()
+        self.prepare_test_launcher()
+        home_dir = self.prepare_default_handoff_home()
+        downloads = home_dir / "Downloads"
         inferred_handoff = downloads / f"{self.root.name}_patch_params.json"
-        shutil.copy2(self.params, inferred_handoff)
-        environment = {**os.environ, "HOME": str(self.base)}
+        environment = {**os.environ, "HOME": str(home_dir)}
         cases = (
             (["sh", str(self.bin / "apatch.sh")], False),
             (["sh", str(self.bin / "apatch.sh"), "force"], True),
@@ -251,7 +614,9 @@ class LocalGitWorkflowTest(unittest.TestCase):
                 self.assertIn(inferred_handoff.name, self.log_path.read_text())
 
     def test_default_handoff_does_not_fall_back_to_unprefixed_name(self):
-        environment = {**os.environ, "HOME": str(self.base)}
+        home_dir = self.base / "no_handoff_home"
+        home_dir.mkdir()
+        environment = {**os.environ, "HOME": str(home_dir)}
         result = subprocess.run([sys.executable, str(self.bin / "apatch.py")],
                                 cwd=self.root, env=environment,
                                 input="0\n", capture_output=True, text=True)
@@ -411,7 +776,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
     def test_apply_patch_to_main_and_verify_without_creating_feature_branch(self):
         menu = self.invoke("0\n")
         self.assertEqual(menu.returncode, 0, menu.stderr)
-        self.assertIn(" 3. Apply patch to current branch (main)\n", menu.stdout)
+        self.assertIn(" 3. [APL] Apply patch to current branch (main)\n", menu.stdout)
         applied = self.invoke("3\nYES\n")
         self.assertEqual(applied.returncode, 0, applied.stderr)
         self.assertIn("Apply", applied.stdout)
@@ -450,7 +815,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(created.returncode, 0, created.stderr)
         command("git", "switch", "main", cwd=self.root)
         menu = self.invoke("0\n")
-        self.assertIn(" 3. Apply patch to current branch (main)\n", menu.stdout)
+        self.assertIn(" 3. [APL] Apply patch to current branch (main)\n", menu.stdout)
         applied = self.invoke("3\nYES\n")
         self.assertEqual(applied.returncode, 0, applied.stderr)
         self.assertEqual(self.invoke("4\n").returncode, 0)
@@ -460,7 +825,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
         conf.write_text(conf.read_text().replace("require_patch_feature_branch = false",
                                                 "require_patch_feature_branch = true"))
         menu = self.invoke("0\n")
-        self.assertIn(" 3. Apply patch to current branch (main) * (requires current branch: "
+        self.assertIn(" 3. [APL] Apply patch to current branch (main) * (requires current branch: "
                       + self.payload["feature_branch"] + ")", menu.stdout)
         blocked = self.invoke("3\n")
         self.assertEqual(blocked.returncode, 2, blocked.stderr)
@@ -972,6 +1337,20 @@ class LocalGitWorkflowTest(unittest.TestCase):
 
 
 class ValidationTest(unittest.TestCase):
+    def test_every_action_code_maps_to_its_number(self):
+        self.assertEqual(len(ACTION_CODES), 10)
+        self.assertEqual(len(set(ACTION_CODES)), len(ACTION_CODES))
+        for index, acronym in enumerate(ACTION_CODES):
+            with self.subTest(action=acronym):
+                self.assertGreaterEqual(len(acronym), 2)
+                self.assertLessEqual(len(acronym), 4)
+                self.assertTrue(acronym.isupper())
+                self.assertEqual(action_number(acronym), index)
+                self.assertEqual(action_number(acronym.lower()), index)
+                self.assertEqual(action_number(str(index)), index)
+        with self.assertRaises(ValueError):
+            action_number("UNKNOWN")
+
     def test_relative_paths(self):
         for value in ["../foo", "x/../y", "x/.git/config", "/tmp/file", "x//y", "x\\y"]:
             with self.subTest(value=value), self.assertRaises(Abort):
