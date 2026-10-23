@@ -152,11 +152,15 @@ The action numbers are consistent across modes, although their behavior and phas
 | `6` | `PSH` | **Push** committed history on the current branch. | Retry/reconcile a previous push. |
 | `7` | `PR` | Create/find a pull request. | Create/find a pull request. |
 | `8` | `MRG` | Merge a reviewed pull request. | Merge a reviewed pull request. |
-| `9` | `SYN` | Synchronize the local base branch after merge. | Synchronize the local base branch after merge. |
+| `9` | `SYN` | Switch to and fast-forward the local base branch; reconcile PR status when GitHub is available. | FORCE: same as LOOSE. STRICT: requires an already confirmed merge. |
 
 STRICT requires the expected phase and Git state for each action. LOOSE allows manually changed files and an alternative branch, but backs up overlapping modifications before applying ZIP replacements. FORCE supports explicit reconciliation of existing Git operations. All modes retain archive integrity checks, safe Git operations, and GitHub review/CI requirements.
 
 An interrupted push can be retried without creating a second commit. If the remote merge succeeds but local synchronization fails, synchronization can be resumed separately.
+
+In LOOSE and FORCE, `SYN` first verifies that the working tree is clean, switches to the configured local base branch, and updates it from the configured Git remote using fast-forward-only operations. If the local base branch does not exist, it fetches and creates a tracking branch. This Git synchronization does not require GitHub CLI authentication or API availability. After the Git update, the command attempts a single GitHub PR listing to confirm a matching merged PR. If that request fails, the PR remains open, or PR identity differs, `SYN` reports that PR reconciliation is pending and preserves the existing workflow phase. A successful Git update is not proof that the PR was merged. The new `local_base_head` checkpoint records the synchronized local commit, so a later `SYN` can retry reconciliation. A Git fetch/pull failure remains fatal; if the local branch was already switched, the command explicitly reports the incomplete remote update.
+
+STRICT retains its guarded behavior: the workflow must already be in the `merged` phase, and GitHub must confirm the merge before synchronization is accepted. Neither mode converts an unverified PR to `merged` or `synced` merely because a local branch was updated.
 
 ### Starting another patch before the previous cycle finishes
 

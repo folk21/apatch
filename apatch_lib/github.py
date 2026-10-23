@@ -8,17 +8,22 @@ from .model import Abort
 
 
 def repository(config, root):
-    origin = output(["git", "remote", "get-url", config.remote], root)
-    match = re.fullmatch(r"(?:git@github\.com:|ssh://git@github\.com/|https://github\.com/)"
-                         r"([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?/?", origin)
-    if not match:
-        raise Abort("Only explicitly configured github.com Git remotes are supported")
-    expected = match.group(1)
+    expected = remote_repository(config, root)
     run(["gh", "auth", "status"], root)
     resolved = output(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], root)
     if resolved.lower() != expected.lower():
         raise Abort(f"Git remote {expected} and GitHub repository {resolved} disagree")
     return resolved
+
+
+def remote_repository(config, root):
+    """Read the repository identity from Git without contacting the GitHub API."""
+    origin = output(["git", "remote", "get-url", config.remote], root)
+    match = re.fullmatch(r"(?:git@github\.com:|ssh://git@github\.com/|https://github\.com/)"
+                         r"([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:\.git)?/?", origin)
+    if not match:
+        raise Abort("Only explicitly configured github.com Git remotes are supported")
+    return match.group(1)
 
 
 def pr_list(config, root, repo, branch):
@@ -105,20 +110,47 @@ def merge_pr(config, handoff, root, record, save_checkpoint):
     print("GitHub merge confirmed. Local main synchronization is a separate recoverable step.")
 
 
+def sync_local_base(config, root):
+    """Synchronize the configured base branch using Git, independently of PR state."""
+    require_clean(root)
+    local_branch = run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{config.base}"], root,
+                       check=False).returncode == 0
+    if local_branch:
+        run(["git", "switch", config.base], root)
+        try:
+            run(["git", "pull", "--ff-only", config.remote, config.base], root)
+        except Abort:
+            print(f"WARNING: Switched to {config.base}, but remote synchronization is incomplete.")
+            raise
+    else:
+        run(["git", "fetch", "--no-tags", config.remote,
+             f"refs/heads/{config.base}:refs/remotes/{config.remote}/{config.base}"], root)
+        run(["git", "switch", "--track", "-c", config.base, f"{config.remote}/{config.base}"], root)
+    print(f"Local {config.base} synchronized with {config.remote}/{config.base}.")
+    return head(root)
+
+
+def confirmed_merged_pr(config, handoff, root, record):
+    """Check merge status via one GitHub query without performing Git operations."""
+    repo = remote_repository(config, root)
+    merged = [pr for pr in pr_list(config, root, repo, handoff.branch) if pr["state"] == "MERGED"]
+    if len(merged) != 1:
+        raise Abort("GitHub has not confirmed exactly one merged PR for this feature branch")
+    pr = merged[0]
+    if record.get("pr_number") is not None and record["pr_number"] != pr["number"]:
+        raise Abort("Merged PR differs from the recorded PR number")
+    if record.get("pushed_sha") and record["pushed_sha"] != pr["headRefOid"]:
+        raise Abort("Merged PR points to a different feature branch revision")
+    return pr
+
+
 def sync_base(config, handoff, root, record, save_checkpoint):
     require_clean(root)
     repo = repository(config, root)
     details = pr_details(root, repo, record["pr_number"])
     if details["state"] != "MERGED":
         raise Abort("Recorded merge is not confirmed by GitHub")
-    run(["git", "fetch", config.remote, config.base], root)
-    local_branch = run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{config.base}"], root,
-                       check=False).returncode == 0
-    if local_branch:
-        run(["git", "switch", config.base], root)
-    else:
-        run(["git", "switch", "--track", "-c", config.base, f"{config.remote}/{config.base}"], root)
-    run(["git", "pull", "--ff-only", config.remote, config.base], root)
+    record["local_base_head"] = sync_local_base(config, root)
     record["phase"] = "synced"
     save_checkpoint()
     print(f"Local {config.base} is synchronized after GitHub PR merge.")
