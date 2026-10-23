@@ -415,7 +415,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertFalse((self.root / "new.txt").exists())
 
     def test_direct_action_rejects_invalid_options_and_strict_guard_is_not_skipped(self):
-        for arguments in (("op=10",), ("op=UNKNOWN",), ("skipApproves=sometimes",)):
+        for arguments in (("op=11",), ("op=UNKNOWN",), ("skipApproves=sometimes",)):
             with self.subTest(arguments=arguments):
                 result = self.invoke_cli(*arguments)
                 self.assertEqual(result.returncode, 2)
@@ -816,7 +816,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
                                  cwd=self.root).stdout.split()[0], record["pushed_sha"])
         self.assert_history(real_branch="main")
 
-    def test_new_patch_cycle_requests_confirmation_and_preserves_previous_state(self):
+    def test_new_patch_cycle_does_not_supersede_when_only_inspected_or_unavailable(self):
         self.assertEqual(self.invoke("3\nYES\n").returncode, 0)
         original = json.loads(self.state_path.read_text())
         second_zip = self.base / "downloads" / "example_service-PATCH-next.zip"
@@ -825,22 +825,17 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.payload["patch_file"] = second_zip.name
         self.payload["patch_sha256"] = hashlib.sha256(second_zip.read_bytes()).hexdigest()
         self.params.write_text(json.dumps(self.payload))
-        cancelled = self.invoke("no\n")
-        self.assertEqual(cancelled.returncode, 2)
-        self.assertIn("New patch cycle cancelled", cancelled.stderr)
+        exited = self.invoke("0\n")
+        self.assertEqual(exited.returncode, 0, exited.stderr)
         self.assertEqual(json.loads(self.state_path.read_text()), original)
-        accepted = self.invoke("YES\n0\n")
-        self.assertEqual(accepted.returncode, 0, accepted.stderr)
-        self.assertIn("Unfinished workflows", accepted.stdout)
-        self.assertIn(second_zip.name, accepted.stdout)
-        new_state = json.loads(self.state_path.read_text())
-        self.assertEqual(len(new_state["workflows"]), 1)
-        previous = next(iter(new_state["workflows"].values()))
-        self.assertEqual(previous["phase"], "patch_applied")
-        self.assertEqual(previous["superseded_patch"], second_zip.name)
-        menu_again = self.invoke("0\n")
-        self.assertEqual(menu_again.returncode, 0, menu_again.stderr)
-        self.assertNotIn("Unfinished workflows", menu_again.stdout)
+        inspected = self.invoke("10\n")
+        self.assertEqual(inspected.returncode, 0, inspected.stderr)
+        self.assertIn("PATCH STATUS 10 [STS]", inspected.stdout)
+        self.assertEqual(json.loads(self.state_path.read_text()), original)
+        unavailable = self.invoke_cli("--strict", "op=3")
+        self.assertEqual(unavailable.returncode, 2)
+        self.assertIn("Action unavailable:", unavailable.stderr)
+        self.assertEqual(json.loads(self.state_path.read_text()), original)
 
     def test_apply_patch_to_main_and_verify_without_creating_feature_branch(self):
         menu = self.invoke("0\n")
@@ -1182,6 +1177,122 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(next(iter(state["workflows"].values()))["phase"], "pushed")
         self.assert_history(real_branch=self.payload["feature_branch"])
 
+    def test_status_is_read_only_before_first_workflow_and_does_not_need_zip(self):
+        self.zip.unlink()
+        exclude = self.root / ".git" / "info" / "exclude"
+        before_exclude = exclude.read_bytes()
+        before_ref = command("git", "rev-parse", "HEAD", cwd=self.root).stdout
+        result = self.invoke_cli("op=STS", "--strict")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("PATCH STATUS 10 [STS]", result.stdout)
+        self.assertIn("Recorded phase: new", result.stdout)
+        self.assertIn("Next suggested: 1 [BRN]", result.stdout)
+        self.assertFalse(self.state_path.exists())
+        self.assertFalse(self.lock_path.exists())
+        self.assertFalse(self.log_path.exists())
+        self.assertEqual(exclude.read_bytes(), before_exclude)
+        self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout, before_ref)
+
+    def test_status_reports_applied_patch_and_next_action_without_mutation(self):
+        created = self.invoke_cli("--strict", "op=BAP", "skipApproves=true")
+        self.assertEqual(created.returncode, 0, created.stderr)
+        self.assertIn("Next suggested: 4 [CHK]", created.stdout)
+        saved_state = self.state_path.read_bytes()
+        saved_history = self.history_path.read_bytes()
+        saved_lock = self.lock_path.read_bytes()
+        before_status = command("git", "status", "--porcelain", cwd=self.root).stdout
+        before_refs = command("git", "show-ref", cwd=self.root).stdout
+        self.zip.unlink()
+        result = self.invoke_cli("--strict", "op=10")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Branch origin: CREATED [RECORDED]", result.stdout)
+        self.assertIn("Patch applied: YES [RECORDED]", result.stdout)
+        self.assertIn("Commit: PENDING", result.stdout)
+        self.assertIn("Pull request: UNKNOWN [UNKNOWN]", result.stdout)
+        self.assertIn("Next suggested: 4 [CHK]", result.stdout)
+        self.assertEqual(self.state_path.read_bytes(), saved_state)
+        self.assertEqual(self.history_path.read_bytes(), saved_history)
+        self.assertEqual(self.lock_path.read_bytes(), saved_lock)
+        self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, before_status)
+        self.assertEqual(command("git", "show-ref", cwd=self.root).stdout, before_refs)
+
+    def test_status_without_handoff_resolves_unique_stored_patch(self):
+        self.assertEqual(self.invoke_cli("--strict", "op=BAP", "skipApproves=true").returncode, 0)
+        self.params.unlink()
+        result = subprocess.run([sys.executable, str(self.bin / "apatch.py"), "op=STS"],
+                                cwd=self.root, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(self.zip.name, result.stdout)
+        self.assertIn("Next suggested: 4 [CHK]", result.stdout)
+
+    def test_status_requires_explicit_selection_for_ambiguous_workflows(self):
+        self.assertEqual(self.invoke_cli("--strict", "op=BAP", "skipApproves=true").returncode, 0)
+        data = json.loads(self.state_path.read_text())
+        another = dict(next(iter(data["workflows"].values())))
+        another["patch_file"] = "another-patch.zip"
+        data["workflows"]["independent-workflow-key"] = another
+        self.state_path.write_text(json.dumps(data))
+        self.params.unlink()
+        base_command = [sys.executable, str(self.bin / "apatch.py")]
+        ambiguous = subprocess.run([*base_command, "op=STS"], cwd=self.root,
+                                   capture_output=True, text=True)
+        self.assertEqual(ambiguous.returncode, 2)
+        self.assertIn("Ambiguous patch workflow", ambiguous.stderr)
+        selected = subprocess.run([*base_command, "op=STS", "patch=another-patch.zip"],
+                                  cwd=self.root, capture_output=True, text=True)
+        self.assertEqual(selected.returncode, 0, selected.stderr)
+        self.assertIn("Patch: another-patch.zip", selected.stdout)
+
+    def test_missing_recorded_commit_is_conflict_not_next_action(self):
+        self.assertEqual(self.invoke_cli("--strict", "op=BAP", "skipApproves=true").returncode, 0)
+        data = json.loads(self.state_path.read_text())
+        record = next(iter(data["workflows"].values()))
+        record["phase"] = "committed"
+        record["commit_sha"] = "f" * 40
+        self.state_path.write_text(json.dumps(data))
+        result = self.invoke_cli("--strict", "op=STS")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Commit: ffffffffffff [CONFLICT]", result.stdout)
+        self.assertIn("Next suggested: NONE", result.stdout)
+
+    def test_interactive_status_selection_does_not_persist_state(self):
+        status = self.invoke("10\n")
+        self.assertEqual(status.returncode, 0, status.stderr)
+        self.assertIn("10. [STS]", status.stdout)
+        self.assertIn("PATCH STATUS 10 [STS]", status.stdout)
+        self.assertFalse(self.state_path.exists())
+        self.assertFalse(self.lock_path.exists())
+
+    def test_status_does_not_invent_legacy_branch_provenance(self):
+        self.assertEqual(self.invoke_cli("--strict", "op=BAP", "skipApproves=true").returncode, 0)
+        data = json.loads(self.state_path.read_text())
+        next(iter(data["workflows"].values())).pop("branch_origin")
+        self.state_path.write_text(json.dumps(data))
+        result = self.invoke_cli("--strict", "op=STS")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Branch origin: UNKNOWN [UNKNOWN]", result.stdout)
+
+    def test_interactive_status_does_not_approve_a_changed_handoff(self):
+        self.assertEqual(self.invoke_cli("--strict", "op=BAP", "skipApproves=true").returncode, 0)
+        self.payload["commit_message"] = "New unapproved message"
+        self.params.write_text(json.dumps(self.payload))
+        state_bytes = self.state_path.read_bytes()
+        status = self.invoke("STS\n")
+        self.assertEqual(status.returncode, 0, status.stderr)
+        self.assertIn("PATCH STATUS 10 [STS]", status.stdout)
+        self.assertNotIn("Use the updated handoff", status.stdout)
+        self.assertEqual(self.state_path.read_bytes(), state_bytes)
+
+    def test_status_does_not_claim_checks_passed_after_unverified_loose_commit(self):
+        self.assertEqual(self.invoke_loose("3\nYES\n").returncode, 0)
+        committed = self.invoke_loose("5\nYES\nYES\n")
+        self.assertEqual(committed.returncode, 0, committed.stderr)
+        result = self.invoke_cli("--loose", "op=STS")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Recorded phase: committed", result.stdout)
+        self.assertIn("Checks passed: UNKNOWN [UNKNOWN]", result.stdout)
+        self.assertIn("Next suggested: 6 [PSH]", result.stdout)
+
     def test_log_records_patch_identity_and_commit_body_only_on_commit(self):
         self.payload["commit_message"] += "\nSecret-in-commit-body-should-not-be-logged"
         self.params.write_text(json.dumps(self.payload))
@@ -1407,7 +1518,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
 
 class ValidationTest(unittest.TestCase):
     def test_every_action_code_maps_to_its_number(self):
-        self.assertEqual(len(ACTION_CODES), 10)
+        self.assertEqual(len(ACTION_CODES), 11)
         self.assertEqual(len(set(ACTION_CODES)), len(ACTION_CODES))
         for index, acronym in enumerate(ACTION_CODES):
             with self.subTest(action=acronym):

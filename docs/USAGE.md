@@ -54,9 +54,33 @@ Every menu action can be invoked directly by number or by its mnemonic code (2-4
 
 # Use a nondefault handoff file with automation parameters.
 /path/to/apatch/apatch.sh /path/to/change_params.json strict op=4 skipApproves=false
+
+# Inspect the current patch without modifying Git, checkpoints, or history.
+/path/to/apatch/apatch.sh op=STS
+/path/to/apatch/apatch.sh strict op=10
+
+# Inspect an unambiguous stored patch without its original handoff or ZIP.
+/path/to/apatch/apatch.sh op=STS patch=example-PATCH-01.zip
 ```
 
-`op=0` or `op=EXT` exits. Numbers `1`-`9` and their codes select the corresponding action for the current mode. Without `op`, the menu stays interactive and accepts either numbers or codes (for example `APL`). The Python entry point also accepts `--op=3`, `--op=APL`, `--skip-approves=true`, `--strict`, `--loose`, and `--force`.
+`op=0` or `op=EXT` exits. Numbers `1`-`9` retain their original operations; `10`/`STS` is the read-only status command. Without `op`, the menu stays interactive and accepts either numbers or codes (for example `APL`). The Python entry point also accepts `--op=3`, `--op=APL`, `--op=STS`, `--skip-approves=true`, `--strict`, `--loose`, and `--force`.
+
+### Current patch status: `10 [STS]`
+
+`STS` reports the patch identity, planned and actual branch, recorded phase, branch creation/reuse provenance (when recorded), application, checks, commit, push, PR, merge, and local-base synchronization. It suggests the next potential operation by its original number and mnemonic. The suggestion is guidance, **not** a bypass of normal action guards.
+
+Each status fact carries an evidence label:
+
+| Label | Meaning |
+| --- | --- |
+| `VERIFIED` | Confirmed through available, local Git inspection. |
+| `RECORDED` | Recorded in the checkpoint, but not independently verified. |
+| `UNKNOWN` | Insufficient trustworthy evidence (including missing fields in older states). |
+| `CONFLICT` | Available local Git facts contradict the saved checkpoint. |
+
+Status does not contact GitHub or the Git remote by default. A recorded PR number or pushed SHA is not proof of its current remote state. It does not require the original ZIP and does not write to the worktree, Git refs, state file, history, or logs. When the default handoff JSON is absent, `STS` selects an unambiguous existing workflow for the current repository. For multiple matches, provide the original handoff JSON or `patch=NAME.zip`; if the patch basename itself is ambiguous, supply the handoff. Status cannot infer operations performed manually but never checkpointed.
+
+After a successful, state-changing action, the result footer includes a potential next operation. A cancelled or unchanged action reports that no success-path recommendation can be assumed. A failed action stops with a nonzero exit code.
 
 **`skipApproves=false` is the default.** With `skipApproves=false`, direct actions still request their normal confirmations. With `skipApproves=true`, the tool records and auto-approves confirmations, including warnings about a different destination branch, duplicate patches, manual changes, and the current Git remote. It does **not** skip ZIP validation, working-tree checks, backup creation for overlapping edits, remote fast-forward checks, STRICT phase gates, or GitHub review/CI policies. All files selected by a commit action are still staged together. Review the affected paths and repository destination before running unattended actions; there is no automatic rollback of an executed commit or push.
 
