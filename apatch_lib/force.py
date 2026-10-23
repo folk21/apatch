@@ -369,7 +369,7 @@ class ForceActions:
             self.checkpoint("pr_created", "GitHub PR adopted", applied_branch=handoff.branch,
                             pr_number=pr["number"], pushed_sha=pr["headRefOid"])
         else:
-            details = github.pr_details(w.root, repo, pr["number"])
+            details = github.pr_details(w.config, w.root, repo, pr["number"])
             if details["state"] != "MERGED" or not details.get("mergedAt"):
                 raise Abort("GitHub does not confirm PR merge")
             self.checkpoint("merged", "GitHub merge adopted", applied_branch=handoff.branch,

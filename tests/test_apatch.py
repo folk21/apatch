@@ -14,6 +14,7 @@ import unittest
 import zipfile
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 TOOL = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL))
@@ -1529,6 +1530,106 @@ class GithubGuardTest(unittest.TestCase):
         self.assertEqual(record["pr_number"], 4)
         self.assertTrue(any(call.args[0][:3] == ["gh", "pr", "create"] for call in fake_run.call_args_list))
         self.assertFalse(any(call.args[0][:3] == ["gh", "pr", "merge"] for call in fake_run.call_args_list))
+
+    def test_pr_creation_uses_one_initial_listing_including_other_bases(self):
+        from apatch_lib import github
+        record = {"phase": "pushed", "pushed_sha": self.sha}
+        created = dict(self.details)
+        with patch.object(github, "require_clean"), patch.object(github, "head", return_value=self.sha), \
+             patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "gh_output", side_effect=["[]", json.dumps([created])]) as listing, \
+             patch.object(github, "gh_run") as execute, patch.object(github, "confirm", return_value=True):
+            github.create_pr(self.config, self.handoff, self.root, record, lambda: None)
+        self.assertEqual(record["pr_number"], created["number"])
+        self.assertEqual(listing.call_count, 2)
+        for listing_call in listing.call_args_list:
+            args = listing_call.args[2]
+            self.assertEqual(args[:3], ["gh", "pr", "list"])
+            self.assertEqual(args[args.index("--state") + 1], "all")
+            self.assertIn("--limit", args)
+        self.assertEqual(execute.call_count, 1)
+        self.assertEqual(execute.call_args.args[2][:3], ["gh", "pr", "create"])
+
+    def test_existing_matching_pr_is_adopted_without_creation(self):
+        from apatch_lib import github
+        record = {"phase": "pushed", "pushed_sha": self.sha}
+        with patch.object(github, "require_clean"), patch.object(github, "head", return_value=self.sha), \
+             patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "gh_output", return_value=json.dumps([self.details])) as listing, \
+             patch.object(github, "gh_run") as execute, patch.object(github, "confirm") as approval:
+            github.create_pr(self.config, self.handoff, self.root, record, lambda: None)
+        self.assertEqual(record["phase"], "pr_created")
+        self.assertEqual(record["pr_number"], self.details["number"])
+        listing.assert_called_once()
+        execute.assert_not_called()
+        approval.assert_not_called()
+
+    def test_open_pr_with_different_base_blocks_creation_without_second_lookup(self):
+        from apatch_lib import github
+        wrong_base = dict(self.details, baseRefName="develop")
+        record = {"phase": "pushed", "pushed_sha": self.sha}
+        with patch.object(github, "require_clean"), patch.object(github, "head", return_value=self.sha), \
+             patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "gh_output", return_value=json.dumps([wrong_base])) as listing, \
+             patch.object(github, "gh_run") as execute:
+            with self.assertRaisesRegex(Abort, "another base"):
+                github.create_pr(self.config, self.handoff, self.root, record, lambda: None)
+        listing.assert_called_once()
+        execute.assert_not_called()
+        self.assertEqual(record["phase"], "pushed")
+
+    def test_pr_create_timeout_can_be_reconciled_on_next_run_without_duplicate(self):
+        from apatch_lib import github
+        record = {"phase": "pushed", "pushed_sha": self.sha}
+        persist = []
+        with patch.object(github, "require_clean"), patch.object(github, "head", return_value=self.sha), \
+             patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "gh_output", side_effect=["[]", json.dumps([self.details])]) as listing, \
+             patch.object(github, "gh_run", side_effect=Abort("GitHub command timed out")) as execute, \
+             patch.object(github, "confirm", return_value=True):
+            with self.assertRaisesRegex(Abort, "timed out"):
+                github.create_pr(self.config, self.handoff, self.root, record,
+                                 lambda: persist.append(dict(record)))
+            self.assertEqual(record["phase"], "pushed")
+            self.assertEqual(persist, [])
+            github.create_pr(self.config, self.handoff, self.root, record,
+                             lambda: persist.append(dict(record)))
+        self.assertEqual(record["phase"], "pr_created")
+        self.assertEqual(record["pr_number"], self.details["number"])
+        self.assertEqual(len(persist), 1)
+        self.assertEqual(execute.call_count, 1)
+        self.assertEqual(listing.call_count, 2)
+
+    def test_all_gh_commands_receive_configured_timeout(self):
+        from apatch_lib import github
+        from dataclasses import replace
+        config = replace(self.config, github_timeout_seconds=19)
+        with patch.object(github, "run") as fake_run, patch.object(github, "output", return_value="ok") as fake_output:
+            github.gh_run(config, self.root, ["gh", "auth", "status"])
+            github.gh_output(config, self.root, ["gh", "pr", "list"])
+        self.assertEqual(fake_run.call_args.kwargs["timeout"], 19)
+        self.assertEqual(fake_output.call_args.kwargs["timeout"], 19)
+
+    def test_timeout_raises_abort_without_waiting_indefinitely(self):
+        from apatch_lib.gitutil import run
+        with patch("apatch_lib.gitutil.subprocess.run",
+                   side_effect=subprocess.TimeoutExpired(["gh", "pr", "list"], 0.1)):
+            with self.assertRaisesRegex(Abort, "timed out after 0.1s"):
+                run(["gh", "pr", "list"], self.root, timeout=0.1)
+
+    def test_global_github_timeout_is_validated(self):
+        original = (TOOL / "apatch.conf").read_text()
+        for value in ("0", "4", "301", "one-minute"):
+            with self.subTest(value=value), tempfile.TemporaryDirectory() as folder:
+                path = Path(folder)
+                (path / "apatch.conf").write_text(original.replace("github_timeout_seconds = 45",
+                                                                   f"github_timeout_seconds = {value}"))
+                with self.assertRaisesRegex(Abort, "github_timeout_seconds"):
+                    load_config(path)
 
     def test_sync_status_uses_one_pr_listing_and_validates_identity(self):
         from unittest.mock import patch
