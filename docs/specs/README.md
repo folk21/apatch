@@ -1,17 +1,20 @@
 # SDD Specification Index
 
-This directory will hold normative specifications for `apatch` behavior. **No active specification has been created yet.** This index establishes organization and status only; it is not a product specification, implementation plan, or roadmap.
+This directory holds proposed normative specifications and implementation plans for `apatch`. Documents marked **DRAFT** are under discussion and do not authorize implementation.
 
 ## Status
 
 | Category | Current status |
 | --- | --- |
-| Active normative specifications | None |
-| Active implementation plans | None |
+| Accepted normative specifications | None yet |
+| Draft general specification | [APATCH-SPEC-001 — Patch Workflow and Quality Orchestrator](active/spec-apatch-orchestrator.md) |
+| Draft first-priority sub-specification | [APATCH-SUB-001 — Workflow Control, Patch Ordering, and Sequences](active/subspecs/subspec-01-workflow-control.md) |
+| Draft execution-history sub-specification | [APATCH-SUB-002 — Execution History and Repository Reconciliation](active/subspecs/subspec-02-state-history-audit.md) |
+| Advisory implementation plan | [APATCH-PLAN-001](plans/apatch-orchestrator-implementation-plan.md) |
 | Completed or archived specifications | None |
-| Next specification topic and stages | To be determined explicitly in a later GENSPEC request |
+| Next planned stages | P0.1 — Current patch status and next-action feedback; P0.2 — Project PR approval policy |
 
-Until the first specification is accepted, [Usage](../USAGE.md) and [Architecture](../ARCHITECTURE.md) describe the existing implementation. Descriptive documentation does not create new normative requirements.
+Until the draft is accepted and implemented, [Usage](../USAGE.md) and [Architecture](../ARCHITECTURE.md) describe existing implementation. The new `STS`/`AUD` operations, operation journal, Git-format patch support, `opSeq`, patch-order metadata, and project review-gate override are **not implemented** by these documents.
 
 ## Planned organization
 
