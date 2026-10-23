@@ -1,0 +1,34 @@
+# SDD Specification Index
+
+This directory will hold normative specifications for `apatch` behavior. **No active specification has been created yet.** This index establishes organization and status only; it is not a product specification, implementation plan, or roadmap.
+
+## Status
+
+| Category | Current status |
+| --- | --- |
+| Active normative specifications | None |
+| Active implementation plans | None |
+| Completed or archived specifications | None |
+| Next specification topic and stages | To be determined explicitly in a later GENSPEC request |
+
+Until the first specification is accepted, [Usage](../USAGE.md) and [Architecture](../ARCHITECTURE.md) describe the existing implementation. Descriptive documentation does not create new normative requirements.
+
+## Planned organization
+
+- `active/spec-<capability>.md`: a focused normative specification with scope, behavioral rules, invariants, and testable acceptance criteria.
+- `active/subspecs/<focused-area>.md`: optional subordinate specifications for larger capabilities.
+- `plans/<capability>-implementation-plan.md`: a separate advisory, staged plan for implementing an approved specification.
+- `archive/`: historical specifications after explicit completion or supersession, if needed.
+
+Create directories when the first actual document needs them; avoid empty scaffolding.
+
+## Lifecycle
+
+1. Identify one owning capability and its current behavior using source code, tests, and user-visible documentation.
+2. In an explicitly requested **GENSPEC** stage, define the scope, non-goals, inputs/outputs, safety and recovery invariants, state transitions, and acceptance tests.
+3. Prepare a separate plan with small independent increments and test checkpoints. Plan sequencing does not by itself authorize implementation.
+4. On later **DEFAULT** implementation requests, make changes for the explicitly selected stage and record completion evidence. Update the normative spec if accepted behavior changes.
+5. Under an explicitly requested **REVIEW**, assess code against the owning specification and record findings without implicit modifications.
+6. Mark a specification complete or archived only with evidence and a deliberate lifecycle update.
+
+Avoid duplicating CLI help or the README. Link to [Installation](../INSTALLATION.md), [Usage](../USAGE.md), [Architecture](../ARCHITECTURE.md), and [Development](../DEVELOPMENT.md) for descriptive details.
