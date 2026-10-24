@@ -68,6 +68,7 @@ class ForceActions:
 
     def prepare_branch(self, with_patch=False):
         w = self.w
+        w.branch_patch.assert_history_well_formed()
         require_clean(w.root)
         current = self.branch()
         target = w.handoff.branch
