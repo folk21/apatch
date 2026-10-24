@@ -6,6 +6,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+from .branch_guard import assert_no_unfinished_feature_branches
 from .gitutil import (branch_exists, confirm, current_branch, head, output,
                       remote_head, run, status_paths, worktree_fingerprint)
 from .model import Abort
@@ -53,6 +54,7 @@ class LooseActions:
             else:
                 if not confirm(f"LOOSE: Create {target} from {current}, keeping working-tree changes?"):
                     return
+                assert_no_unfinished_feature_branches(w.root, w.config, target)
                 run(["git", "switch", "-c", target], w.root)
                 origin = "CREATED"
         if w.phase in {"new", "branch_created"}:

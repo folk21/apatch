@@ -14,6 +14,7 @@ Before scheduled quality checks and model reviews, implement all five capabiliti
 4. Ordered `created_patches.txt` check against actual applied history.
 5. `opSeq` execution with per-step console progress and actionable failure details.
 6. Unique, explicitly selected handoff JSON names for every invocation.
+7. Mandatory unfinished-feature-branch preflight before creating a new feature branch.
 
 All modes (`LOOSE`, `STRICT`, `FORCE`) SHALL retain their present safety rules and operation semantics.
 
@@ -114,6 +115,18 @@ apatch.sh apatch-PATCH-2026-10-24-00-42-example op=STS
 ```
 
 Missing, empty, malformed, or nonexistent handoff identifiers MUST fail before Git/worktree effects with an actionable error. A malformed stem MUST NOT escape the downloads directory or select a different handoff implicitly. `--help` remains usable without a handoff. The read-only status operation still does not need the original ZIP, but **does** need an explicitly selected JSON; old no-JSON `STS --patch=...` access is intentionally withdrawn by this contract. In the chat handoff response, display the exact generated JSON **filename as standalone copyable text** in addition to its download link.
+
+### 3.3 Mandatory single-active-feature-branch gate (P0-2d — emergency)
+
+Every operation that is about to **create** a new `feature/...` Git branch SHALL first inspect all other local and published feature branches. This is a non-configurable safety gate: `LOOSE`, `STRICT`, `FORCE`, `skipApproves=true`, and any future `opSeq` MUST NOT bypass it.
+
+1. Inspect local `refs/heads/feature/*` and remote `refs/heads/feature/*`, anchored to the configured base branch. Inspect all open GitHub pull requests with `feature/` heads when the configured remote is on GitHub. Do not rely only on the current branch or handoff checkpoint.
+2. A different remote feature branch not provably integrated into the configured base, or any open feature-branch PR, SHALL block new branch creation with the message prefix **`сначала смерджи fb:`**, identifying the branch and relevant remote/PR evidence. A previously merged branch whose ref remains on GitHub SHALL NOT block merely because the ref was not deleted: accept proven Git ancestry or a verified matching `MERGED` PR head.
+3. A different **local-only** feature branch with commits not present in the configured local base and not otherwise proven merged SHALL block with a separate message identifying the local branch and its outstanding commit count. A current feature branch with uncommitted changes SHALL also block moving work onto a fresh feature branch. A local branch with no unique commits does not count as unfinished work.
+4. If required remote-ref or GitHub-PR status cannot be checked reliably (network timeout, authentication failure, incomplete listing, or invalid response), fail closed with an explicit diagnostic. Do not create a new feature branch based on stale or unknown remote state.
+5. Run preflight immediately before `git switch -c` and before patch extraction and branch checkpoint changes. Failures MUST leave the intended target feature ref uncreated. Reusing or tracking an **already existing target branch** to finish earlier work does not create a new development cycle and SHALL remain possible under existing mode guards.
+
+This gate is independent of project check schedules and CI/review settings. It intentionally serializes feature development within a target repository even when LOOSE normally permits manual work on different branches.
 
 ## 4. Ordered created-patch registry (P0-3)
 
@@ -243,6 +256,11 @@ Persist bounded, redacted diagnostics; do not persist entire canonical-check str
 | AC-22 | Two ZIPs with distinct stems; invoke CLI with a stem | Each ZIP has a same-stem JSON; CLI resolves the chosen stem under downloads without a default |
 | AC-23 | Missing handoff positional, malformed stem, no-JSON `STS --patch` | Fail early without Git changes; explicit `.json` paths still work |
 | AC-24 | Completed ChatGPT patch handoff | Response includes both linked artifacts and a separate copyable JSON filename |
+| AC-25 | Previous local feature branch has commits not in `main`; new `BRN` in any mode with `skipApproves=true` | Stop before creating a new branch; identify local branch and pending commits |
+| AC-26 | Previous remote-only feature branch not merged, or open GitHub feature PR | Stop with `сначала смерджи fb:` and identify the blocking branch/PR |
+| AC-27 | Previous local/remote feature branch already merged into base | Permit new branch creation; do not demand deletion of merged refs |
+| AC-28 | Feature preflight cannot reliably query required remote evidence | Fail closed and explain the unavailable validation; no new branch or patch application |
+| AC-29 | Target feature branch already exists and is being resumed | Preserve current branch-adoption behavior; do not treat resuming as creating new feature work |
 
 ## 7. Open decisions
 

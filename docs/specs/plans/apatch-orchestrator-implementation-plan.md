@@ -18,6 +18,7 @@ Complete small independently tested increments. Preserve existing CLI, handoff J
 | **P0.2 — Project PR approval policy** | `apatch_lib/model.py`, `apatch_lib/github.py`, `.apatch/config.yaml` parser and usage docs: optional `require_review_approval` override, default unchanged. | AC-03/04, mock `reviewDecision` variants, CI and GitHub rejection unaffected. |
 | **P0.2b — Independent project CI policy** | Add project-local `require_required_checks` override; preserve the existing global default and unrelated merge gates. | AC-19/20/21; missing/pending CI, stale PR, remote/server rejection tests. |
 | **P0.2c — Explicit unique handoff names** | Generate same-stem ZIP/JSON pairs, require a named handoff in `apatch.py`/`apatch.sh`, support stems under `downloads_dir` and explicit `.json` paths. | AC-22/23/24; parser, shell launcher, missing-name, status and multi-handoff tests. |
+| **P0.2d — Single active feature branch gate (emergency)** | Introduce a shared preflight for STRICT/LOOSE/FORCE before new `git switch -c`, validating all previous feature branches against local/remote ancestry and GitHub PR evidence. | AC-25/26/27/28/29; temp bare-remote and mocked GitHub tests, plus `skipApproves=true`. |
 | **P0.3a — Registry validation and ordering** | New small `apatch_lib/created_patches.py` or another single owner; compare optional local registry to legacy-compatible `AppliedPatchHistory`. Guard `BAP`/`APL` in all modes *before* side effects. | AC-05/06/08, invalid lines/duplicates/symlinks, history migration tests. |
 | **P0.3b — Registry metadata transport** | Extend archive inspection/application to recognize a reserved `.apatch/created_patches.txt` member, validate append-only prefix, and store atomically as non-Git metadata. | AC-07, repeated ZIP, failed extraction/retry, ignored-file handling, no worktree false positives. Activate new ChatGPT packaging directive only once this is stable. |
 | **P0.4a — `opSeq` core** | `apatch.py`, `apatch.sh`, `apatch_lib/workflow.py`: parse a list of existing operation IDs, dispatch sequentially, refresh state between steps, stop on failure and report the complete step context. | AC-09/11/12/13/14, `skipApproves` true/false, shell/Python parser parity, timeout recovery. |
@@ -180,6 +181,51 @@ def create_chatgpt_handoff(zip_name):
 ```
 
 **Failures and migration:** Missing positional handoff fails in argparse before config or runtime mutation. Missing/malformed JSON fails before state locks or Git operations. Existing handoff contents, absolute/relative `.json` paths, persisted workflow entries, and ZIP history remain unchanged. The former implicit default and no-JSON `STS --patch` mode are removed intentionally; the docs and help must call out this behavior. Explicit path selection prevents accidental application of an older default JSON when multiple patches coexist. Acceptance evidence: SUB-001 AC-22/23/24, shell syntax (`sh -n apatch.sh`), command help, focused tests, and full suite.
+
+### P0.2d — File-level implementation: single-active-feature-branch gate
+
+**Prerequisites:** read the current mode-specific `prepare_branch`/`new_branch` implementations, base/remote configuration, Git helper subprocess semantics, and existing PR discovery contracts. **Non-goals:** deleting old branches, automatically merging PRs, disabling existing branch adoption, enforcing a new policy on `APL`, and substituting checkpoint history for Git evidence. This emergency stage is developer-authorized independently of the remaining draft P0 roadmap.
+
+| File | Exact change |
+| --- | --- |
+| `apatch_lib/branch_guard.py` (**new**) | Own `assert_no_unfinished_feature_branches(root, config, target)`: inspect local and remote feature refs, match merged PRs where Git ancestry is unavailable, reject open GitHub feature PRs, and conservatively abort when required evidence cannot be obtained. |
+| `apatch_lib/branch_patch.py` | Call preflight from both STRICT `BRN` and `BAP` just before creating the new feature ref, including after the final branch-availability check. |
+| `apatch_lib/loose.py` | Call preflight on the new-ref path in LOOSE `BRN`/`BAP`, without affecting existing local/remote branch reuse. |
+| `apatch_lib/force.py` | Apply the same non-bypassable preflight on FORCE's new-ref path; preserve manual branch tracking/reconciliation. |
+| `tests/test_apatch.py` | Test remote-only unmerged and local unmerged refs in all three modes under `skipApproves=true`, positive already-merged refs, dirty current feature, GitHub open PR when remote head disappeared, and network-failure fail-closed handling. Assert target branch was not created on failures. |
+| `docs/USAGE.md`, `docs/ARCHITECTURE.md` | Explain the unconfigurable preflight, different local/remote error messages, fail-closed API behavior, and responsibility of the shared guard. |
+| `docs/specs/active/spec-apatch-orchestrator.md`, `docs/specs/active/subspecs/subspec-01-workflow-control.md` | Record the immediate feature-serialization invariant and AC-25–29. |
+
+```python
+def assert_no_unfinished_feature_branches(root, config, target):
+    remote_base, remote_features = fetch_remote_feature_heads_or_abort(root, config)
+    local_features = list_local_feature_heads(root)
+    prs = list_github_prs_or_abort_if_github_remote(root, config)
+
+    for pr in prs:
+        if is_another_open_feature_pr(pr, target):
+            abort("сначала смерджи fb: " + pr.head_branch)
+
+    for branch, tip in remote_features.items():
+        if branch != target and not proven_integrated(tip, remote_base, prs):
+            abort("сначала смерджи fb: " + branch)
+
+    for branch, tip in local_features.items():
+        if branch != target and not reflected_remotely_or_merged(branch, tip, remote_features, prs):
+            abort("Unfinished local feature branch " + branch)
+
+    return VERIFIED_CLEAR
+
+def prepare_new_branch(mode, target):
+    if target_already_exists_locally_or_remotely():
+        return resume_existing_branch_using_mode_rules()
+    request_confirmation_if_required()
+    assert_no_unfinished_feature_branches(root, config, target)
+    git_switch_create(target)
+    persist_branch_created_checkpoint()
+```
+
+**Failure and recovery:** A remote or GitHub lookup failure is a hard block, not an approval request. The user first merges/publishes unfinished feature work, or restores remote connectivity, then explicitly retries `BRN`/`BAP`. Retained merged feature refs do not need cleanup. Git command failure must not be converted into an unverified "safe" pass. Unit and temp-remote tests verify the guard in all modes; the entire existing suite remains part of the acceptance gate.
 
 ### P0.3a/b — File-level implementation: patch registry and metadata transport
 
