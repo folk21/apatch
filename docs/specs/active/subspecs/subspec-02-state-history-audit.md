@@ -6,7 +6,7 @@
 
 ## 1. Purpose and dependencies
 
-This sub-spec defines (1) durable records of every attempted workflow operation and its observed result, and (2) a read-only global audit of previous patches. It builds on [SUB-001](subspec-01-workflow-control.md): current-patch `STS`, `created_patches.txt`, applied-patch history, and `opSeq`. Its journal implementation is P1.1; global audit is P1.2 and may be delivered later without delaying SUB-001.
+This sub-spec defines (1) durable **per-target** evidence records of every attempted workflow operation and its observed result, and (2) a read-only audit of previous patches **within that target repository**. It builds on [SUB-001](subspec-01-workflow-control.md): current-patch `STS`, `created_patches.txt`, applied-patch history, `opSeq`, and the P0.5 tool-wide cross-project progress summary. P0.5 is a lightweight activity index; this sub-spec owns a richer journal and evidence reconciliation, which should correlate with cross-project event IDs without conflicting independent histories. Its journal implementation is P1.1; repository audit is P1.2 and may be delivered later without delaying SUB-001.
 
 The current state file is `<target>/.apatch/apply_patch.state.json` (not `applied_patch_state.json`). Preserve its current workflow keys, phase checkpoints, and existing v1 readers during migration. Existing `.apatch/applied_patches.txt` retains authority over *recorded successful archive applications*; the created-patch registry tracks *generation order*. Neither file proves publication or PR merge.
 

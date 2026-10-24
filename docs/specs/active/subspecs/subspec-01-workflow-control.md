@@ -6,7 +6,7 @@
 
 ## 1. Scope
 
-Before scheduled quality checks and model reviews, implement all five capabilities:
+Before scheduled quality checks and model reviews, implement these first-priority capabilities:
 
 1. Read-only current patch status via `10 [STS]`.
 2. Suggested next operation number/code after an action.
@@ -15,6 +15,8 @@ Before scheduled quality checks and model reviews, implement all five capabiliti
 5. `opSeq` execution with per-step console progress and actionable failure details.
 6. Unique, explicitly selected handoff JSON names for every invocation.
 7. Mandatory unfinished-feature-branch preflight before creating a new feature branch.
+8. Bounded GitHub read retries and one repository-identity verification per operation.
+9. A tool-wide, concurrency-safe progress ledger and an aggregated project overview.
 
 All modes (`LOOSE`, `STRICT`, `FORCE`) SHALL retain their present safety rules and operation semantics.
 
@@ -138,6 +140,15 @@ An existing PR, including a `MERGED` PR, SHALL only prove completion of the **ex
 4. A saved `synced` checkpoint recorded under older faulty logic SHALL NOT be treated as fresh proof on later `SYN`. Live mismatch or remote unavailability SHALL produce an explicit warning without silently clearing or validating the checkpoint. A developer-authorized `PR` action for the still-published feature head MAY replace the stale PR association, clear stale local-sync evidence, and return to `pr_created` so a distinct PR can be reviewed and merged normally.
 5. This invariant is mandatory in all modes even when project settings disable review approval or CI checks. Failure to verify PR revision identity always fails closed; no new Git commits, destructive history rewrites, or automatic GitHub merge retries are permitted during recovery.
 
+### 3.5 Bounded GitHub reads and per-operation identity reuse (P0-2f)
+
+The `MRG` operation SHALL NOT repeat `gh auth status` and `gh repo view` when its preceding step in the **same invocation** already verified the same GitHub repository. It SHALL retain a verified repository identity only within the current operation. Before reusing the identity, it SHALL recheck the local Git remote URL and abort on repository drift. A new independent invocation SHALL verify identity again; there is no persistent or cross-process authorization cache.
+
+1. Read-only GitHub CLI calls (`gh auth status`, `gh repo view`, `gh pr list`, `gh pr view`, and `gh pr checks`) MAY retry **once** after a recognized transient connection, DNS, GitHub gateway, or request-timeout failure. The timeout for each attempt remains bounded by `github_timeout_seconds`. Diagnostics SHALL identify the retry without leaking tokens or full command bodies.
+2. Explicitly mutating GitHub calls (`gh pr create`, `gh pr merge`, and any future operation with uncertain external side effects) SHALL NOT be automatically retried. On timeout, report the uncertain outcome and require live reconciliation through `PR`, `MRG`, or `SYN` as appropriate.
+3. Authentication failures, permission denials, invalid command arguments, non-transient API rejections, and invalid response data SHALL fail without retries. The implementation SHALL NOT convert connection failures into successful review, CI, PR, or merge evidence.
+4. No retry or identity reuse may bypass PR source SHA, base, status, merge timestamp, branch protection, review policy, CI policy, or explicit confirmation rules. The retry mechanism SHALL apply to all modes and preserve the console's operation and failure reports.
+
 ## 4. Ordered created-patch registry (P0-3)
 
 ### 4.1 Format and authority
@@ -238,7 +249,57 @@ Recovery: check remote SHA and reconcile PSH before running PR.
 
 Persist bounded, redacted diagnostics; do not persist entire canonical-check streams. For P0, restart/resume is **explicit** (`op=` or shorter `opSeq=`). Automatic background queues, conditional expression evaluation, retry loops for uncertain side effects, and rollback are out of scope.
 
-## 6. Acceptance scenarios
+## 6. Cross-project progress ledger (P0-5)
+
+### 6.1 Purpose, location, and project identity
+
+`apatch` SHALL retain a durable, human-readable history of its invocations across target Git repositories. This is a **tool-wide activity index**, not a replacement for each target's `.apatch/apply_patch.state.json` checkpoint, applied-patch journal, or Git/GitHub evidence. The default directory SHALL be `<apatch_installation>/.apatch/progress/`, excluded from the `apatch` Git repository. The initial implementation MAY make this location configurable; it MUST NOT silently place a global history inside whichever target project happens to be the current working directory.
+
+The directory SHALL contain:
+
+- `progress.json`: authoritative chronological cross-project event stream and a stable project registry, including each known project's last activity and recorded outstanding work.
+- `<project>_progress.json`: a readable, derived per-project history. With unambiguous project names, examples include `apatch_progress.json` and `osmapdigger_progress.json`. The project root is the actual resolved target Git root, not only its basename or the handoff's `repository` field.
+- A tool-owned lock file, excluded from Git, guarding all writes and repairs.
+
+Two different directories can have the same project basename. The registry SHALL assign each project a stable identifier based on a normalized canonical root (and optionally a verified remote identity). The first unambiguous project may use `<name>_progress.json`; collisions SHALL receive a stable safe suffix, such as `<name>__<short-id>_progress.json`. Existing project histories SHALL NOT be silently overwritten or conflated because names match. Validate all generated filenames and prohibit symlink traversal.
+
+### 6.2 Event schema, fidelity, and privacy
+
+For every attempted top-level lifecycle operation (`BRN`, `BAP`, `APL`, `CHK`, `CMT`, `PSH`, `PR`, `MRG`, `SYN`, and read-only `STS`), record one bounded summary describing **what actually happened**. Future `opSeq` SHALL record one event per attempted constituent action with `sequence_id`, step index, and total. Record the final result even when an operation raises an exception; no event may claim a successful merge, push, or verification merely because its subprocess returned without raising.
+
+Every event SHALL have at least:
+
+| Field | Contract |
+| --- | --- |
+| `event_id`, `started_at_utc`, `finished_at_utc` | Unique identifier and ISO 8601 UTC timestamps; use a stable order for simultaneous invocations. |
+| `project_id`, `project_name`, `project_root` | Canonical project identity and a useful location for reopening the project. |
+| `patch_file`, `operation_code`, `operation_number`, `mode` | Selected patch and exact operation; mark fields `null` when unavailable during an early CLI failure. |
+| `result`, `duration_seconds` | `SUCCESS`, `NO_OP`, `CANCELLED`, `FAILED`, or `UNKNOWN_REMOTE_RESULT`; unsuccessful or unverified outcomes remain distinct. |
+| `phase_before`, `phase_after`, `branch_before`, `branch_after` | Recorded and observed local context, never invented from a planned branch. |
+| `commit_sha`, `pr_number`, `next_suggested` | Last available recorded evidence and follow-up action, labeled as recorded rather than live GitHub verification. |
+| `error_code`, `error_summary` | Short, bounded, redacted failure diagnostic; `null` on success. |
+
+The files MUST NOT contain full canonical-check output, GitHub tokens, credential-bearing URLs, complete arbitrary shell arguments, environment variables, or unbounded exception traces. Save local files with restrictive permissions where supported. The CLI display SHALL label historical facts `RECORDED` and SHALL NOT poll all recorded GitHub repositories to manufacture live verification.
+
+### 6.3 Concurrency, atomicity, and recovery
+
+`progress.json` SHALL be the single authoritative write source; per-project JSON files are derived views. A writer SHALL acquire an **exclusive interprocess lock**, read and validate the latest master contents under that lock, append exactly one event (deduplicated by `event_id` if resuming), atomically replace and fsync the master file, and regenerate the affected project view using an atomic replacement. The lock SHALL be released on success and failure. A second process MUST NOT lose events or overwrite another process's project summary.
+
+Multi-file replacement is not inherently transactional: after an interruption between master and per-project writes, the next writer SHALL rebuild the derived file under the same lock. The information command SHALL be able to show the authoritative master view even when a derived file is missing or stale. Malformed existing master data, unsafe paths, permission failures, or lock contention SHALL produce explicit diagnostics; never delete or silently reset historical entries. A progress-storage error after a successful Git/GitHub side effect SHALL be reported as a **separate history warning**, without pretending the side effect failed or automatically undoing it. Tool behavior remains usable if the installation location is read-only, with a visible `PROGRESS_UNAVAILABLE` warning.
+
+### 6.4 Read-only global overview and configuration
+
+Support the special information command `apatch.sh info=PROGRESS` (equivalently `apatch.py info=PROGRESS`) from the tool's installation directory or any working directory. This is an explicit exception to the handoff-required rule: it SHALL NOT require a patch JSON, an active target project, GitHub authentication, or project-local `.apatch/config.yaml`. `--help` and all existing `op`/mode syntax remain compatible. Invalid combinations of `info=PROGRESS` with a lifecycle operation SHALL fail before side effects.
+
+The overview SHALL show the **8 most recent events across all projects** and the **3 most recent events for each known project**, sorted newest first by UTC timestamp and stable event ID. Display the project root, last recorded operation/result/time, latest branch/patch, potential next step, and unfinished or uncertain work prominently. An empty index SHALL produce a useful message; it SHALL NOT scan arbitrary directories on the machine.
+
+The global `apatch.conf` SHALL offer `progress_global_limit = 8` and `progress_project_limit = 3`, both positive, bounded integers; invalid values SHALL fail validation. Config values affect presentation only and SHALL NOT truncate persisted history. The progress index SHALL also support later filters such as `info=PROGRESS project=<id>` and a project-only overview without changing the initial read-only contract.
+
+### 6.5 Migration and discovery
+
+There is no automatic knowledge of target projects used **before** this feature starts recording. Register projects on their first subsequent invocation; if a matching legacy checkpoint exists, it MAY be shown as `RECORDED` evidence but never synthesized as a successful historic command event. Do not invent previous timestamps, PR approvals, merges, or sequence order. An optional explicit import/scan operation can be specified later, with a developer-selected directory scope and no unbounded filesystem discovery. Missing global progress data is normal on first use; a malformed existing history is not.
+
+## 7. Acceptance scenarios
 
 | ID | Input or state | Expected behavior |
 | --- | --- | --- |
@@ -276,11 +337,23 @@ Persist bounded, redacted diagnostics; do not persist entire canonical-check str
 | AC-32 | A closed/merged PR already references the exact current pushed SHA | `PR` blocks a duplicate rather than creating another PR for the same revision |
 | AC-33 | A previous `synced` checkpoint references a merged PR at a different SHA | Subsequent `SYN` warns and retains evidence; explicit verified `PR` can replace the stale association |
 | AC-34 | CI and review approvals are both disabled | Historical merged PR at a different SHA remains rejected; unrelated opt-outs do not bypass identity |
+| AC-35 | `MRG` executes recovery, merge, and base sync for one GitHub repository | Resolve `gh auth status`/`gh repo view` once within the invocation; still detect a changed local Git remote before downstream steps |
+| AC-36 | First read-only GitHub lookup times out, second succeeds | Retry once with visible bounded diagnostic; preserve the configured per-attempt timeout |
+| AC-37 | `gh pr create`/`gh pr merge` returns a timeout after an uncertain side effect | Never auto-repeat the mutating command; retain the current checkpoint until explicit live reconciliation |
+| AC-38 | GitHub denies access, returns invalid data, or two read retries time out | Fail closed without fabricating CI, approval, merge, or synchronization success |
+| AC-39 | Two target projects execute overlapping operations | Both events persist without loss in `progress.json` and the correct per-project views under one process-shared lock |
+| AC-40 | Run `apatch.sh info=PROGRESS` outside a target Git repository | Show 8 latest global and 3 latest per-project recorded events without a handoff or any Git/GitHub mutation |
+| AC-41 | Global `progress_global_limit`/`progress_project_limit` are customized | Apply display limits independently; reject invalid values; retain the full ledger |
+| AC-42 | Crash between updating `progress.json` and a derived project JSON | Rebuild the project view from the master on the next write; read-only overview remains accurate |
+| AC-43 | Two project directories share a basename | Preserve separate stable project IDs and collision-free per-project history files |
+| AC-44 | Operation fails after an ambiguous PR/push timeout or is cancelled | Record `FAILED`/`UNKNOWN_REMOTE_RESULT`/`CANCELLED` accurately and include short recovery context, not a false success |
+| AC-45 | A project was used before the progress feature, or the tool installation is read-only | Do not invent past events; show partial history or `PROGRESS_UNAVAILABLE` without corrupting target workflows |
 
-## 7. Open decisions
+## 8. Open decisions
 
 1. Approve `handoffSeq` for multiple different patches in one `opSeq` invocation (or select a different handoff-selection syntax).
 2. Approve the reserved `.apatch/created_patches.txt` ZIP metadata member and separate-file bootstrap before support is implemented.
 3. Approve strict rejection when a selected patch is missing from an existing created registry, rather than auto-registering it.
+4. Confirm the suggested default `<apatch_installation>/.apatch/progress/` and whether a future override for read-only installations should follow an OS-specific user-data directory.
 
 Mark this sub-spec `ACCEPTED` only after these choices are resolved. No implementation is authorized by this DRAFT.

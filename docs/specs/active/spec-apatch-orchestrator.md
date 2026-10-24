@@ -14,7 +14,7 @@
 
 - Preserve `LOOSE` (default), `STRICT`, and `FORCE` (recovery, not force-push).
 - Preserve action IDs `0..10`: `EXT, BRN, BAP, APL, CHK, CMT, PSH, PR, MRG, SYN, STS`; `op`, `skipApproves`, and handoff JSON schema v1.
-- Require an explicit handoff name or JSON path on every invocation; generate unique same-stem ZIP/JSON pairs while accepting existing explicit JSON paths.
+- Require an explicit handoff name or JSON path on every **patch lifecycle** invocation; the read-only tool-wide `info=PROGRESS` query does not select a patch or target repository. Generate unique same-stem ZIP/JSON pairs while accepting existing explicit JSON paths.
 - Preserve LOOSE manual edits, multiple patches per commit, and deferred push.
 - Keep existing state, history, migration, and logging data readable; never invent a verified commit, review, or merge.
 - Keep safe ZIP extraction, worktree-preserving backups, Git guards, and non-force pushes.
@@ -33,8 +33,10 @@ Current behavior is documented in [Usage](../../USAGE.md) and [Architecture](../
 | Local GitHub CI policy | Independently configure whether published GitHub CI checks are mandatory for merging | P0 — SUB-001 |
 | Explicit handoff identity | Give every ZIP a same-stem JSON and require a named handoff on every invocation | P0 — SUB-001 |
 | Single active feature branch | Require evidence that prior local and remote feature work has been merged before creating another branch | P0 — SUB-001 |
+| Reliable GitHub reads | Retry transient read-only network failures once, avoid duplicate repository-identity queries inside one operation, and never auto-retry remote mutations | P0 — SUB-001 |
 | Generated patch order | Detect skipped patches using `created_patches.txt` | P0 — SUB-001 |
 | Command sequences | Run `opSeq` with detailed progress and error recovery | P0 — SUB-001 |
+| Multi-project progress overview | Record tool-wide and per-project summaries under `<apatch_installation>/.apatch/progress/`; query recent global and per-project activity using `info=PROGRESS` | P0 — SUB-001 |
 | Operation execution history | Persist numbered/coded attempts and outcomes in `.apatch/apply_patch.state.json` | P1 — SUB-002 |
 | Global patch reconciliation | Audit missing/incomplete historical patch workflows and suggest recovery | P1 — SUB-002 |
 | Git-native patch handoffs | Accept Git-format `.patch`/`.diff` files alongside ZIP archives through a safe, format-aware apply pipeline | Future P1 — dedicated sub-spec |
@@ -45,7 +47,7 @@ Current behavior is documented in [Usage](../../USAGE.md) and [Architecture](../
 | Independent model review | Invoke Codex/API reviewers with budget and policy limits | P3 |
 | Extension contracts | Add new check adapters without changing core Git orchestration | P3 |
 
-The P0 behavior is owned by [APATCH-SUB-001](subspecs/subspec-01-workflow-control.md); the execution journal and global historical audit are owned by [APATCH-SUB-002](subspecs/subspec-02-state-history-audit.md). Other future capabilities require subordinate specs before implementation.
+The P0 behavior, including lightweight cross-project progress summaries, is owned by [APATCH-SUB-001](subspecs/subspec-01-workflow-control.md). The richer per-target execution evidence journal and historical reconciliation audit are owned by [APATCH-SUB-002](subspecs/subspec-02-state-history-audit.md); they SHALL correlate with P0 progress events instead of creating conflicting independent histories. Other future capabilities require subordinate specs before implementation.
 
 ### Git-format patch support (future scope)
 
@@ -80,7 +82,7 @@ Spec-stage metadata SHALL reference actual spec and stage IDs, explicit acceptan
 ## 7. Cross-cutting invariants
 
 1. Reconcile actual external state before retrying non-idempotent operations. Unknown remote outcomes remain UNKNOWN until confirmed.
-2. Lock and atomically replace project-local mutable metadata; never erase unknown history or user changes.
+2. Lock and atomically replace project-local mutable metadata and the future tool-wide progress ledger; never erase unknown history or user changes. Maintain a clear master/derived distinction for multi-file progress views.
 3. `skipApproves=true` bypasses prompts only. Archive integrity, Git safety, CI requirements, and server-enforced protections remain in force.
 4. Do not initiate hidden network calls or costly model reviews; external checks require explicit policy, credentials, and budgets.
 5. Console output SHALL show operation progress. Persist bounded/redacted error diagnostics, not complete test streams or secrets.
@@ -88,8 +90,8 @@ Spec-stage metadata SHALL reference actual spec and stage IDs, explicit acceptan
 
 ## 8. P0 non-goals
 
-Do not implement the future plugin framework, model reviews, scanner integrations, repository dashboard, conditional scripting DSL, or automatic Git rollback as part of SUB-001. No automatic commit/push/merge beyond explicitly requested operations.
+Do not implement the future plugin framework, model reviews, scanner integrations, hosted/graphical repository dashboard, conditional scripting DSL, or automatic Git rollback as part of SUB-001. The read-only local CLI progress overview is explicitly in scope. No automatic commit/push/merge beyond explicitly requested operations.
 
 ## 9. Approval gate
 
-This is a proposed first specification, not an accepted implementation baseline. Resolve the explicit open decisions in [SUB-001](subspecs/subspec-01-workflow-control.md#7-open-decisions) before marking it `ACCEPTED` and beginning P0 implementation.
+This is a proposed first specification, not an accepted implementation baseline. Resolve the explicit open decisions in [SUB-001](subspecs/subspec-01-workflow-control.md#8-open-decisions) before marking it `ACCEPTED` and beginning P0 implementation.

@@ -254,9 +254,10 @@ class Workflow:
             raise Abort("Open a PR before merge")
         require_branch(self.root, self.handoff.branch)
         self.assert_remote_unchanged()
-        github.merge_pr(self.config, self.handoff, self.root, self.record, self.persist)
+        repo = github.merge_pr(self.config, self.handoff, self.root, self.record, self.persist)
         if self.phase == "merged":
-            github.sync_base(self.config, self.handoff, self.root, self.record, self.persist)
+            github.sync_base(self.config, self.handoff, self.root, self.record, self.persist,
+                             verified_repo=repo)
 
     def sync(self):
         if self.phase != "merged":

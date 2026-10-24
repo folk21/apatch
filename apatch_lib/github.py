@@ -2,17 +2,48 @@
 
 import json
 import re
+import time
 
 from .gitutil import confirm, head, output, remote_head, require_clean, run
 from .model import Abort
 
 
+_TRANSIENT_GITHUB_ERROR = re.compile(
+    r"i/o timeout|timed out|timeout|connection reset by peer|"
+    r"connection refused|temporary failure in name resolution|"
+    r"could not resolve host|no such host|TLS handshake timeout|"
+    r"(?:HTTP |status code )(?:502|503|504)\b",
+    re.IGNORECASE,
+)
+_READ_RETRY_DELAY_SECONDS = 0.5
+
+
+def _github_read(config, root, argv, *, capture_output):
+    """Retry transient failures only for explicitly read-only GitHub commands."""
+    executor = output if capture_output else run
+    for attempt in range(2):
+        try:
+            return executor(argv, root, timeout=config.github_timeout_seconds)
+        except Abort as exc:
+            if attempt or not _TRANSIENT_GITHUB_ERROR.search(str(exc)):
+                raise
+            print(f"WARNING: GitHub read timed out or failed transiently; retrying once "
+                  f"after {_READ_RETRY_DELAY_SECONDS}s: {' '.join(argv[:3])}")
+            time.sleep(_READ_RETRY_DELAY_SECONDS)
+    raise AssertionError("Unreachable GitHub retry state")
+
+
 def gh_run(config, root, argv):
     """Bound every GitHub CLI call without shortening project verification commands."""
+    if argv[:3] in (["gh", "auth", "status"], ["gh", "pr", "checks"]):
+        return _github_read(config, root, argv, capture_output=False)
     return run(argv, root, timeout=config.github_timeout_seconds)
 
 
 def gh_output(config, root, argv):
+    if argv[:3] in (["gh", "repo", "view"], ["gh", "pr", "list"],
+                    ["gh", "pr", "view"]):
+        return _github_read(config, root, argv, capture_output=True)
     return output(argv, root, timeout=config.github_timeout_seconds)
 
 
@@ -23,6 +54,17 @@ def repository(config, root):
     if resolved.lower() != expected.lower():
         raise Abort(f"Git remote {expected} and GitHub repository {resolved} disagree")
     return resolved
+
+
+def verified_repository(config, root, already_verified=None):
+    """Reuse a verified repository identity while rechecking the local Git remote."""
+    if already_verified is None:
+        return repository(config, root)
+    current = remote_repository(config, root)
+    if current.lower() != already_verified.lower():
+        raise Abort(f"Git remote {current} changed after verifying GitHub repository "
+                    f"{already_verified}")
+    return already_verified
 
 
 def remote_repository(config, root):
@@ -121,13 +163,13 @@ def create_pr(config, handoff, root, record, save_checkpoint):
     print("PR created. Merge is intentionally unavailable until the next invocation.")
 
 
-def merge_pr(config, handoff, root, record, save_checkpoint):
+def merge_pr(config, handoff, root, record, save_checkpoint, *, verified_repo=None):
     approval = "required" if config.require_approval else "not required"
     print(f"PR review approval: {approval} (source: {config.review_approval_source}).")
     checks = "required" if config.require_checks else "not required"
     print(f"PR CI checks: {checks} (source: {config.required_checks_source}).")
     require_clean(root)
-    repo = repository(config, root)
+    repo = verified_repository(config, root, verified_repo)
     prs = pr_list(config, root, repo, handoff.branch)
     matching = [pr for pr in prs if pr["number"] == record.get("pr_number")]
     if len(matching) != 1 or matching[0]["state"] != "OPEN":
@@ -165,6 +207,7 @@ def merge_pr(config, handoff, root, record, save_checkpoint):
     record["phase"] = "merged"
     save_checkpoint()
     print("GitHub merge confirmed. Local main synchronization is a separate recoverable step.")
+    return repo
 
 
 def sync_local_base(config, root):
@@ -206,9 +249,9 @@ def confirmed_merged_pr(config, handoff, root, record):
     return pr
 
 
-def sync_base(config, handoff, root, record, save_checkpoint):
+def sync_base(config, handoff, root, record, save_checkpoint, *, verified_repo=None):
     require_clean(root)
-    repo = repository(config, root)
+    repo = verified_repository(config, root, verified_repo)
     details = pr_details(config, root, repo, record["pr_number"])
     if details["state"] != "MERGED" or not details.get("mergedAt"):
         raise Abort("Recorded merge is not confirmed by GitHub")
