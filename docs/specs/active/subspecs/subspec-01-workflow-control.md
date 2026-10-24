@@ -128,6 +128,16 @@ Every operation that is about to **create** a new `feature/...` Git branch SHALL
 
 This gate is independent of project check schedules and CI/review settings. It intentionally serializes feature development within a target repository even when LOOSE normally permits manual work on different branches.
 
+### 3.4 PR revision identity and historical merge recovery (P0-2e — emergency)
+
+An existing PR, including a `MERGED` PR, SHALL only prove completion of the **exact feature revision** associated with the current patch cycle. GitHub `headRefOid`, the actual pushed Git commit, and the workflow's recorded `pushed_sha` (or verifiable recovery commit) SHALL agree. A source branch name, recorded PR number, or nonempty `mergedAt` on its own SHALL NOT prove that new commits entered the configured base.
+
+1. `PR` SHALL prefer an existing unique `OPEN` PR matching the current pushed SHA and base. A mismatched open PR blocks creation. Historical merged/closed PRs referring to **earlier revisions** SHALL NOT be adopted and SHALL NOT prevent a separately confirmed, new PR from being created for a later SHA. A historical closed/merged PR referring to the *same* SHA SHALL block duplicate PR creation.
+2. `MRG` in LOOSE/FORCE SHALL select a unique PR for the current SHA rather than the first historical `OPEN`/`MERGED` PR returned by GitHub. A mismatched historical `MERGED` PR SHALL stop before writing a checkpoint, switching branches, or syncing the base. If a different PR number is already recorded, an explicit `PR` reconciliation is required.
+3. Both post-merge verification and `SYN` SHALL verify PR number, base/head names, source SHA, `MERGED` state, and `mergedAt` before asserting success. Multiple historical merged PRs for the same branch SHALL be disambiguated by the current SHA and recorded PR number. A GitHub merge commit may differ from the original feature commit under squash/rebase strategies; matching the exact **PR source revision**, not merge-commit identity, is the safety requirement.
+4. A saved `synced` checkpoint recorded under older faulty logic SHALL NOT be treated as fresh proof on later `SYN`. Live mismatch or remote unavailability SHALL produce an explicit warning without silently clearing or validating the checkpoint. A developer-authorized `PR` action for the still-published feature head MAY replace the stale PR association, clear stale local-sync evidence, and return to `pr_created` so a distinct PR can be reviewed and merged normally.
+5. This invariant is mandatory in all modes even when project settings disable review approval or CI checks. Failure to verify PR revision identity always fails closed; no new Git commits, destructive history rewrites, or automatic GitHub merge retries are permitted during recovery.
+
 ## 4. Ordered created-patch registry (P0-3)
 
 ### 4.1 Format and authority
@@ -261,6 +271,11 @@ Persist bounded, redacted diagnostics; do not persist entire canonical-check str
 | AC-27 | Previous local/remote feature branch already merged into base | Permit new branch creation; do not demand deletion of merged refs |
 | AC-28 | Feature preflight cannot reliably query required remote evidence | Fail closed and explain the unavailable validation; no new branch or patch application |
 | AC-29 | Target feature branch already exists and is being resumed | Preserve current branch-adoption behavior; do not treat resuming as creating new feature work |
+| AC-30 | PR #5 is `MERGED` at an older SHA; current patch was pushed at a different SHA | `MRG` refuses to adopt PR #5; no `merged`/`synced` checkpoint or local base switch |
+| AC-31 | A historical merged PR and a new open PR share the same branch | `PR` creates or selects only the current SHA's open PR; `MRG` and `SYN` select it by SHA and identity |
+| AC-32 | A closed/merged PR already references the exact current pushed SHA | `PR` blocks a duplicate rather than creating another PR for the same revision |
+| AC-33 | A previous `synced` checkpoint references a merged PR at a different SHA | Subsequent `SYN` warns and retains evidence; explicit verified `PR` can replace the stale association |
+| AC-34 | CI and review approvals are both disabled | Historical merged PR at a different SHA remains rejected; unrelated opt-outs do not bypass identity |
 
 ## 7. Open decisions
 

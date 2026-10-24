@@ -359,6 +359,78 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(workflow.record["local_base_head"], self.head)
         self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(), "main")
 
+    def test_force_merge_cannot_adopt_historical_merged_pr_for_new_commit(self):
+        from apatch_lib import github
+        from apatch_lib.workflow import Workflow
+
+        command("git", "switch", "-c", self.payload["feature_branch"], cwd=self.root)
+        command("git", "commit", "--allow-empty", "-m", "Current unmerged patch", cwd=self.root)
+        current_sha = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        config = load_project_config(self.root, load_config(self.bin))
+        handoff = load_handoff(self.params)
+        workflow = Workflow(self.root, config, handoff, {"schema_version": 1, "workflows": {}}, force=True)
+        workflow.record.update(phase="pushed", applied_branch=handoff.branch,
+                               commit_sha=current_sha, pushed_sha=current_sha)
+        old_pr = {"number": 5, "state": "MERGED", "headRefName": handoff.branch,
+                  "baseRefName": "main", "headRefOid": self.head}
+        with patch.object(github, "repository", return_value="example/repo"), \
+                patch.object(github, "pr_list", return_value=[old_pr]), \
+                patch.object(github, "pr_details") as details, \
+                patch.object(github, "sync_base") as sync:
+            with self.assertRaisesRegex(Abort, "older revision"):
+                workflow.force_actions.merge()
+        details.assert_not_called()
+        sync.assert_not_called()
+        self.assertEqual(workflow.phase, "pushed")
+        self.assertNotIn("pr_number", workflow.record)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         handoff.branch)
+
+    def test_force_merge_accepts_matching_new_pr_with_historical_merged_pr_present(self):
+        from apatch_lib import github
+        from apatch_lib.workflow import Workflow
+
+        command("git", "switch", "-c", self.payload["feature_branch"], cwd=self.root)
+        command("git", "commit", "--allow-empty", "-m", "Current patch", cwd=self.root)
+        current_sha = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        config = load_project_config(self.root, load_config(self.bin))
+        handoff = load_handoff(self.params)
+        workflow = Workflow(self.root, config, handoff, {"schema_version": 1, "workflows": {}}, force=True)
+        workflow.record.update(phase="pr_created", applied_branch=handoff.branch,
+                               commit_sha=current_sha, pushed_sha=current_sha, pr_number=6)
+        old_pr = {"number": 5, "state": "MERGED", "headRefName": handoff.branch,
+                  "baseRefName": "main", "headRefOid": self.head}
+        new_pr = {"number": 6, "state": "OPEN", "headRefName": handoff.branch,
+                  "baseRefName": "main", "headRefOid": current_sha}
+        with patch.object(github, "repository", return_value="example/repo"), \
+                patch.object(github, "pr_list", return_value=[old_pr, new_pr]), \
+                patch("apatch_lib.force.remote_head", return_value=current_sha), \
+                patch.object(github, "merge_pr") as merge:
+            workflow.force_actions.merge()
+        merge.assert_called_once()
+        self.assertEqual(workflow.record["pr_number"], 6)
+        self.assertEqual(workflow.record["pushed_sha"], current_sha)
+
+    def test_synced_checkpoint_requires_revision_reverification(self):
+        from apatch_lib import github
+        from apatch_lib.workflow import Workflow
+
+        config = load_project_config(self.root, load_config(self.bin))
+        handoff = load_handoff(self.params)
+        workflow = Workflow(self.root, config, handoff, {"schema_version": 1, "workflows": {}}, force=True)
+        workflow.record.update(phase="synced", applied_branch=handoff.branch,
+                               pushed_sha="a" * 40, pr_number=5)
+        old_pr = {"number": 5, "state": "MERGED", "headRefName": handoff.branch,
+                  "baseRefName": "main", "headRefOid": self.head}
+        console = StringIO()
+        with patch.object(github, "remote_repository", return_value="example/repo"), \
+                patch.object(github, "pr_list", return_value=[old_pr]), \
+                redirect_stdout(console):
+            workflow.force_actions.sync()
+        self.assertEqual(workflow.phase, "synced")
+        self.assertIn("could not be verified", console.getvalue())
+        self.assertNotIn("reverified for the current patch", console.getvalue())
+
     def test_sync_git_failure_is_not_reported_as_success(self):
         command("git", "switch", "-c", self.payload["feature_branch"], cwd=self.root)
         command("git", "remote", "set-url", "origin", str(self.base / "missing-remote.git"), cwd=self.root)
@@ -2011,6 +2083,157 @@ class GithubGuardTest(unittest.TestCase):
         self.assertEqual(execute.call_count, 1)
         self.assertEqual(listing.call_count, 2)
 
+    def test_new_pr_can_follow_historical_merged_pr_on_same_branch(self):
+        from apatch_lib import github
+
+        old_pr = dict(self.details, number=5, state="MERGED", headRefOid="b" * 40)
+        current_pr = dict(self.details, number=6, state="OPEN")
+        record = {"phase": "synced", "pr_number": 5, "pushed_sha": self.sha,
+                  "local_base_head": "c" * 40}
+        with patch.object(github, "require_clean"), patch.object(github, "head", return_value=self.sha), \
+                patch.object(github, "repository", return_value="example/repo"), \
+                patch.object(github, "remote_head", return_value=self.sha), \
+                patch.object(github, "pr_list", side_effect=[[old_pr], [old_pr, current_pr]]), \
+                patch.object(github, "gh_run") as execute, \
+                patch.object(github, "confirm", return_value=True):
+            github.create_pr(self.config, self.handoff, self.root, record, lambda: None)
+        self.assertEqual(record["phase"], "pr_created")
+        self.assertEqual(record["pr_number"], 6)
+        self.assertNotIn("local_base_head", record)
+        execute.assert_called_once()
+        self.assertEqual(execute.call_args.args[2][:3], ["gh", "pr", "create"])
+
+    def test_merge_ignores_historical_merged_pr_but_uses_recorded_open_pr(self):
+        from apatch_lib import github
+
+        old_pr = dict(self.details, number=5, state="MERGED", headRefOid="b" * 40)
+        current_pr = dict(self.details, number=6, state="OPEN")
+        merged = dict(current_pr, state="MERGED", mergedAt="2026-10-24T06:23:48Z")
+        record = dict(self.record, pr_number=6)
+        with patch.object(github, "require_clean"), \
+                patch.object(github, "repository", return_value="example/repo"), \
+                patch.object(github, "pr_list", return_value=[old_pr, current_pr]), \
+                patch.object(github, "pr_details", side_effect=[current_pr, merged]), \
+                patch.object(github, "remote_head", return_value=self.sha), \
+                patch.object(github, "gh_run") as execute, \
+                patch.object(github, "confirm", return_value=True):
+            github.merge_pr(self.config, self.handoff, self.root, record, lambda: None)
+        self.assertEqual(record["phase"], "merged")
+        self.assertEqual(record["pr_number"], 6)
+        merge_calls = [call.args[2] for call in execute.call_args_list
+                       if call.args[2][:3] == ["gh", "pr", "merge"]]
+        self.assertEqual(len(merge_calls), 1)
+        self.assertEqual(merge_calls[0][3], "6")
+
+    def test_merge_rejects_historical_pr_when_recorded_number_is_stale(self):
+        from apatch_lib import github
+
+        old_pr = dict(self.details, number=5, state="MERGED", headRefOid="b" * 40)
+        current_pr = dict(self.details, number=6, state="OPEN")
+        with patch.object(github, "require_clean"), \
+                patch.object(github, "repository", return_value="example/repo"), \
+                patch.object(github, "pr_list", return_value=[old_pr, current_pr]), \
+                patch.object(github, "pr_details") as details, \
+                patch.object(github, "gh_run") as execute:
+            with self.assertRaisesRegex(Abort, "Recorded open PR identity"):
+                github.merge_pr(self.config, self.handoff, self.root, self.record, lambda: None)
+        details.assert_not_called()
+        execute.assert_not_called()
+
+    def test_pr_creation_verification_rejects_competing_open_pr(self):
+        from apatch_lib import github
+
+        other_open = dict(self.details, number=5, headRefOid="b" * 40)
+        current_pr = dict(self.details, number=6)
+        record = {"phase": "pushed", "pushed_sha": self.sha}
+        with patch.object(github, "require_clean"), \
+                patch.object(github, "head", return_value=self.sha), \
+                patch.object(github, "repository", return_value="example/repo"), \
+                patch.object(github, "remote_head", return_value=self.sha), \
+                patch.object(github, "pr_list", side_effect=[[], [other_open, current_pr]]), \
+                patch.object(github, "gh_run") as execute, \
+                patch.object(github, "confirm", return_value=True):
+            with self.assertRaisesRegex(Abort, "could not be uniquely verified"):
+                github.create_pr(self.config, self.handoff, self.root, record, lambda: None)
+        execute.assert_called_once()
+        self.assertEqual(record["phase"], "pushed")
+
+    def test_historical_merged_pr_with_same_head_does_not_trigger_duplicate_creation(self):
+        from apatch_lib import github
+
+        old_pr = dict(self.details, number=5, state="MERGED")
+        record = {"phase": "pushed", "pushed_sha": self.sha}
+        with patch.object(github, "require_clean"), patch.object(github, "head", return_value=self.sha), \
+                patch.object(github, "repository", return_value="example/repo"), \
+                patch.object(github, "remote_head", return_value=self.sha), \
+                patch.object(github, "pr_list", return_value=[old_pr]), \
+                patch.object(github, "gh_run") as execute:
+            with self.assertRaisesRegex(Abort, "already has a closed or merged PR"):
+                github.create_pr(self.config, self.handoff, self.root, record, lambda: None)
+        execute.assert_not_called()
+        self.assertEqual(record["phase"], "pushed")
+
+    def test_merged_pr_sync_rejects_unrelated_pushed_revision(self):
+        from apatch_lib import github
+
+        old_pr = dict(self.details, state="MERGED", headRefOid="b" * 40,
+                      mergedAt="2026-10-24T06:23:48Z")
+        with patch.object(github, "repository", return_value="example/repo"), \
+                patch.object(github, "pr_details", return_value=old_pr), \
+                patch.object(github, "sync_local_base") as sync, \
+                patch.object(github, "require_clean"):
+            with self.assertRaisesRegex(Abort, "does not contain the current patch revision"):
+                github.sync_base(self.config, self.handoff, self.root, self.record, lambda: None)
+        sync.assert_not_called()
+        self.assertEqual(self.record["phase"], "pr_created")
+
+    def test_merged_pr_status_rejects_unrelated_commit(self):
+        from apatch_lib import github
+
+        old_pr = dict(self.details, state="MERGED", headRefOid="b" * 40)
+        with patch.object(github, "remote_repository", return_value="example/repo"), \
+                patch.object(github, "pr_list", return_value=[old_pr]):
+            with self.assertRaisesRegex(Abort, "for the current patch revision"):
+                github.confirmed_merged_pr(self.config, self.handoff, self.root, self.record)
+
+    def test_sync_selects_matching_revision_among_historical_merged_prs(self):
+        from apatch_lib import github
+
+        old_pr = dict(self.details, number=5, state="MERGED", headRefOid="b" * 40)
+        new_pr = dict(self.details, number=6, state="MERGED",
+                      mergedAt="2026-10-24T06:23:48Z")
+        record = dict(self.record, pr_number=6)
+        with patch.object(github, "remote_repository", return_value="example/repo"), \
+                patch.object(github, "pr_list", return_value=[old_pr, new_pr]) as lookup:
+            selected = github.confirmed_merged_pr(self.config, self.handoff, self.root, record)
+        self.assertEqual(selected["number"], 6)
+        lookup.assert_called_once()
+
+    def test_synced_status_does_not_accept_merged_pr_without_merge_timestamp(self):
+        from apatch_lib import github
+
+        missing_timestamp = dict(self.details, state="MERGED", mergedAt=None)
+        with patch.object(github, "remote_repository", return_value="example/repo"), \
+                patch.object(github, "pr_list", return_value=[missing_timestamp]):
+            with self.assertRaisesRegex(Abort, "not confirmed"):
+                github.confirmed_merged_pr(self.config, self.handoff, self.root, self.record)
+
+    def test_post_merge_confirmation_rechecks_pr_head(self):
+        from apatch_lib import github
+
+        after = dict(self.details, state="MERGED", headRefOid="b" * 40,
+                     mergedAt="2026-10-24T06:23:48Z")
+        with patch.object(github, "require_clean"), \
+                patch.object(github, "repository", return_value="example/repo"), \
+                patch.object(github, "pr_list", return_value=[dict(self.details)]), \
+                patch.object(github, "pr_details", side_effect=[dict(self.details), after]), \
+                patch.object(github, "remote_head", return_value=self.sha), \
+                patch.object(github, "gh_run"), \
+                patch.object(github, "confirm", return_value=True):
+            with self.assertRaisesRegex(Abort, "does not contain the current patch revision"):
+                github.merge_pr(self.config, self.handoff, self.root, self.record, lambda: None)
+        self.assertEqual(self.record["phase"], "pr_created")
+
     def test_all_gh_commands_receive_configured_timeout(self):
         from apatch_lib import github
         from dataclasses import replace
@@ -2042,7 +2265,7 @@ class GithubGuardTest(unittest.TestCase):
         from unittest.mock import patch
         from apatch_lib import github
 
-        merged = dict(self.details, state="MERGED")
+        merged = dict(self.details, state="MERGED", mergedAt="2026-10-24T06:23:48Z")
         with patch.object(github, "remote_repository", return_value="example/repo"), \
              patch.object(github, "pr_list", return_value=[merged]) as list_prs, \
              patch.object(github, "pr_details") as details:

@@ -38,7 +38,7 @@ def remote_repository(config, root):
 def pr_list(config, root, repo, branch, *, include_other_bases=False):
     raw = gh_output(config, root, ["gh", "pr", "list", "--repo", repo, "--head", branch,
                                    "--state", "all", "--limit", "100", "--json",
-                                   "number,state,headRefName,baseRefName,headRefOid,url"])
+                                   "number,state,headRefName,baseRefName,headRefOid,url,mergedAt"])
     matches = [pr for pr in json.loads(raw) if pr["headRefName"] == branch]
     return matches if include_other_bases else [pr for pr in matches if pr["baseRefName"] == config.base]
 
@@ -46,6 +46,30 @@ def pr_list(config, root, repo, branch, *, include_other_bases=False):
 def pr_details(config, root, repo, number):
     fields = "number,state,headRefName,baseRefName,headRefOid,url,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,mergedAt"
     return json.loads(gh_output(config, root, ["gh", "pr", "view", str(number), "--repo", repo, "--json", fields]))
+
+
+def assert_pr_matches_revision(config, handoff, pr, sha, *, merged=False):
+    """Require an exact PR identity and revision, including for previously merged PRs."""
+    if not sha:
+        raise Abort("Cannot verify the current patch's pushed commit; PR recovery is blocked")
+    if (pr.get("headRefName") != handoff.branch
+            or pr.get("baseRefName") != config.base
+            or pr.get("headRefOid") != sha):
+        number = pr.get("number", "unknown")
+        label = "Merged" if merged else "Selected"
+        raise Abort(f"{label} PR #{number} does not contain the current patch revision {sha}. "
+                    "An older PR cannot complete the current workflow; create or select a PR "
+                    "for the currently pushed commit.")
+
+
+def _record_current_pr(record, pr):
+    previous_number = record.get("pr_number")
+    if previous_number is not None and previous_number != pr["number"]:
+        print(f"Reconciled current patch with PR #{pr['number']} instead of historical "
+              f"PR #{previous_number}; previous merge/sync evidence is not reused.")
+        record.pop("local_base_head", None)
+    record["phase"] = "pr_created"
+    record["pr_number"] = pr["number"]
 
 
 def create_pr(config, handoff, root, record, save_checkpoint):
@@ -57,20 +81,28 @@ def create_pr(config, handoff, root, record, save_checkpoint):
     print(f"Searching for existing PRs from {handoff.branch} in {repo} (GitHub timeout: "
           f"{config.github_timeout_seconds}s)...")
     prs = pr_list(config, root, repo, handoff.branch, include_other_bases=True)
-    existing = [pr for pr in prs if pr["baseRefName"] == config.base]
-    if len(existing) > 1:
-        raise Abort("Multiple matching PRs; resolve manually")
-    if any(pr["state"] == "OPEN" and pr["baseRefName"] != config.base for pr in prs):
+    active = [pr for pr in prs if pr["state"] == "OPEN"]
+    if any(pr["baseRefName"] != config.base for pr in active):
         raise Abort("An open PR exists with another base branch")
-    if existing:
-        pr = existing[0]
-        if pr["state"] != "OPEN" or pr["headRefOid"] != local:
-            raise Abort("Existing PR is closed or points to unexpected commit")
-        record["phase"] = "pr_created"
-        record["pr_number"] = pr["number"]
+    if len(active) > 1:
+        raise Abort("Multiple open PRs exist for this feature branch; resolve manually")
+    if active:
+        pr = active[0]
+        assert_pr_matches_revision(config, handoff, pr, local)
+        _record_current_pr(record, pr)
         save_checkpoint()
         print(f"Found matching PR: {pr['url']}. Run apatch again after checks/review.")
         return
+    same_revision = [pr for pr in prs if (pr["baseRefName"] == config.base
+                                           and pr["headRefOid"] == local)]
+    if same_revision:
+        numbers = ", ".join(f"#{pr['number']} ({pr['state']})" for pr in same_revision)
+        raise Abort(f"Current commit {local} already has a closed or merged PR: {numbers}. "
+                    "Inspect GitHub before attempting a new PR for the same revision.")
+    historical = [pr for pr in prs if pr["baseRefName"] == config.base]
+    if historical:
+        print("Historical PRs exist for this branch, but none includes the current pushed "
+              "commit. A separate PR is required for the new revision.")
     print(f"PR: {handoff.branch} -> {config.base} in {repo}")
     if not confirm("Create this pull request?"):
         return
@@ -79,11 +111,12 @@ def create_pr(config, handoff, root, record, save_checkpoint):
                           "--head", handoff.branch, "--title", handoff.subject,
                           "--body", handoff.message.split("\n", 1)[-1]])
     print("PR creation request completed; verifying the PR on GitHub...")
-    existing = pr_list(config, root, repo, handoff.branch)
-    if len(existing) != 1 or existing[0]["state"] != "OPEN":
+    active_after_create = [pr for pr in pr_list(config, root, repo, handoff.branch)
+                           if pr["state"] == "OPEN"]
+    if len(active_after_create) != 1:
         raise Abort("PR created but could not be uniquely verified; inspect GitHub")
-    record["phase"] = "pr_created"
-    record["pr_number"] = existing[0]["number"]
+    assert_pr_matches_revision(config, handoff, active_after_create[0], local)
+    _record_current_pr(record, active_after_create[0])
     save_checkpoint()
     print("PR created. Merge is intentionally unavailable until the next invocation.")
 
@@ -96,8 +129,12 @@ def merge_pr(config, handoff, root, record, save_checkpoint):
     require_clean(root)
     repo = repository(config, root)
     prs = pr_list(config, root, repo, handoff.branch)
-    if len(prs) != 1 or prs[0]["number"] != record.get("pr_number"):
-        raise Abort("Recorded PR identity does not match GitHub")
+    matching = [pr for pr in prs if pr["number"] == record.get("pr_number")]
+    if len(matching) != 1 or matching[0]["state"] != "OPEN":
+        raise Abort("Recorded open PR identity does not match GitHub")
+    if any(pr["state"] == "OPEN" and pr["number"] != record["pr_number"] for pr in prs):
+        raise Abort("Multiple open PRs exist for this feature branch; resolve manually")
+    assert_pr_matches_revision(config, handoff, matching[0], record.get("pushed_sha"))
     pr = pr_details(config, root, repo, record["pr_number"])
     if (pr["state"] != "OPEN" or pr["baseRefName"] != config.base
             or pr["headRefName"] != handoff.branch
@@ -124,6 +161,7 @@ def merge_pr(config, handoff, root, record, save_checkpoint):
     latest = pr_details(config, root, repo, pr["number"])
     if latest["state"] != "MERGED" or not latest.get("mergedAt"):
         raise Abort("Merge command returned but GitHub does not confirm MERGED")
+    assert_pr_matches_revision(config, handoff, latest, record.get("pushed_sha"), merged=True)
     record["phase"] = "merged"
     save_checkpoint()
     print("GitHub merge confirmed. Local main synchronization is a separate recoverable step.")
@@ -152,14 +190,19 @@ def sync_local_base(config, root):
 def confirmed_merged_pr(config, handoff, root, record):
     """Check merge status via one GitHub query without performing Git operations."""
     repo = remote_repository(config, root)
-    merged = [pr for pr in pr_list(config, root, repo, handoff.branch) if pr["state"] == "MERGED"]
+    expected_sha = record.get("pushed_sha") or record.get("commit_sha")
+    if not expected_sha:
+        raise Abort("Cannot confirm a merged PR without the current patch's recorded commit")
+    merged = [pr for pr in pr_list(config, root, repo, handoff.branch)
+              if pr["state"] == "MERGED" and pr.get("mergedAt")
+              and pr["headRefOid"] == expected_sha
+              and pr["baseRefName"] == config.base]
     if len(merged) != 1:
-        raise Abort("GitHub has not confirmed exactly one merged PR for this feature branch")
+        raise Abort("GitHub has not confirmed exactly one merged PR for the current patch revision")
     pr = merged[0]
     if record.get("pr_number") is not None and record["pr_number"] != pr["number"]:
         raise Abort("Merged PR differs from the recorded PR number")
-    if record.get("pushed_sha") and record["pushed_sha"] != pr["headRefOid"]:
-        raise Abort("Merged PR points to a different feature branch revision")
+    assert_pr_matches_revision(config, handoff, pr, expected_sha, merged=True)
     return pr
 
 
@@ -167,8 +210,12 @@ def sync_base(config, handoff, root, record, save_checkpoint):
     require_clean(root)
     repo = repository(config, root)
     details = pr_details(config, root, repo, record["pr_number"])
-    if details["state"] != "MERGED":
+    if details["state"] != "MERGED" or not details.get("mergedAt"):
         raise Abort("Recorded merge is not confirmed by GitHub")
+    if details.get("number") != record.get("pr_number"):
+        raise Abort("Recorded PR number changed before synchronization")
+    assert_pr_matches_revision(config, handoff, details,
+                               record.get("pushed_sha") or record.get("commit_sha"), merged=True)
     record["local_base_head"] = sync_local_base(config, root)
     record["phase"] = "synced"
     save_checkpoint()
