@@ -12,7 +12,10 @@ import sys
 import tempfile
 import unittest
 import zipfile
+from contextlib import redirect_stdout
+from dataclasses import replace
 from datetime import datetime
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -175,6 +178,36 @@ class LocalGitWorkflowTest(unittest.TestCase):
         config = load_project_config(self.root, load_config(self.bin))
         self.assertEqual(config.checks, (("./gradlew", "test"), ("python3", "-c", "print(42)")))
         self.assertEqual(config.log_directory, self.root / ".apatch" / "build" / "checks")
+
+    def test_project_review_approval_inherits_global_setting_when_omitted(self):
+        global_config = load_config(self.bin)
+        self.assertTrue(global_config.require_approval)
+        for required in (True, False):
+            with self.subTest(global_required=required):
+                config = load_project_config(self.root, replace(global_config, require_approval=required))
+                self.assertIs(config.require_approval, required)
+                self.assertEqual(config.review_approval_source, "global")
+
+    def test_project_review_approval_overrides_global_setting(self):
+        global_config = load_config(self.bin)
+        for required in (True, False):
+            with self.subTest(project_required=required):
+                self.project_config.write_text(
+                    "schema_version: 1\nchecks:\n  - [\"./run_checks.sh\"]\n"
+                    f"require_review_approval: {str(required).lower()}\n")
+                config = load_project_config(self.root, replace(global_config, require_approval=not required))
+                self.assertIs(config.require_approval, required)
+                self.assertEqual(config.review_approval_source, "project")
+
+    def test_project_review_approval_rejects_non_boolean_values(self):
+        for value in ('"false"', "0", "1", "null", "[]", "{}"):
+            with self.subTest(value=value):
+                self.project_config.write_text(
+                    f"schema_version: 1\nchecks:\n  - [\"./run_checks.sh\"]\n"
+                    f"require_review_approval: {value}\n")
+                result = self.invoke_cli("op=EXT")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("require_review_approval must be a YAML boolean", result.stderr)
 
     def test_project_config_can_run_a_nonstandard_check_script(self):
         script = self.root / "custom_verify.sh"
@@ -1605,6 +1638,50 @@ class GithubGuardTest(unittest.TestCase):
 
     def test_missing_approval_blocks_merge(self):
         self.assertIn("not approved", self.run_guard(approval="REVIEW_REQUIRED"))
+
+    def test_project_override_does_not_skip_pending_ci(self):
+        self.config = replace(self.config, require_approval=False, review_approval_source="project")
+        self.assertIn("pending checks", self.run_guard(approval="REVIEW_REQUIRED", check="PENDING"))
+
+    def test_project_override_does_not_skip_stale_pr_head(self):
+        self.config = replace(self.config, require_approval=False, review_approval_source="project")
+        self.assertIn("drifted", self.run_guard(approval="REVIEW_REQUIRED", sha="b" * 40))
+
+    def test_project_override_allows_clean_pr_without_approval(self):
+        from apatch_lib import github
+        self.config = replace(self.config, require_approval=False, review_approval_source="project")
+        pending_review = dict(self.details, reviewDecision="REVIEW_REQUIRED")
+        after = dict(pending_review, state="MERGED", mergedAt="2026-10-23T14:00:00Z")
+        console = StringIO()
+        with patch.object(github, "require_clean"), patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "pr_list", return_value=[dict(self.details)]), \
+             patch.object(github, "pr_details", side_effect=[pending_review, after]), \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "run") as fake_run, \
+             patch.object(github, "confirm", return_value=True), redirect_stdout(console):
+            github.merge_pr(self.config, self.handoff, self.root, self.record, lambda: None)
+        self.assertIn("PR review approval: not required (source: project)", console.getvalue())
+        self.assertEqual(self.record["phase"], "merged")
+        self.assertTrue(any(call.args[0][:3] == ["gh", "pr", "merge"] for call in fake_run.call_args_list))
+
+    def test_project_override_does_not_bypass_github_merge_rejection(self):
+        from apatch_lib import github
+        self.config = replace(self.config, require_approval=False, review_approval_source="project")
+        pending_review = dict(self.details, reviewDecision="REVIEW_REQUIRED")
+
+        def gh_command(_config, _root, argv):
+            if argv[:3] == ["gh", "pr", "merge"]:
+                raise Abort("GitHub repository policy rejected merge")
+
+        with patch.object(github, "require_clean"), patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "pr_list", return_value=[dict(self.details)]), \
+             patch.object(github, "pr_details", return_value=pending_review), \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "gh_run", side_effect=gh_command), \
+             patch.object(github, "confirm", return_value=True):
+            with self.assertRaisesRegex(Abort, "GitHub repository policy rejected merge"):
+                github.merge_pr(self.config, self.handoff, self.root, self.record, lambda: None)
+        self.assertEqual(self.record["phase"], "pr_created")
 
     def test_pr_head_drift_blocks_merge(self):
         self.assertIn("drifted", self.run_guard(sha="b" * 40))

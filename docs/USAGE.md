@@ -209,7 +209,7 @@ In LOOSE mode the new cycle is acknowledged automatically. Pending patches on th
 | `remote` | Git remote used for validation and publishing. |
 | `base_branch` | Target branch for feature creation and pull requests. |
 | `require_patch_feature_branch` | When `true`, restrict direct patch application (option 3) to the `feature_branch` from the handoff file. Defaults to `false`. |
-| `require_review_approval` | Require approved review before merging. |
+| `require_review_approval` | Require an approved PR review before merging; defaults to `true` and may be overridden by the target repository's `.apatch/config.yaml`. |
 | `require_required_checks` | Require successful GitHub checks before merging. |
 | `merge_method` | GitHub merge strategy: `merge`, `squash`, or `rebase`. |
 | `github_timeout_seconds` | Maximum wait for each `gh` CLI call, including PR discovery, creation, and verification; default `45`, allowed `5`–`300`. Does not limit project tests. |
@@ -236,7 +236,18 @@ checks:
   - ["./gradlew", "check"]
 ```
 
-`log_directory`, `state_file`, and `applied_patches_file` are optional and override their global counterparts. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. Separate lock files named `<state_file>.lock` and `<applied_patches_file>.lock` are created automatically in `.apatch/`. Omit these settings to use the generic global names.
+`log_directory`, `state_file`, `applied_patches_file`, and `require_review_approval` are optional and override their global counterparts. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. Separate lock files named `<state_file>.lock` and `<applied_patches_file>.lock` are created automatically in `.apatch/`. Omit these settings to inherit the global defaults.
+
+To allow merging without an approved review **for one repository**, set the following in that repository's `.apatch/config.yaml` alongside the required `schema_version` and `checks` fields:
+
+```yaml
+schema_version: 1
+require_review_approval: false
+checks:
+  - ["./run_checks.sh"]
+```
+
+The project override must be a YAML boolean (`true` or `false`); quoted strings, numbers, and `null` are rejected. If omitted, the setting inherits `require_review_approval` from the installed `apatch.conf` (default: `true`). Before MRG, `apatch` prints whether approval is required and whether the value came from `project` or `global`. Disabling this local approval gate does **not** bypass branch/PR identity checks, clean mergeability, required CI checks, GitHub branch protection or rulesets, or the separate confirmation controlled by `skipApproves`. If GitHub refuses the merge, the operation fails without recording a successful merge.
 
 `checks` must be a non-empty list. A command can be an argument list (recommended) or a single command string parsed with shell-style quoting:
 
