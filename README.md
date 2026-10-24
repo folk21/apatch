@@ -12,7 +12,7 @@ It supports interactive and direct actions with three execution modes: **LOOSE (
 | [Usage](docs/USAGE.md) | CLI options, action codes, modes, handoff JSON, configuration, logging, and recovery |
 | [Architecture](docs/ARCHITECTURE.md) | Modules, state management, safety boundaries, and external operations |
 | [Development and Testing](docs/DEVELOPMENT.md) | Running tests, contributing, and documentation ownership |
-| [SDD Specification Index](docs/specs/README.md) | Specification lifecycle; active specs will be added in a later stage |
+| [SDD Specification Index](docs/specs/README.md) | Draft orchestrator specification, first-priority sub-specification, plan, and lifecycle |
 | [Agent Guidance](AGENTS.md) | Repository conventions for maintainers and coding agents |
 
 ## Quick start
@@ -20,21 +20,21 @@ It supports interactive and direct actions with three execution modes: **LOOSE (
 Install the tool and its dependencies as described in [Installation](docs/INSTALLATION.md), then run the launcher **from the root of a configured target Git repository**:
 
 ```bash
-/path/to/apatch/apatch.sh
+/path/to/apatch/apatch.sh apatch-PATCH-2026-10-24-00-42-example
 ```
 
-The default handoff is `~/Downloads/<project>_patch_params.json`. An explicit handoff JSON path is also supported.
+Each generated ZIP is paired with a uniquely named JSON using the same stem, for example `apatch-PATCH-2026-10-24-00-42-example.zip` and `apatch-PATCH-2026-10-24-00-42-example.json`. The handoff name is **required**. An unqualified name resolves under `downloads_dir` (`~/Downloads` by default), and explicit `.json` paths remain supported.
 
 Examples of direct actions:
 
 ```bash
-/path/to/apatch/apatch.sh op=APL
-/path/to/apatch/apatch.sh op=CHK
-/path/to/apatch/apatch.sh op=CMT skipApproves=true
+/path/to/apatch/apatch.sh apatch-PATCH-2026-10-24-00-42-example op=APL
+/path/to/apatch/apatch.sh apatch-PATCH-2026-10-24-00-42-example op=CHK
+/path/to/apatch/apatch.sh apatch-PATCH-2026-10-24-00-42-example op=CMT skipApproves=true
 ```
 
 Review unattended operations carefully: `skipApproves=true` suppresses interactive confirmations but does not bypass Git or archive safety checks. See [Usage](docs/USAGE.md) for the full behavior and precautions.
 
 ## Development status
 
-The implementation and regression tests are available in this repository. The SDD documentation structure is being introduced incrementally; **no active normative specification has been adopted yet**. See the [specification index](docs/specs/README.md).
+The implementation and regression tests are available in this repository. The [orchestrator specification](docs/specs/active/spec-apatch-orchestrator.md), its [first-priority sub-specification](docs/specs/active/subspecs/subspec-01-workflow-control.md), and [implementation plan](docs/specs/plans/apatch-orchestrator-implementation-plan.md) remain **DRAFT** documents. Some P0 stages are implemented, while registry ordering, operation sequences, and later orchestration features are still planned; inspect the source and tests rather than assuming every drafted feature is available.

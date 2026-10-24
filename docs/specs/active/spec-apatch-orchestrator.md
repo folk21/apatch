@@ -13,7 +13,8 @@
 ## 2. Compatibility and safety baseline
 
 - Preserve `LOOSE` (default), `STRICT`, and `FORCE` (recovery, not force-push).
-- Preserve action IDs `0..9`: `EXT, BRN, BAP, APL, CHK, CMT, PSH, PR, MRG, SYN`; `op`, `skipApproves`, and handoff JSON schema v1.
+- Preserve action IDs `0..10`: `EXT, BRN, BAP, APL, CHK, CMT, PSH, PR, MRG, SYN, STS`; `op`, `skipApproves`, and handoff JSON schema v1.
+- Require an explicit handoff name or JSON path on every invocation; generate unique same-stem ZIP/JSON pairs while accepting existing explicit JSON paths.
 - Preserve LOOSE manual edits, multiple patches per commit, and deferred push.
 - Keep existing state, history, migration, and logging data readable; never invent a verified commit, review, or merge.
 - Keep safe ZIP extraction, worktree-preserving backups, Git guards, and non-force pushes.
@@ -28,6 +29,8 @@ Current behavior is documented in [Usage](../../USAGE.md) and [Architecture](../
 | Current patch status | Provide read-only `10 [STS]` with branch, patch, commit, push, PR, and next-action evidence | P0 — SUB-001 |
 | Next operation | Show the suggested next action number/code after each action | P0 — SUB-001 |
 | Local PR review policy | Accept an explicit per-project override for zero-approval merges | P0 — SUB-001 |
+| Local GitHub CI policy | Independently configure whether published GitHub CI checks are mandatory for merging | P0 — SUB-001 |
+| Explicit handoff identity | Give every ZIP a same-stem JSON and require a named handoff on every invocation | P0 — SUB-001 |
 | Generated patch order | Detect skipped patches using `created_patches.txt` | P0 — SUB-001 |
 | Command sequences | Run `opSeq` with detailed progress and error recovery | P0 — SUB-001 |
 | Operation execution history | Persist numbered/coded attempts and outcomes in `.apatch/apply_patch.state.json` | P1 — SUB-002 |

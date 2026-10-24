@@ -16,6 +16,8 @@ Complete small independently tested increments. Preserve existing CLI, handoff J
 | --- | --- | --- |
 | **P0.1 — Current status and next operation feedback** | New `apatch_lib/status.py` plus CLI/menu, local Git evidence, branch provenance, and recommendation logic. | SUB-001 AC-01/02/15–18; read-only and offline tests in all modes. |
 | **P0.2 — Project PR approval policy** | `apatch_lib/model.py`, `apatch_lib/github.py`, `.apatch/config.yaml` parser and usage docs: optional `require_review_approval` override, default unchanged. | AC-03/04, mock `reviewDecision` variants, CI and GitHub rejection unaffected. |
+| **P0.2b — Independent project CI policy** | Add project-local `require_required_checks` override; preserve the existing global default and unrelated merge gates. | AC-19/20/21; missing/pending CI, stale PR, remote/server rejection tests. |
+| **P0.2c — Explicit unique handoff names** | Generate same-stem ZIP/JSON pairs, require a named handoff in `apatch.py`/`apatch.sh`, support stems under `downloads_dir` and explicit `.json` paths. | AC-22/23/24; parser, shell launcher, missing-name, status and multi-handoff tests. |
 | **P0.3a — Registry validation and ordering** | New small `apatch_lib/created_patches.py` or another single owner; compare optional local registry to legacy-compatible `AppliedPatchHistory`. Guard `BAP`/`APL` in all modes *before* side effects. | AC-05/06/08, invalid lines/duplicates/symlinks, history migration tests. |
 | **P0.3b — Registry metadata transport** | Extend archive inspection/application to recognize a reserved `.apatch/created_patches.txt` member, validate append-only prefix, and store atomically as non-Git metadata. | AC-07, repeated ZIP, failed extraction/retry, ignored-file handling, no worktree false positives. Activate new ChatGPT packaging directive only once this is stable. |
 | **P0.4a — `opSeq` core** | `apatch.py`, `apatch.sh`, `apatch_lib/workflow.py`: parse a list of existing operation IDs, dispatch sequentially, refresh state between steps, stop on failure and report the complete step context. | AC-09/11/12/13/14, `skipApproves` true/false, shell/Python parser parity, timeout recovery. |
@@ -102,6 +104,82 @@ perform_standard_merge_with_no_bypass_flags()
 ```
 
 **Acceptance checkpoint:** SUB-001 AC-03/04; missing approvals may pass the local gate only under explicit project override, while CI, branch protections, stale PR heads, and GitHub failures still block.
+
+### P0.2b — File-level implementation: independent project CI policy
+
+**Prerequisites:** P0.2 review override implemented and verified, existing global `require_required_checks` parsing in `load_config`, and existing CI guard in `github.merge_pr`. **Non-goals:** installing CI, synthesizing missing GitHub status checks, bypassing server branch protection, altering canonical local `CHK` execution, or making review/CI settings dependent on one another.
+
+| File | Exact planned change |
+| --- | --- |
+| `apatch_lib/model.py` — `Config`, `load_project_config` | Add `required_checks_source` with default `global`. Allow project key `require_required_checks`, require `type(value) is bool`, inherit `global_config.require_checks` when absent, and propagate the effective setting and origin in `dataclasses.replace`. |
+| `apatch_lib/github.py` — `merge_pr` | Display review and CI settings with independent origins before GitHub calls. Keep CI rollup/nonempty/required-check assertions inside `if config.require_checks`, without moving or bypassing PR identity/head/base/mergeability guards. Propagate failed `gh pr merge` without persisting `merged`. |
+| `tests/test_apatch.py` | Test global inheritance, project `true`/`false` overrides, invalid YAML types, no published checks under both policies, pending checks with CI required, unapproved PR with review required, head drift, remote ref drift, and mocked GitHub refusal after CI opt-out. Verify no merge command is run when a remaining guard fails and output identifies `project`/`global`. |
+| `docs/USAGE.md` | Explain two independent policy keys and their sources, examples for repositories without CI, default fail-closed behavior, local `CHK` distinction, and server-side restrictions. |
+| `docs/specs/active/subspecs/subspec-01-workflow-control.md` | Add normative P0-2b policy and acceptance scenarios AC-19/20/21. |
+
+```python
+def load_effective_ci_policy(project, global_config):
+    if "require_required_checks" not in project:
+        return global_config.require_checks, "global"
+    value = project["require_required_checks"]
+    if type(value) is not bool:
+        raise Abort("Project require_required_checks must be a YAML boolean")
+    return value, "project"
+
+def merge_pr(config, ...):
+    display_merge_policy("review", config.require_approval, config.review_approval_source)
+    display_merge_policy("CI", config.require_checks, config.required_checks_source)
+    assert_pr_identity_head_base_remote_and_mergeability()
+    if config.require_approval:
+        require_approved_review()
+    if config.require_checks:
+        require_nonempty_published_checks()
+        require_successful_github_required_checks()
+    request_standard_github_merge()
+    verify_github_reports_merged_before_persisting_state()
+```
+
+**Failure/recovery:** Configuration type failure stops at startup without mutating the repository. When CI is required, missing/pending checks remain actionable errors. When CI is not required, GitHub branch protections may still reject the merge; retain the pre-merge checkpoint and allow a later explicit retry after correcting GitHub settings. No automatic retry for an indeterminate remote result. Acceptance evidence: SUB-001 AC-19/20/21, focused mocked merge tests, full `sh ./run_tests.sh`.
+
+### P0.2c — File-level implementation: explicit, unique handoff selection
+
+**Prerequisites:** existing `downloads_dir`, `load_handoff`, current argparse/launcher normalization, and `STS` selection logic. **Non-goals:** changing ZIP names or JSON schema, resolving handoff stems by querying GitHub, implicit “most recent” selection, and performing multi-handoff sequences before P0.4b.
+
+| File | Exact planned change |
+| --- | --- |
+| `apatch.py` — CLI parser, `main` | Make handoff positional mandatory. Introduce `resolve_handoff_path(identifier, downloads_dir)`: append `.json` if absent; bare filename/stem resolves under configured downloads, while explicit path remains local/absolute. Reject blank/unsafe bare names; keep explicit `.json` paths working. Remove project-name-derived default. Require explicit JSON for read-only `STS` too, without altering its no-write behavior. |
+| `apatch.sh` | Remove implicit `$HOME/Downloads/<project>_patch_params.json` injection. Preserve mode-first and mode-second argument normalization; forward the chosen stem/path verbatim and exit with a usage error when absent. |
+| `tests/test_apatch.py` | Assert no handoff errors before `git` changes, basename versus explicit path resolution, extension handling, two different JSONs in one downloads directory, mode argument orders, numeric/mnemonic `op`, `STS` requiring JSON even with `--patch`, shell-launcher behavior, and no regression to explicit absolute paths. |
+| `README.md`, `docs/USAGE.md`, `docs/INSTALLATION.md` | Replace examples relying on implicit defaults, show stem-first syntax, separate ZIP/JSON naming rule, and current `downloads_dir`. |
+| ChatGPT short and extended project instructions (**external artifacts**) | Replace hardcoded `apatch_patch_params.json` naming directive with same-stem `.json` for each ZIP; require separate copyable JSON basename next to each link. Preserve the exact two-file handoff and registry rules. |
+| `docs/specs/active/subspecs/subspec-01-workflow-control.md` | Define the explicit handoff contract, intentional `STS --patch` no-handoff incompatibility, and AC-22/23/24. |
+
+```python
+def resolve_handoff_path(raw, downloads_dir):
+    if not raw or raw in (".", ".."):
+        raise Abort("A handoff JSON name is required")
+    path = expand_user(raw)
+    if not path.name.endswith(".json"):
+        path = replace_name(path, path.name + ".json")
+    if is_bare_name(raw):
+        validate_safe_basename(path.name)
+        path = downloads_dir / path.name
+    return path
+
+def run(argv):
+    args = argparse_require_positional_handoff(argv)
+    config = load_global_config()
+    handoff = load_handoff(resolve_handoff_path(args.handoff, config.downloads))
+    run_selected_operation_without_implicit_fallback(handoff, args)
+
+def create_chatgpt_handoff(zip_name):
+    stem = strip_final_zip_extension(zip_name)
+    json_name = stem + ".json"
+    write_json_with_patch_file(json_name, zip_name)
+    display_copyable_filename_and_link(json_name)
+```
+
+**Failures and migration:** Missing positional handoff fails in argparse before config or runtime mutation. Missing/malformed JSON fails before state locks or Git operations. Existing handoff contents, absolute/relative `.json` paths, persisted workflow entries, and ZIP history remain unchanged. The former implicit default and no-JSON `STS --patch` mode are removed intentionally; the docs and help must call out this behavior. Explicit path selection prevents accidental application of an older default JSON when multiple patches coexist. Acceptance evidence: SUB-001 AC-22/23/24, shell syntax (`sh -n apatch.sh`), command help, focused tests, and full suite.
 
 ### P0.3a/b — File-level implementation: patch registry and metadata transport
 

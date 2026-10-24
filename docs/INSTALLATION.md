@@ -34,6 +34,6 @@ checks:
 
 Replace the example with the repository's actual verification commands. Checks are executed directly without an implicit shell. Do not add `.apatch/` runtime state, journals, locks, backups, or logs to version control; the project-owned `.apatch/config.yaml` is configuration.
 
-The handoff JSON and ZIP are normally placed under `~/Downloads`, subject to `apatch.conf`. When run from a repository root, `apatch.sh` infers `<project>_patch_params.json` if the JSON argument is omitted.
+The handoff JSON and ZIP are normally placed under `~/Downloads`, subject to `apatch.conf`. Every ZIP must have a uniquely named JSON with the same stem (for example, `apatch-PATCH-2026-10-24-00-42-example.zip` and `apatch-PATCH-2026-10-24-00-42-example.json`). Pass the JSON stem as the required positional argument: `apatch.sh apatch-PATCH-2026-10-24-00-42-example`. The Python CLI appends `.json` and looks under `downloads_dir`. An explicit `.json` path is also accepted. No default JSON is inferred.
 
 Next: [Usage](USAGE.md) for modes, operations, and handoffs; [Development](DEVELOPMENT.md) for the test suite.

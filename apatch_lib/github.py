@@ -91,6 +91,8 @@ def create_pr(config, handoff, root, record, save_checkpoint):
 def merge_pr(config, handoff, root, record, save_checkpoint):
     approval = "required" if config.require_approval else "not required"
     print(f"PR review approval: {approval} (source: {config.review_approval_source}).")
+    checks = "required" if config.require_checks else "not required"
+    print(f"PR CI checks: {checks} (source: {config.required_checks_source}).")
     require_clean(root)
     repo = repository(config, root)
     prs = pr_list(config, root, repo, handoff.branch)
