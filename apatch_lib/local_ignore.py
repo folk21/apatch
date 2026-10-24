@@ -12,13 +12,15 @@ LOGGER = logging.getLogger("apatch.local_ignore")
 
 def ensure_runtime_ignored(root: Path, log_directory: Path, log_filename: str,
                            state_path: Path, history_path: Path) -> None:
-    """Ignore project-local logs, state, history, and their locks in this Git worktree."""
+    """Ignore project-local logs, state, patch registries, and their locks in Git."""
     lock_path = state_path.with_name(state_path.name + ".lock")
     history_lock_path = history_path.with_name(history_path.name + ".lock")
     relative_log_dir = log_directory.relative_to(root).as_posix()
     patterns = {
         (log_directory / log_filename).relative_to(root).as_posix(): f"/{relative_log_dir}/",
         ".apatch/backups": "/.apatch/backups",
+        ".apatch/created_patches.txt": "/.apatch/created_patches.txt",
+        ".apatch/created_patches.txt.lock": "/.apatch/created_patches.txt.lock",
         state_path.relative_to(root).as_posix(): f"/{state_path.relative_to(root).as_posix()}",
         lock_path.relative_to(root).as_posix(): f"/{lock_path.relative_to(root).as_posix()}",
         history_path.relative_to(root).as_posix(): f"/{history_path.relative_to(root).as_posix()}",

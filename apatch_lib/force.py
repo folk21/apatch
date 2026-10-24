@@ -68,6 +68,8 @@ class ForceActions:
 
     def prepare_branch(self, with_patch=False):
         w = self.w
+        if with_patch:
+            w.branch_patch.assert_patch_order()
         w.branch_patch.assert_history_well_formed()
         require_clean(w.root)
         current = self.branch()
@@ -184,6 +186,7 @@ class ForceActions:
 
     def apply_or_adopt(self):
         w = self.w
+        w.branch_patch.assert_patch_order()
         branch = self.branch()
         fingerprint, paths = worktree_fingerprint(w.root)
         if paths:
@@ -198,6 +201,7 @@ class ForceActions:
                 print("The patch is already committed; no files were overwritten.")
             return
         with locked_history(w.config.applied_patches_path) as history:
+            w.branch_patch.assert_patch_order(history)
             if not w.branch_patch.warn_if_previously_applied(history):
                 return
             if not confirm(f"FORCE: Apply ZIP {w.handoff.patch} to clean branch {branch}?"):

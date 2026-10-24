@@ -33,6 +33,8 @@ class LooseActions:
 
     def prepare_branch(self, with_patch=False):
         w = self.w
+        if with_patch:
+            w.branch_patch.assert_patch_order()
         w.branch_patch.assert_history_well_formed()
         target = w.handoff.branch
         current = self.branch()
@@ -110,6 +112,7 @@ class LooseActions:
             if not confirm("Back up these paths and permit their replacement by the ZIP?"):
                 return
         with locked_history(w.config.applied_patches_path) as history:
+            w.branch_patch.assert_patch_order(history)
             if not w.branch_patch.warn_if_previously_applied(history):
                 return
             if not confirm(f"LOOSE: Apply {w.handoff.patch} on {branch} without discarding other edits?"):
