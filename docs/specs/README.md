@@ -14,7 +14,7 @@ This directory holds proposed normative specifications and implementation plans 
 | Completed or archived specifications | None |
 | Next planned stages | P0.3a — Created-patch registry ordering; P0.3b — Registry metadata transport |
 
-Until a specification is formally accepted, [Usage](../USAGE.md) and [Architecture](../ARCHITECTURE.md) describe the existing implementation. P0.1 (`STS` and next-action suggestions), P0.2 (project review approval), P0.2b (project CI policy), and P0.2c (explicit unique handoff selection) have implementation and test coverage. The future `AUD` operation, operation journal, Git-format patch support, `opSeq`, and created-patch ordering/metadata transport are **not yet implemented**. This status summary does not itself authorize later stages.
+Until a specification is formally accepted, [Usage](../USAGE.md) and [Architecture](../ARCHITECTURE.md) describe the existing implementation. P0.1 (`STS` and next-action suggestions), P0.2 (project review approval), P0.2b (project CI policy), P0.2c (explicit unique handoff selection), P0.2d (feature-branch creation guard), P0.2e (historical PR revision safety), and P0.2f (bounded GitHub read retries and identity reuse) have implementation and test coverage. The future cross-project `info=PROGRESS` view and global/per-project JSON activity files are specified under P0.5a/b but **not yet implemented**. The `AUD` operation, detailed per-target operation journal, Git-format patch support, `opSeq`, and created-patch ordering/metadata transport are also **not yet implemented**. This status summary does not itself authorize later stages.
 
 ## Planned organization
 

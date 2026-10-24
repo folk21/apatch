@@ -20,12 +20,15 @@ Complete small independently tested increments. Preserve existing CLI, handoff J
 | **P0.2c — Explicit unique handoff names** | Generate same-stem ZIP/JSON pairs, require a named handoff in `apatch.py`/`apatch.sh`, support stems under `downloads_dir` and explicit `.json` paths. | AC-22/23/24; parser, shell launcher, missing-name, status and multi-handoff tests. |
 | **P0.2d — Single active feature branch gate (emergency)** | Introduce a shared preflight for STRICT/LOOSE/FORCE before new `git switch -c`, validating all previous feature branches against local/remote ancestry and GitHub PR evidence. | AC-25/26/27/28/29; temp bare-remote and mocked GitHub tests, plus `skipApproves=true`. |
 | **P0.2e — Historical PR revision safety (emergency)** | Bind PR recovery, creation, merge, and synchronization to the current patch's pushed SHA; permit a new PR after an earlier PR for the same branch was merged at a different SHA. | AC-30–34; exact reproduction of a historical merged PR followed by an unmerged feature commit, and explicit checkpoint recovery tests. |
+| **P0.2f — GitHub read resilience and invocation-scoped identity** | Retry transient read-only GitHub failures once, never replay uncertain create/merge commands, and reuse an already verified repository identity through one merge/reconciliation operation while rechecking local origin. | AC-35–38; bounded retry, mutation no-retry, identity drift, mode/merge integration tests. |
 | **P0.3a — Registry validation and ordering** | New small `apatch_lib/created_patches.py` or another single owner; compare optional local registry to legacy-compatible `AppliedPatchHistory`. Guard `BAP`/`APL` in all modes *before* side effects. | AC-05/06/08, invalid lines/duplicates/symlinks, history migration tests. |
 | **P0.3b — Registry metadata transport** | Extend archive inspection/application to recognize a reserved `.apatch/created_patches.txt` member, validate append-only prefix, and store atomically as non-Git metadata. | AC-07, repeated ZIP, failed extraction/retry, ignored-file handling, no worktree false positives. Activate new ChatGPT packaging directive only once this is stable. |
 | **P0.4a — `opSeq` core** | `apatch.py`, `apatch.sh`, `apatch_lib/workflow.py`: parse a list of existing operation IDs, dispatch sequentially, refresh state between steps, stop on failure and report the complete step context. | AC-09/11/12/13/14, `skipApproves` true/false, shell/Python parser parity, timeout recovery. |
 | **P0.4b — Multiple handoffs** | Add explicit optional `handoffSeq` mapping for `BAP`/`APL`, retaining prior cycle state; verify preflight against duplicate or missing inputs. | AC-10/11, successive patches on one branch, combined commit/deferred push, STRICT rejection. |
+| **P0.5a — Tool-wide progress event storage** | Append redacted structured events to `.apatch/progress/progress.json` under one interprocess lock; regenerate collision-safe per-project JSON views; handle partial updates and unavailable storage. | AC-39/42–45; concurrent local processes, crash recovery, storage permission and identity tests. |
+| **P0.5b — Progress query and configurable summaries** | Add read-only `info=PROGRESS` without handoff or target repository, global `progress_global_limit=8` and `progress_project_limit=3`, and project/global console summaries. | AC-40/41/43; CLI parser, non-Git invocation, display limits and no-side-effects tests. |
 
-Stage P0.3b and P0.4b depend on developer acceptance of [open decisions](../active/subspecs/subspec-01-workflow-control.md#7-open-decisions). The user-facing P0 features remain in the **first sub-spec** even when delivered over multiple safe increments.
+Stages P0.3b, P0.4b and the final progress storage location depend on developer acceptance of [open decisions](../active/subspecs/subspec-01-workflow-control.md#8-open-decisions). The user-facing P0 features remain in the **first sub-spec** even when delivered over multiple safe increments.
 
 ### P0.1 — File-level implementation: current status and suggestions
 
@@ -300,6 +303,73 @@ def retry_sync_for_previously_synced_checkpoint():
 
 **Acceptance evidence:** SUB-001 AC-30–34, distinct local-Git SHA tests and mocked GitHub records, preserved default mode/STRICT/FORCE behavior, `sh ./run_tests.sh`, and an integrity-checked ZIP/JSON handoff from the exact verified source baseline. The old target-repository `synced` record cannot be trusted without explicit revision reconciliation.
 
+### P0.2f — File-level implementation: GitHub read resilience and invocation-scoped repository identity
+
+**Objective and trigger:** A LOOSE `MRG` first validated `folk21/osmapdigger`, then repeated `gh auth status` and `gh repo view` while entering `github.merge_pr`; the second `gh repo view` failed with a GraphQL TCP timeout before invoking `gh pr merge`. The subsequent manually merged PR was safely reconciled through `SYN`. Remove redundant authenticated identity lookups without introducing an unverified repository cache or automatic retry of an uncertain remote mutation.
+
+**Prerequisites:** Read `github.repository`, `remote_repository`, `gh_run`, `gh_output`, `merge_pr`, `sync_base`, `force._recover_pr`, `force.merge`, `workflow.merge`, and the existing tests. Preserve the configured `github_timeout_seconds` for each subprocess. Scope the cache to one synchronous operation only. **Non-goals:** long-lived authorization caching, a shared GitHub API client, retrying `gh pr create` or `gh pr merge`, weakening required checks/approvals, extending timeouts globally, and changing PR state-machine transitions.
+
+| File | Symbols and precise responsibility |
+| --- | --- |
+| `apatch_lib/github.py` | Introduce `_TRANSIENT_GITHUB_ERROR` and `_github_read` with at most two total attempts (one retry) for explicitly known read-only `gh` subcommands. Dispatch read-only `gh_run`/`gh_output` calls through the retry wrapper; keep `gh pr create`/`gh pr merge` single-attempt. Introduce `verified_repository(config, root, already_verified)` to reuse a known verified `owner/repository` without remote API calls while still comparing it with the current Git origin. Accept keyword-only `verified_repo` in `merge_pr` and `sync_base`; return the verified repo from a confirmed merge. |
+| `apatch_lib/force.py` | Return the resolved repo alongside the selected handoff and PR from `_recover_pr`; pass the same repo to `github.merge_pr` and `github.sync_base` in `merge`. Avoid any changes to FORCE commit adoption, push behavior, or recorded PR revision rules. |
+| `apatch_lib/workflow.py` | In the STRICT `merge` method, pass the repo confirmed by `github.merge_pr` into the immediate `sync_base` call. Separate `SYN` invocations continue to authenticate independently. |
+| `tests/test_apatch.py` | Cover initial transient read failure then success, two failed reads, non-retriable authentication rejection, non-retried `gh pr create`/`gh pr merge`, reuse of repo identity without a second `gh repo view`, fail-closed changed Git remote, and successful merge + sync under the existing SHA/CI/review safeguards. Keep every previous test running. |
+| `docs/USAGE.md`, `docs/ARCHITECTURE.md` | Explain per-attempt timeouts, one retry on recognized transient read failures, absence of mutating retries, repository identity reuse only within one operation, and explicit `SYN` after a manual merge. |
+| `docs/specs/active/subspecs/subspec-01-workflow-control.md` | Normative section 3.5 and acceptance cases AC-35–38. |
+
+**Implementation order and control flow:**
+
+```python
+READ_ONLY_OUTPUT_COMMANDS = {
+    ("gh", "repo", "view"),
+    ("gh", "pr", "list"),
+    ("gh", "pr", "view"),
+}
+READ_ONLY_RUN_COMMANDS = {
+    ("gh", "auth", "status"),
+    ("gh", "pr", "checks"),
+}
+
+def read_github_with_one_retry(argv, capture_output):
+    for attempt in (1, 2):
+        try:
+            return bounded_gh_subprocess(argv, timeout=github_timeout_seconds)
+        except Abort as error:
+            if attempt == 2 or not recognized_transient_network_error(error):
+                raise
+            display_redacted_retry_warning(argv[:3])
+            wait_briefly_before_retry()
+
+def execute_github_command(argv):
+    if argv_prefix(argv) in READ_ONLY_RUN_COMMANDS | READ_ONLY_OUTPUT_COMMANDS:
+        return read_github_with_one_retry(argv, capture_output=needs_stdout(argv))
+    return bounded_gh_subprocess_once(argv)
+
+def verified_repo(config, previous=None):
+    if previous is None:
+        return verify_local_origin_against_gh_auth_and_repo_view()
+    if current_origin_repository(config) != previous:
+        abort("Git remote changed after GitHub repository verification")
+    return previous
+
+def loose_or_force_merge():
+    handoff, matching_pr, repo = recover_current_revision_and_repo()
+    if matching_pr.state == "OPEN":
+        merge_pr_with_live_SHA_policy_checks(verified_repo=repo)
+    if checkpoint.phase == "merged":
+        confirm_merge_details_and_sync_main(verified_repo=repo)
+
+def strict_merge():
+    repo = merge_pr_with_live_SHA_policy_checks()
+    if checkpoint.phase == "merged":
+        confirm_merge_details_and_sync_main(verified_repo=repo)
+```
+
+**Failure and recovery:** Never replay an uncertain GitHub mutation: on `gh pr create` timeout, run `PR` again to discover existing PRs; on `gh pr merge` timeout, query current PR state through the normal recovery flow or use `SYN` if the PR was manually merged. A read retry must not cause an apparently successful subprocess to skip content validation. A stale or changed local remote is a hard error even if a previously valid repo name was supplied. One read request can last up to twice the configured timeout plus a short retry delay; it always has a finite upper bound and visible console feedback.
+
+**Acceptance evidence:** AC-35–38 plus all earlier PR safety scenarios and `sh ./run_tests.sh`. Use mocked `gh` commands and local temporary Git repositories only; no live GitHub merge or network manipulation is needed to test this stage.
+
 ### P0.3a/b — File-level implementation: patch registry and metadata transport
 
 | File | Exact planned change |
@@ -380,15 +450,154 @@ def execute_sequence(sequence, context):
     return print_sequence_success_summary()
 ```
 
-At every failure, print step `i/N`, number/code, selected patch, branch, phase, last completed action, observed versus uncertain effects, remaining actions, exit status, and safe reconciliation instructions. No automatic rollback, hidden command retry, or continued execution after cancellation. `skipApproves=true` may suppress confirmations but MUST NOT skip safety gates. P0 does not yet require persisted per-action runs; P1.1 will add them without changing sequence behavior.
+At every failure, print step `i/N`, number/code, selected patch, branch, phase, last completed action, observed versus uncertain effects, remaining actions, exit status, and safe reconciliation instructions. No automatic rollback, replay of an uncertain mutating command, or continued execution after cancellation; the bounded P0.2f retry for read-only GitHub lookups remains permitted. `skipApproves=true` may suppress confirmations but MUST NOT skip safety gates. P0.5 will add bounded cross-project action summaries; P1.1 will add richer per-target evidence records without changing sequence behavior.
 
 **Acceptance checkpoint:** SUB-001 AC-09–14, test failed step 1 versus failed step N, missing/invalid handoff, duplicate `BAP,APL` without distinct handoffs, CI rejection, and timed-out GitHub operations.
+
+### P0.5a — File-level implementation: persistent multi-project progress
+
+**Objective:** Retain the meaningful results of every `apatch` operation across target repositories so the developer can reconstruct which projects were active, what happened, and what remains. This stage implements durable data capture without a new CLI query. **Dependencies:** P0.1 status/evidence semantics; P0.2f bounded GitHub handling; ideally the shared action dispatch from P0.4a so sequence events use the same collector. A standalone-operation implementation may precede `opSeq`, but the collector interface MUST allow `sequence_id` and `step_index` later.
+
+**Prerequisites:** Inspect `apatch.py:main`, `apatch_lib/workflow.py:interactive/execute`, `apatch_lib/status.py`, `apatch_lib/state.py:locked_state/save`, `apatch_lib/logging_setup.py`, `apatch_lib/model.py:Config/load_config`, `.gitignore`, and launcher resolution. Confirm source-of-truth paths using `Path(__file__).resolve().parent`; do not confuse tool installation state with project-local checkpoint storage.
+
+| File | Exact change and responsibility |
+| --- | --- |
+| `apatch_lib/progress.py` (**new**) | Own `ProgressEvent`, `ProgressProject`, `ProgressStore`, canonical root fingerprinting, safe per-project basename allocation, JSON schema/version validation, redaction, interprocess `fcntl` locking, atomic/fsynced writes, derived-file regeneration, and read-only master snapshots. Do not create a competing GitHub client or open every project repository while reading. |
+| `apatch.py` | Capture one top-level operation-attempt context before dispatch and its final result after dispatch/exception. Flush progress **after releasing** the target's `locked_state` to avoid inconsistent lock-ordering. Surface storage errors as explicit warnings separate from actual Git/PR results. Preserve nonzero exit codes for failed operations; do not call progress logging for `info=PROGRESS` itself. |
+| `apatch_lib/workflow.py` | Expose a compact immutable result summary (operation ID/code, start/end phase/branch, stable next suggestion, source SHA, PR number, outcome); use the same result producer for direct/menu/sequence actions. Avoid inferring `SUCCESS` from absence of an exception when the operation was cancelled or returned a no-op. Record sequence-step context when P0.4 exists. |
+| `apatch_lib/status.py` | Reuse the existing `RECORDED`/`VERIFIED` semantics when projecting a next action. Do not make historical events appear as live GitHub checks. |
+| `apatch_lib/model.py` | Optionally add a progress directory field to `Config` only after checking compatibility with current positional constructor tests; keep progress data tool-global and independent of project `config.yaml`. Validate eventual global storage-path overrides against symlinks/out-of-tree traversal. |
+| `.gitignore` | Ignore only the tool's `.apatch/progress/` runtime data; do not add or commit private progress events. |
+| `tests/test_apatch.py` | Test first creation, two distinct projects, same-name collisions, idempotent `event_id` replay, permissions and symlink attacks, concurrent multi-process appends, derived corruption/missing-file repairs, failed/cancelled/uncertain operations, launch outside installed repo, and redaction. Use only temporary tool/project directories and mocked external calls. |
+| `docs/ARCHITECTURE.md`, `docs/USAGE.md` | Describe two-level storage, event authority, no historical backfill, example event semantics, crash recovery, permissions, and the difference between cross-project activity and actual authoritative checkpoints. |
+| `docs/specs/active/subspecs/subspec-01-workflow-control.md` | Own the normative section 6 and AC-39/42–45. |
+
+**JSON structure and stable identity (illustrative schema v1; finalize after source inspection):**
+
+```json
+{
+  "schema_version": 1,
+  "projects": {
+    "root-identity-hash": {
+      "name": "osmapdigger",
+      "root": "/absolute/canonical/path/osmapdigger",
+      "history_file": "osmapdigger_progress.json",
+      "last_event_id": "event-uuid"
+    }
+  },
+  "events": [
+    {
+      "event_id": "event-uuid",
+      "project_id": "root-identity-hash",
+      "started_at_utc": "2026-10-24T11:00:00Z",
+      "finished_at_utc": "2026-10-24T11:00:04Z",
+      "operation_code": "SYN",
+      "operation_number": 9,
+      "result": "SUCCESS",
+      "phase_before": "pr_created",
+      "phase_after": "synced",
+      "patch_file": "selected-patch.zip",
+      "pr_number": 6,
+      "error_code": null
+    }
+  ]
+}
+```
+
+**Sequential implementation and pseudocode:**
+
+```python
+def identify_project(actual_repo_root, registry):
+    canonical = securely_resolve_actual_git_root(actual_repo_root)
+    stable_id = hash_normalized_root(canonical)
+    if stable_id in registry:
+        require_same_canonical_root(registry[stable_id], canonical)
+        return registry[stable_id]
+    human_name = validate_safe_basename(canonical.name)
+    preferred = f"{human_name}_progress.json"
+    filename = preferred if not registered_elsewhere(preferred) else (
+        f"{human_name}__{stable_id[:8]}_progress.json"
+    )
+    return ProjectIdentity(stable_id, canonical, filename)
+
+def capture_action_attempt(context):
+    event_id = cryptographically_random_event_id()
+    started = monotonic_clock_and_utc_timestamp()
+    try:
+        result = execute_existing_action(context)
+    except Cancelled as exc:
+        event = build_event(event_id, started, "CANCELLED", short_redacted(exc))
+        raise
+    except RemoteOutcomeUnknown as exc:
+        event = build_event(event_id, started, "UNKNOWN_REMOTE_RESULT", short_redacted(exc))
+        raise
+    except Exception as exc:
+        event = build_event(event_id, started, "FAILED", short_redacted(exc))
+        raise
+    else:
+        event = build_event(event_id, started, classify_noop_or_success(result))
+    finally:
+        release_project_checkpoint_lock_before_flushing_progress_event()
+        try:
+            progress_store.append_event_if_absent(event)
+        except ProgressStoreError as error:
+            report_progress_warning_without_replaying_or_undoing_action(error)
+
+def append_event_if_absent(event):
+    ensure_private_non_symlink_tool_progress_directory()
+    with exclusive_lock("progress.json.lock", bounded_wait=True):
+        master = load_and_validate_json_or_initialize_new_store()
+        project = identify_project(event.project_root, master.projects)
+        if event.event_id not in master.event_ids:
+            master.events.append(validate_and_redact(event))
+            master.projects[project.id] = update_last_activity(project, event)
+            atomic_write_fsync("progress.json", master, permission=0o600)
+        atomic_write_fsync(project.history_file,
+                           derive_project_history(master, project.id), permission=0o600)
+```
+
+**Failure cases and decision points:** Never hold the tool-global progress lock while attempting Git, network, or canonical checks. Preserve a stable lock order; do not acquire the target's checkpoint lock while holding the progress lock. Stop on malformed master JSON or unsafe symlink paths without destroying the earlier version. If the master write succeeds but the project view fails, the master wins; recover the derived view on the next write. If the tool installation is read-only, emit one concise warning and complete/reject the primary Git operation according to its **own** evidence, not the secondary history write. No automatic filesystem-wide scan or fabricated pre-feature timeline. Decide whether the storage root needs an optional XDG/App Support override before accepting the default path permanently.
+
+**Acceptance checkpoint:** SUB-001 AC-39/42–45, targeted concurrent subprocess tests (two writers, two projects), deliberate exception injected between the two atomic replacements, schema and privacy fixtures, standard `sh ./run_tests.sh`. Normal operations must remain usable if progress persistence fails.
+
+### P0.5b — File-level implementation: `info=PROGRESS` and configurable overview
+
+**Objective:** From the `apatch` installation or any directory, show the latest global actions and per-project recent activity without knowing a handoff stem. This stage is read-only and depends on P0.5a durable master history, not on any network connectivity.
+
+| File | Exact change and responsibility |
+| --- | --- |
+| `apatch.py` | Recognize `info=PROGRESS` and `--info=PROGRESS` as a separate parser mode with no positional handoff. Reject simultaneous `op`/`opSeq`/action modes. Resolve the installed tool root from `__file__`, load global config, render the progress query, and return without `repository_root`, `load_project_config`, checkpoint migration, or GitHub operations. |
+| `apatch.sh` | Pass through the new information argument without applying an implicit handoff; preserve macOS/Linux shell quoting and existing positional usage. No mandatory shell change if the current launcher is transparent. |
+| `apatch_lib/model.py`, `apatch.conf` | Introduce `progress_global_limit = 8` and `progress_project_limit = 3` in the **global** configuration; validate positive bounded integers (suggest 1..100 global and 1..50 per project). These values control displayed rows, not data retention. No target-project YAML keys are required. |
+| `apatch_lib/progress.py` | Expose a strict read-only snapshot loader, deterministic newest-first sorting, project directory summary, recent-event filtering, and console renderer. Mark stored facts `RECORDED`; highlight uncertain outcomes and unfinished work. Never invoke `git` or `gh` for another project while rendering the overview. |
+| `tests/test_apatch.py` | CLI dispatch with no handoff/no target Git repo; project summary exact row limits; invalid config; missing/empty progress; tie-breaking events; failed and cancelled actions; tool root with spaces; no file bytes changed by `info=PROGRESS`; separate `--help` and existing `op=STS` compatibility. |
+| `README.md`, `docs/USAGE.md`, `docs/ARCHITECTURE.md` | Minimal README pointer and detailed usage/architecture examples; explicitly explain partial history for projects not yet invoked since installation. |
+
+```python
+def parse_cli(argv):
+    if argv_contains_info_progress(argv):
+        reject_conflicts_with_handoff_op_sequence_and_modes()
+        return ProgressQuery()
+    return parse_existing_required_handoff_cli(argv)
+
+def show_progress(global_config, tool_dir):
+    summary = read_only_validated_snapshot(tool_dir / ".apatch/progress/progress.json")
+    print("==> APATCH GLOBAL PROGRESS [RECORDED]")
+    print_events(sort_newest(summary.events)[:global_config.progress_global_limit])
+    for project in sort_projects_by_last_activity(summary.projects):
+        print_project_location_branch_patch_last_status_and_next_step(project)
+        print_events(last_events_for_project(summary, project.id)[
+            :global_config.progress_project_limit])
+        flag_incomplete_or_uncertain_work(project)
+```
+
+**Acceptance checkpoint:** SUB-001 AC-40/41/43 and all P0.5a persistence tests. Display of a previous `MERGED` or `synced` result is explicitly a **recorded** historical fact; it does not replace `STS`, `SYN`, or live Git/GitHub confirmation. Future optional filters `info=PROGRESS project=<id>`, `info=PROJECTS`, and `--json` can be separately specified after the initial overview is validated.
 
 ## P1 — Execution history, global audit, and scheduled quality checks
 
 ### P1.1 — File-level implementation: execution journal (APATCH-SUB-002)
 
-**Dependency:** stable standalone and sequence dispatch; exact lock acquisition order confirmed in `state.py` and `workflow.py`. Do not change real Git side effects as part of the journaling stage. Existing `apply_patch.state.json` stays the single durable state file.
+**Dependency:** stable standalone and sequence dispatch; exact lock acquisition order confirmed in `state.py` and `workflow.py`. If P0.5 is already implemented, its tool-wide progress ledger remains a concise **cross-project projection**; the P1 journal is a richer **per-target evidence log**, not a second independent writer of the same progress event. Reuse/correlate stable event IDs where possible. Do not change real Git side effects as part of the journaling stage. Existing `apply_patch.state.json` stays the single durable state file.
 
 | File | Exact planned change |
 | --- | --- |

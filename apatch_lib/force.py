@@ -406,15 +406,17 @@ class ForceActions:
                                               expected_sha, merged=True)
             self.checkpoint("merged", "GitHub merge adopted", applied_branch=handoff.branch,
                             pr_number=pr["number"], pushed_sha=expected_sha)
-        return handoff, pr
+        return handoff, pr, repo
 
     def merge(self):
         w = self.w
-        handoff, pr = self._recover_pr()
+        handoff, pr, repo = self._recover_pr()
         if pr["state"] == "OPEN":
-            github.merge_pr(w.config, handoff, w.root, w.record, w.persist)
+            github.merge_pr(w.config, handoff, w.root, w.record, w.persist,
+                            verified_repo=repo)
         if w.phase == "merged":
-            github.sync_base(w.config, handoff, w.root, w.record, w.persist)
+            github.sync_base(w.config, handoff, w.root, w.record, w.persist,
+                             verified_repo=repo)
 
     def sync(self):
         w = self.w
