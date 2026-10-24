@@ -1398,6 +1398,53 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertIn("history contains an invalid entry", result.stderr)
         self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(), "main")
 
+    def test_misspelled_history_field_blocks_every_branch_action_before_switch(self):
+        original = (
+            "Date: 2026-10-23T22:50:10+04:00\n"
+            "Patch: previous-patch.zip\n"
+            "Planned feature brancx§h: feature/previous\n"
+            "Real feature branch: feature/previous\n")
+        self.history_path.write_text(original)
+        for mode in ("loose", "strict", "force"):
+            for operation in ("BRN", "BAP"):
+                with self.subTest(mode=mode, operation=operation):
+                    result = self.invoke_cli(f"--{mode}", f"op={operation}",
+                                             "skipApproves=true")
+                    self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                    self.assertIn("invalid entry at line 3", result.stderr)
+                    self.assertIn("expected 'Planned feature branch:'", result.stderr)
+                    self.assertIn("found 'Planned feature brancx§h'", result.stderr)
+                    self.assertEqual(command("git", "branch", "--show-current", cwd=self.root)
+                                     .stdout.strip(), "main")
+                    self.assertFalse(command("git", "branch", "--list",
+                                             self.payload["feature_branch"], cwd=self.root)
+                                     .stdout.strip())
+                    self.assertFalse((self.root / "new.txt").exists())
+                    self.assertEqual(self.history_path.read_text(), original)
+
+        self.history_path.write_text(original.replace("brancx§h", "branch"))
+        recovered = self.invoke_cli("--loose", "op=BAP", "skipApproves=true")
+        self.assertEqual(recovered.returncode, 0, recovered.stdout + recovered.stderr)
+        self.assertTrue((self.root / "new.txt").exists())
+        self.assertEqual(len(AppliedPatchHistory(self.history_path).entries), 2)
+
+    def test_misspelled_history_field_prevents_switch_to_existing_branch(self):
+        command("git", "branch", self.payload["feature_branch"], cwd=self.root)
+        history = ("Date: 2026-10-23T22:50:10+04:00\n"
+                   "Patch: previous-patch.zip\n"
+                   "Planned feature brancx§h: feature/previous\n"
+                   "Real feature branch: feature/previous\n")
+        self.history_path.write_text(history)
+        for mode in ("loose", "force"):
+            with self.subTest(mode=mode):
+                result = self.invoke_cli(f"--{mode}", "op=BAP", "skipApproves=true")
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn("invalid entry at line 3", result.stderr)
+                self.assertEqual(command("git", "branch", "--show-current", cwd=self.root)
+                                 .stdout.strip(), "main")
+                self.assertFalse((self.root / "new.txt").exists())
+                self.assertEqual(self.history_path.read_text(), history)
+
     def test_runtime_state_and_history_paths_must_be_relative_filenames(self):
         conf = self.bin / "apatch.conf"
         conf.write_text(conf.read_text().replace("applied_patches_file = applied_patches.txt",

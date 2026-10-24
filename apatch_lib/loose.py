@@ -33,6 +33,7 @@ class LooseActions:
 
     def prepare_branch(self, with_patch=False):
         w = self.w
+        w.branch_patch.assert_history_well_formed()
         target = w.handoff.branch
         current = self.branch()
         origin = "REUSED"

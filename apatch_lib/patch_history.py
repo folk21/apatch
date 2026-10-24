@@ -44,10 +44,16 @@ def _parse(raw: str) -> list[HistoryEntry]:
             index += 1
             continue
         prefixes = ("Date: ", "Patch: ", "Planned feature branch: ", "Real feature branch: ")
-        if index + 4 > len(lines) or any(
-                not lines[index + offset].startswith(prefix)
-                for offset, prefix in enumerate(prefixes)):
-            raise Abort("Applied patch history contains an invalid entry; inspect manually")
+        if index + 4 > len(lines):
+            raise Abort(f"Applied patch history contains an invalid entry at line {index + 1}: "
+                        "expected a complete four-field record; inspect manually")
+        for offset, prefix in enumerate(prefixes):
+            actual = lines[index + offset]
+            if not actual.startswith(prefix):
+                field = actual.partition(":")[0][:80]
+                raise Abort(
+                    f"Applied patch history contains an invalid entry at line {index + offset + 1}: "
+                    f"expected '{prefix.rstrip()}', found '{field}'; inspect manually")
         date, patch, planned, real = (
             lines[index + offset][len(prefix):] for offset, prefix in enumerate(prefixes)
         )

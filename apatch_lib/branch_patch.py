@@ -19,6 +19,11 @@ class BranchPatchActions:
     def __init__(self, workflow):
         self.workflow = workflow
 
+    def assert_history_well_formed(self):
+        """Validate the journal before any feature-branch switch or creation."""
+        with locked_history(self.workflow.config.applied_patches_path):
+            pass
+
     def assert_new_branch_available(self):
         """Reject existing local and remote refs, including non-checked-out branches."""
         w = self.workflow
@@ -29,6 +34,7 @@ class BranchPatchActions:
 
     def new_branch(self, with_patch=False):
         w = self.workflow
+        self.assert_history_well_formed()
         if w.phase != "new":
             raise Abort("Feature branch has already been prepared for this patch")
         require_clean(w.root)
