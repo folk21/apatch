@@ -2,6 +2,7 @@
 
 import logging
 
+from .branch_guard import assert_no_unfinished_feature_branches
 from .gitutil import (branch_exists, confirm, current_branch, head, remote_head,
                       require_branch, require_clean, run, skip_approvals_enabled)
 from .model import Abort
@@ -46,6 +47,7 @@ class BranchPatchActions:
                 if not confirm(f"Create branch {w.handoff.branch} from current HEAD?"):
                     return
                 self.assert_new_branch_available()
+                assert_no_unfinished_feature_branches(w.root, w.config, w.handoff.branch)
                 require_clean(w.root)
                 w.assert_base()
                 if remote_head(w.root, w.config, w.config.base) != head(w.root):
@@ -60,6 +62,7 @@ class BranchPatchActions:
             if not confirm(f"Create branch {w.handoff.branch} from current HEAD?"):
                 return
             self.assert_new_branch_available()
+            assert_no_unfinished_feature_branches(w.root, w.config, w.handoff.branch)
             require_clean(w.root)
             w.assert_base()
             if remote_head(w.root, w.config, w.config.base) != head(w.root):

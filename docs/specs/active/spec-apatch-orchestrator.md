@@ -19,6 +19,7 @@
 - Keep existing state, history, migration, and logging data readable; never invent a verified commit, review, or merge.
 - Keep safe ZIP extraction, worktree-preserving backups, Git guards, and non-force pushes.
 - Keep GitHub review/check requirements distinct from interactive user approvals and remote branch protections.
+- Before creating a new feature branch, reject any other unfinished local or remote feature branch; this mandatory gate cannot be disabled by a mode or confirmation option.
 
 Current behavior is documented in [Usage](../../USAGE.md) and [Architecture](../../ARCHITECTURE.md). These DRAFT requirements are not assertions about the current implementation.
 
@@ -31,6 +32,7 @@ Current behavior is documented in [Usage](../../USAGE.md) and [Architecture](../
 | Local PR review policy | Accept an explicit per-project override for zero-approval merges | P0 — SUB-001 |
 | Local GitHub CI policy | Independently configure whether published GitHub CI checks are mandatory for merging | P0 — SUB-001 |
 | Explicit handoff identity | Give every ZIP a same-stem JSON and require a named handoff on every invocation | P0 — SUB-001 |
+| Single active feature branch | Require evidence that prior local and remote feature work has been merged before creating another branch | P0 — SUB-001 |
 | Generated patch order | Detect skipped patches using `created_patches.txt` | P0 — SUB-001 |
 | Command sequences | Run `opSeq` with detailed progress and error recovery | P0 — SUB-001 |
 | Operation execution history | Persist numbered/coded attempts and outcomes in `.apatch/apply_patch.state.json` | P1 — SUB-002 |

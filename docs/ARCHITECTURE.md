@@ -35,6 +35,7 @@ The CLI can be invoked interactively or by a direct operation number or mnemonic
 | `apatch_lib/loose.py` | Incremental patch cycles, manual edits, accumulated commits, deferred push |
 | `apatch_lib/force.py` | Explicit recovery of externally performed branch, patch, and Git operations |
 | `apatch_lib/branch_patch.py` | Preparing branches and coordinating patch application |
+| `apatch_lib/branch_guard.py` | Mandatory cross-mode preflight against unfinished local/remote feature branches and open GitHub feature PRs before creating a new branch |
 | `apatch_lib/patch.py` | ZIP validation, safe member inspection, archive application |
 | `apatch_lib/model.py` | Handoff and configuration schema, path validation, shared records |
 | `apatch_lib/state.py` | Locked state persistence and atomic checkpoint updates |
@@ -79,6 +80,7 @@ New branch actions record `branch_origin` as `CREATED` or `REUSED` once the deci
 
 - Archive extraction validates the handoff and ZIP before applying file changes. Unexpected overlapping dirty files require consent and a backup; ZIP replacement is not a semantic merge.
 - Git preconditions are checked against the actual repository state. Push must be fast-forward and never uses `--force`.
+- Creating a new feature branch requires a shared, non-configurable preflight. It rejects unmerged remote feature refs, open GitHub feature PRs, and local feature refs with outstanding commits; it accepts provably merged old refs. Remote verification failures block creation, including in FORCE and with `skipApproves=true`. Reusing an existing target branch is not branch creation.
 - GitHub PR merge remains guarded by configured review and required-check policies. All `gh` commands use a configurable deadline separate from canonical checks. PR creation first queries all base branches in one listing; a retry reuses an already-created matching PR instead of issuing a second create. A timeout during creation leaves the remote outcome uncertain and does not advance the local checkpoint. In LOOSE/FORCE, local base-branch synchronization uses fast-forward-only Git operations before an optional GitHub PR status reconciliation; an API timeout never fabricates a merged/synced workflow phase. STRICT still requires live merge confirmation. A successful remote merge can be followed by a separately retryable local synchronization action.
 - State files and journals use locking/atomic persistence. Later invocations can reconcile interrupted operations rather than assuming the previous step completed.
 - Multi-patch LOOSE workflows retain earlier checkpoints even when a new handoff ZIP is selected. A commit may include several applied patches.

@@ -6,6 +6,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 
 from . import github
+from .branch_guard import assert_no_unfinished_feature_branches
 from .gitutil import (branch_exists, confirm, current_branch, head, output, remote_head,
                       require_clean, run, worktree_fingerprint)
 from .model import Abort
@@ -92,6 +93,7 @@ class ForceActions:
             else:
                 if not confirm(f"FORCE: Create {target} from current branch {current} at {head(w.root)}?"):
                     return
+                assert_no_unfinished_feature_branches(w.root, w.config, target)
                 run(["git", "switch", "-c", target], w.root)
                 origin = "CREATED"
         self.checkpoint("branch_created", "branch prepared", applied_branch=target,

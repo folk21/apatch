@@ -24,6 +24,18 @@ The argument is a JSON file describing the intended change. Global configuration
 | **STRICT** | `apatch.sh <stem> strict` or `apatch.sh --strict <stem>` | Enforces the expected workflow phase, branch, and verification requirements. |
 | **FORCE** | `apatch.sh <stem> force` or `apatch.sh --force <stem>` | Reconciles externally performed Git operations, retaining integrity checks. |
 
+### One unfinished feature branch at a time
+
+Before creating any **new** `feature/...` branch with `BRN` or `BAP`, `apatch` verifies that no other feature branch is left unfinished. This gate runs in **all three modes**, including FORCE, and **cannot be disabled** through configuration or `skipApproves=true`.
+
+- An open GitHub PR or a remote feature branch that cannot be confirmed merged into the remote base blocks creation with `сначала смерджи fb: <branch>` and identifying details.
+- A local-only feature branch with commits not in the local base blocks creation with `Unfinished local feature branch <branch> ...`. Uncommitted changes on the currently checked-out feature branch also block starting a new one.
+- An old feature ref retained after its changes were merged does not block a new branch. `apatch` verifies Git ancestry or a matching merged GitHub PR rather than requiring branch deletion.
+- If Git remote or GitHub PR status is required but cannot be verified (for example, due to a timeout), creation **fails closed**. Restore connectivity or resolve the old branch, then retry.
+- Continuing on an **already existing target feature branch** remains possible under normal mode-specific rules; no new branch is created in that case.
+
+The guard runs before the new Git ref and associated patch changes are created. It checks live Git/PR evidence rather than assuming that a previous apatch checkpoint proves a merge. Ordinary `APL` on an already selected branch does not start a new feature branch and is unaffected.
+
 Use `apatch.sh --help` to see the modes, direct-action selection, and automation parameters. The interactive menu also displays the active mode and the other available modes. Replace `<stem>` in examples with your actual JSON filename without `.json`.
 
 ### Direct actions and unattended automation
