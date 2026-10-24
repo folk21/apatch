@@ -33,6 +33,7 @@ class Config:
     max_bytes: int
     require_patch_feature_branch: bool = False
     github_timeout_seconds: int = 45
+    review_approval_source: str = "global"
 
 
 @dataclass(frozen=True)
@@ -135,12 +136,16 @@ def load_project_config(root: Path, global_config: Config) -> Config:
         raise Abort(f"Invalid project checks YAML: {exc}") from exc
 
     required = {"schema_version", "checks"}
-    allowed = required | {"log_directory", "state_file", "applied_patches_file"}
+    allowed = required | {"log_directory", "state_file", "applied_patches_file", "require_review_approval"}
     if not isinstance(data, dict) or not required <= set(data) or set(data) - allowed:
-        raise Abort("Project config must contain schema_version and checks, with optional local paths")
+        raise Abort("Project config must contain schema_version and checks, with supported optional settings")
     if type(data["schema_version"]) is not int or data["schema_version"] != 1:
         raise Abort("Unsupported project checks schema_version")
     commands = data["checks"]
+    approval_source = "project" if "require_review_approval" in data else "global"
+    require_approval = data.get("require_review_approval", global_config.require_approval)
+    if type(require_approval) is not bool:
+        raise Abort("Project require_review_approval must be a YAML boolean (true or false)")
     if not isinstance(commands, list) or not commands:
         raise Abort("Project checks must be a non-empty list")
     parsed = []
@@ -172,7 +177,8 @@ def load_project_config(root: Path, global_config: Config) -> Config:
         if path.is_symlink():
             raise Abort(f"Runtime state and history files must not be symlinks: {path}")
     return replace(global_config, checks=tuple(parsed), log_directory=location,
-                   state_path=config_dir / state, applied_patches_path=config_dir / history)
+                   state_path=config_dir / state, applied_patches_path=config_dir / history,
+                   require_approval=require_approval, review_approval_source=approval_source)
 
 
 def safe_relative(path: str) -> str:

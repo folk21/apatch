@@ -89,6 +89,8 @@ def create_pr(config, handoff, root, record, save_checkpoint):
 
 
 def merge_pr(config, handoff, root, record, save_checkpoint):
+    approval = "required" if config.require_approval else "not required"
+    print(f"PR review approval: {approval} (source: {config.review_approval_source}).")
     require_clean(root)
     repo = repository(config, root)
     prs = pr_list(config, root, repo, handoff.branch)
@@ -114,7 +116,7 @@ def merge_pr(config, handoff, root, record, save_checkpoint):
             if result not in {"SUCCESS", "NEUTRAL", "SKIPPED"}:
                 raise Abort(f"PR has non-successful/pending checks: {item.get('name')}: {result}")
     print(f"PR {pr['url']} | {handoff.branch} -> {config.base} | review={pr.get('reviewDecision')}")
-    if not confirm("Merge this reviewed PR into the target branch?"):
+    if not confirm("Merge this PR into the target branch?"):
         return
     gh_run(config, root, ["gh", "pr", "merge", str(pr["number"]), "--repo", repo, f"--{config.merge_method}"])
     latest = pr_details(config, root, repo, pr["number"])
