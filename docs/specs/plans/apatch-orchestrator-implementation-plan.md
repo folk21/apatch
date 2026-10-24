@@ -19,6 +19,7 @@ Complete small independently tested increments. Preserve existing CLI, handoff J
 | **P0.2b — Independent project CI policy** | Add project-local `require_required_checks` override; preserve the existing global default and unrelated merge gates. | AC-19/20/21; missing/pending CI, stale PR, remote/server rejection tests. |
 | **P0.2c — Explicit unique handoff names** | Generate same-stem ZIP/JSON pairs, require a named handoff in `apatch.py`/`apatch.sh`, support stems under `downloads_dir` and explicit `.json` paths. | AC-22/23/24; parser, shell launcher, missing-name, status and multi-handoff tests. |
 | **P0.2d — Single active feature branch gate (emergency)** | Introduce a shared preflight for STRICT/LOOSE/FORCE before new `git switch -c`, validating all previous feature branches against local/remote ancestry and GitHub PR evidence. | AC-25/26/27/28/29; temp bare-remote and mocked GitHub tests, plus `skipApproves=true`. |
+| **P0.2e — Historical PR revision safety (emergency)** | Bind PR recovery, creation, merge, and synchronization to the current patch's pushed SHA; permit a new PR after an earlier PR for the same branch was merged at a different SHA. | AC-30–34; exact reproduction of a historical merged PR followed by an unmerged feature commit, and explicit checkpoint recovery tests. |
 | **P0.3a — Registry validation and ordering** | New small `apatch_lib/created_patches.py` or another single owner; compare optional local registry to legacy-compatible `AppliedPatchHistory`. Guard `BAP`/`APL` in all modes *before* side effects. | AC-05/06/08, invalid lines/duplicates/symlinks, history migration tests. |
 | **P0.3b — Registry metadata transport** | Extend archive inspection/application to recognize a reserved `.apatch/created_patches.txt` member, validate append-only prefix, and store atomically as non-Git metadata. | AC-07, repeated ZIP, failed extraction/retry, ignored-file handling, no worktree false positives. Activate new ChatGPT packaging directive only once this is stable. |
 | **P0.4a — `opSeq` core** | `apatch.py`, `apatch.sh`, `apatch_lib/workflow.py`: parse a list of existing operation IDs, dispatch sequentially, refresh state between steps, stop on failure and report the complete step context. | AC-09/11/12/13/14, `skipApproves` true/false, shell/Python parser parity, timeout recovery. |
@@ -226,6 +227,78 @@ def prepare_new_branch(mode, target):
 ```
 
 **Failure and recovery:** A remote or GitHub lookup failure is a hard block, not an approval request. The user first merges/publishes unfinished feature work, or restores remote connectivity, then explicitly retries `BRN`/`BAP`. Retained merged feature refs do not need cleanup. Git command failure must not be converted into an unverified "safe" pass. Unit and temp-remote tests verify the guard in all modes; the entire existing suite remains part of the acceptance gate.
+
+### P0.2e — File-level implementation: historical PR revision safety
+
+**Trigger:** A feature branch previously supplied PR #5 at commit `old_sha`, that PR was merged, and a later patch was committed and pushed to the same feature branch at `new_sha`. The old implementation refuses `PR` with "existing PR is closed" but `MRG` recovers PR #5 as merged without comparing `old_sha` to `new_sha`, then records a false `synced` state after updating local `main`.
+
+**Prerequisites:** Verify `force._recover_pr`, `force.merge`, `force.sync`, `github.pr_list`, `github.create_pr`, `github.merge_pr`, `github.confirmed_merged_pr`, and `github.sync_base` against the current snapshot. **Non-goals:** Git history rewrites, deleting/renaming existing feature refs, reverting commits, automatic remote PR creation without consent, changing CI or review policy, inventing a merge based on equivalent file contents alone, and modifying the user repository's checkpoint without an explicit recovery action.
+
+| File | Exact change |
+| --- | --- |
+| `apatch_lib/github.py` | Add a shared `assert_pr_matches_revision` identity/commit guard. In `create_pr`, select only an open PR matching the pushed SHA; distinguish historical merged/closed PRs at older revisions, refuse duplicate PRs for the same revision, and verify that **exactly one** open PR exists after creation even when historical entries remain. On explicit PR replacement, update `pr_number`/`phase` and remove stale `local_base_head`. In `merge_pr`, select the single recorded **open** PR by number from the historical listing (not `len(all_prs) == 1`), reject competing open PRs, and verify the post-command PR still identifies the intended SHA. In `sync_base` require source SHA/base/PR number/`mergedAt` before Git synchronization. Extend the `pr_list` JSON fields with `mergedAt` and, in `confirmed_merged_pr`, disambiguate multiple historically merged PRs by recorded SHA and require a nonempty merge timestamp without adding another API round-trip. |
+| `apatch_lib/force.py` | Add `_expected_pr_revision` using recorded pushed/committed SHA or a verifiable local feature ref for manual recovery. Change `_recover_pr` to consider `OPEN`/`MERGED` PRs only when their `headRefOid` equals that revision; refuse historical mismatches before checkpoint mutation. Preserve PR number binding unless a developer explicitly invokes `PR` to reconcile. Recheck recorded `synced` state on retry instead of asserting that its old evidence remains verified. |
+| `tests/test_apatch.py` | Add local temporary-Git reproduction of a new commit following an older merged PR; assert no details/sync/phase changes on mismatch. Mock a historical merged PR followed by a new open PR and verify correct selection. Test fresh PR creation despite historical PRs, duplicate blocking at identical SHA, explicit rebind from stale `synced`, post-merge SHA drift, `confirmed_merged_pr` selection with multiple merged historical PRs, and refusal to affirm a stale `synced` checkpoint. Keep approval/CI opt-outs independent. |
+| `docs/USAGE.md`, `docs/ARCHITECTURE.md` | Document PR-head identity, repeated branch PR lifecycle, warning/reconciliation of old false-positive `synced` checkpoints, and the fact that CI/review settings never bypass SHA checks. |
+| `docs/specs/active/subspecs/subspec-01-workflow-control.md` | Record non-configurable current-revision invariant, recovery rules, and AC-30–34. |
+
+```python
+def create_or_reconcile_pr(current_sha, recorded_workflow):
+    require_remote_feature_tip_matches(current_sha)
+    prs = list_all_prs_for_feature_branch()
+    open_prs = filter_state(prs, "OPEN")
+    if len(open_prs) > 1 or any(pr.base != expected_base for pr in open_prs):
+        abort("Resolve ambiguous or misbased open pull requests")
+    if open_prs:
+        require_exact_pr_identity(open_prs[0], current_sha)
+        select_pr(open_prs[0])
+    elif any(pr.head_sha == current_sha for pr in historical_prs(prs)):
+        abort("This exact revision already belongs to a closed or merged PR")
+    else:
+        request_confirmation()
+        create_pr_once()
+        active_after_create = list_open_prs_for_feature_branch()
+        created = require_unique_open_pr(active_after_create)
+        require_exact_pr_identity(created, current_sha)
+        select_pr(created)
+    if recorded_workflow.previous_pr != selected_pr.number:
+        clear_stale_local_base_sync_evidence()
+    persist_phase_and_current_pr("pr_created", selected_pr.number)
+
+def recover_and_merge_pr():
+    current_sha = recorded_pushed_sha_or_verified_local_feature_head()
+    prs = list_prs_for_configured_base()
+    matching = [pr for pr in prs if pr.state in ("OPEN", "MERGED")
+                and pr.head_sha == current_sha]
+    if len(matching) != 1:
+        abort("An old merged PR is not proof for this patch revision")
+    pr = matching[0]
+    if recorded_pr_number_conflicts(pr.number):
+        abort("Use PR operation to reconcile the selected PR first")
+    verify_identity_and_source_sha(pr, current_sha)
+    if pr.state == "OPEN":
+        require_only_recorded_open_pr_among_historical_prs()
+        verify_live_remote_head_and_project_merge_policy()
+        merge_and_verify_current_pr()
+    else:
+        verify_merged_at_and_details_source_sha()
+        checkpoint_phase("merged")
+    verify_current_merged_pr_before_syncing_local_base()
+
+def retry_sync_for_previously_synced_checkpoint():
+    fast_forward_local_base()
+    try:
+        find_unique_merged_pr_for_recorded_sha_and_pr_number()
+    except UnknownOrMismatch as failure:
+        warn("Previous synced checkpoint is not currently verified", failure)
+        leave_checkpoint_untouched()
+        return
+    report_verified_sync()
+```
+
+**Safe recovery after the incident:** Confirm via Git history and file tree diff whether the published feature commit's changes reached the base. If not, retain the feature branch. An explicitly selected `PR` on that branch and handoff may create/find a new PR at the current SHA, replace an obsolete PR association (even if its earlier phase was erroneously `synced`), and clear stale sync evidence; merge remains a separate deliberate action. A mere retry of `MRG`/`SYN` must not rewrite the previous checkpoint as success. If GitHub refuses a new PR on the historical branch, stop and select an independently reviewed manual recovery path. Do not force-push, delete refs, roll back remote merges, or alter unrelated workflow records as part of this stage.
+
+**Acceptance evidence:** SUB-001 AC-30–34, distinct local-Git SHA tests and mocked GitHub records, preserved default mode/STRICT/FORCE behavior, `sh ./run_tests.sh`, and an integrity-checked ZIP/JSON handoff from the exact verified source baseline. The old target-repository `synced` record cannot be trusted without explicit revision reconciliation.
 
 ### P0.3a/b — File-level implementation: patch registry and metadata transport
 

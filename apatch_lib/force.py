@@ -362,26 +362,50 @@ class ForceActions:
             return
         github.create_pr(w.config, handoff, w.root, w.record, w.persist)
 
+    def _expected_pr_revision(self, branch):
+        """Anchor PR recovery to recorded work or the actual local feature ref."""
+        recorded = self.w.record.get("pushed_sha") or self.w.record.get("commit_sha")
+        if recorded:
+            return recorded
+        if branch_exists(self.w.root, branch):
+            return output(["git", "rev-parse", f"refs/heads/{branch}"], self.w.root)
+        raise Abort("Cannot recover a PR without a recorded commit or an existing local "
+                    f"feature branch {branch}; no current revision can be verified")
+
     def _recover_pr(self):
         w = self.w
         handoff = self._effective_handoff()
+        expected_sha = self._expected_pr_revision(handoff.branch)
         repo = github.repository(w.config, w.root)
         prs = github.pr_list(w.config, w.root, repo, handoff.branch)
-        matching = [item for item in prs if item["state"] in {"OPEN", "MERGED"}]
+        matching = [item for item in prs if (item["state"] in {"OPEN", "MERGED"}
+                                              and item["headRefOid"] == expected_sha)]
+        if not matching and any(item["state"] == "MERGED" for item in prs):
+            raise Abort(f"Existing merged PR belongs to an older revision of {handoff.branch}, "
+                        f"not the current commit {expected_sha}. Run PR to create or select "
+                        "a separate pull request; do not treat the previous merge as complete.")
         if len(matching) != 1:
-            raise Abort("Expected one matching GitHub PR; resolve missing or ambiguous PR manually")
+            raise Abort(f"Expected one GitHub PR for current commit {expected_sha}; "
+                        "run PR to create or reconcile it before merging")
         pr = matching[0]
+        if w.record.get("pr_number") not in {None, pr["number"]}:
+            raise Abort(f"Recorded PR #{w.record['pr_number']} differs from the current "
+                        f"revision's PR #{pr['number']}; run PR to reconcile the checkpoint")
+        github.assert_pr_matches_revision(w.config, handoff, pr, expected_sha,
+                                          merged=pr["state"] == "MERGED")
         if pr["state"] == "OPEN":
-            if remote_head(w.root, w.config, handoff.branch) != pr["headRefOid"]:
+            if remote_head(w.root, w.config, handoff.branch) != expected_sha:
                 raise Abort("Open PR points to a different remote branch revision")
             self.checkpoint("pr_created", "GitHub PR adopted", applied_branch=handoff.branch,
-                            pr_number=pr["number"], pushed_sha=pr["headRefOid"])
+                            pr_number=pr["number"], pushed_sha=expected_sha)
         else:
             details = github.pr_details(w.config, w.root, repo, pr["number"])
             if details["state"] != "MERGED" or not details.get("mergedAt"):
                 raise Abort("GitHub does not confirm PR merge")
+            github.assert_pr_matches_revision(w.config, handoff, details,
+                                              expected_sha, merged=True)
             self.checkpoint("merged", "GitHub merge adopted", applied_branch=handoff.branch,
-                            pr_number=pr["number"])
+                            pr_number=pr["number"], pushed_sha=expected_sha)
         return handoff, pr
 
     def merge(self):
@@ -398,7 +422,16 @@ class ForceActions:
         w.record["local_base_head"] = local_base_head
         w.persist()
         if w.phase == "synced":
-            print("PR merge was previously verified; local base synchronization refreshed.")
+            try:
+                handoff = self._effective_handoff()
+                pr = github.confirmed_merged_pr(w.config, handoff, w.root, w.record)
+            except Abort as exc:
+                print("WARNING: Previously recorded synced state could not be verified "
+                      f"for the current patch revision: {exc}")
+                print("The checkpoint is unchanged. Use PR to reconcile an unmerged revision.")
+                return
+            print(f"PR #{pr['number']} merge was reverified for the current patch revision; "
+                  "local base synchronization refreshed.")
             return
         try:
             handoff = self._effective_handoff()
