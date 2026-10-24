@@ -34,6 +34,7 @@ class Config:
     require_patch_feature_branch: bool = False
     github_timeout_seconds: int = 45
     review_approval_source: str = "global"
+    required_checks_source: str = "global"
 
 
 @dataclass(frozen=True)
@@ -136,7 +137,8 @@ def load_project_config(root: Path, global_config: Config) -> Config:
         raise Abort(f"Invalid project checks YAML: {exc}") from exc
 
     required = {"schema_version", "checks"}
-    allowed = required | {"log_directory", "state_file", "applied_patches_file", "require_review_approval"}
+    allowed = required | {"log_directory", "state_file", "applied_patches_file",
+                          "require_review_approval", "require_required_checks"}
     if not isinstance(data, dict) or not required <= set(data) or set(data) - allowed:
         raise Abort("Project config must contain schema_version and checks, with supported optional settings")
     if type(data["schema_version"]) is not int or data["schema_version"] != 1:
@@ -146,6 +148,10 @@ def load_project_config(root: Path, global_config: Config) -> Config:
     require_approval = data.get("require_review_approval", global_config.require_approval)
     if type(require_approval) is not bool:
         raise Abort("Project require_review_approval must be a YAML boolean (true or false)")
+    checks_source = "project" if "require_required_checks" in data else "global"
+    require_checks = data.get("require_required_checks", global_config.require_checks)
+    if type(require_checks) is not bool:
+        raise Abort("Project require_required_checks must be a YAML boolean (true or false)")
     if not isinstance(commands, list) or not commands:
         raise Abort("Project checks must be a non-empty list")
     parsed = []
@@ -178,7 +184,8 @@ def load_project_config(root: Path, global_config: Config) -> Config:
             raise Abort(f"Runtime state and history files must not be symlinks: {path}")
     return replace(global_config, checks=tuple(parsed), log_directory=location,
                    state_path=config_dir / state, applied_patches_path=config_dir / history,
-                   require_approval=require_approval, review_approval_source=approval_source)
+                   require_approval=require_approval, review_approval_source=approval_source,
+                   require_checks=require_checks, required_checks_source=checks_source)
 
 
 def safe_relative(path: str) -> str:

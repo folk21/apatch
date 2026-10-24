@@ -10,9 +10,10 @@ Before scheduled quality checks and model reviews, implement all five capabiliti
 
 1. Read-only current patch status via `10 [STS]`.
 2. Suggested next operation number/code after an action.
-3. Configurable project-level GitHub review-approval gate.
+3. Independent project-level GitHub review-approval and required-CI gates.
 4. Ordered `created_patches.txt` check against actual applied history.
 5. `opSeq` execution with per-step console progress and actionable failure details.
+6. Unique, explicitly selected handoff JSON names for every invocation.
 
 All modes (`LOOSE`, `STRICT`, `FORCE`) SHALL retain their present safety rules and operation semantics.
 
@@ -81,6 +82,39 @@ checks:
 - In both cases, verify PR identity/head SHA/base, mergeability, configured required CI checks, remote state, GitHub branch-protection/permissions, and consent (unless `skipApproves=true`). External GitHub rejection remains fatal.
 - `skipApproves` MUST NOT override this setting. Before merging, print the effective value and its origin (`project` or `global`).
 
+### 3.1 Independent project-level required-CI policy (P0-2b)
+
+`require_review_approval` and `require_required_checks` are **independent**. Disabling PR review approval MUST NOT disable CI validation implicitly. The project `.apatch/config.yaml` SHALL additionally accept an optional boolean `require_required_checks`:
+
+```yaml
+schema_version: 1
+require_review_approval: false
+require_required_checks: false
+checks:
+  - ["./run_tests.sh"]
+```
+
+- Omitted `require_required_checks` inherits the global `apatch.conf` setting (default `true`); an explicit project value overrides it for this repository only.
+- Invalid values (strings, integers, `null`, and collection types) MUST fail configuration validation.
+- With `true`, the existing fail-closed behavior remains: a PR with no published checks, pending/failed checks, or failed required-check verification MUST NOT merge.
+- With `false`, `apatch` skips **only its own GitHub CI-check gate**, including the requirement for a nonempty published check rollup. It MUST still enforce clean mergeability, matching PR identity/head/base, remote ref checks, configured review approval policy, and GitHub server-side protections and permissions. GitHub rejection MUST remain fatal.
+- Before the merge attempt, print the effective review **and** CI policies, including each source (`project` or `global`). An explicit `false` is a conscious opt-out, not proof that CI passed. `skipApproves` remains independent.
+- Project-local canonical commands configured in `checks` remain unchanged and SHALL NOT be skipped by `require_required_checks: false` when the separate `CHK` operation runs.
+
+### 3.2 Unique, required handoff JSON selection (P0-2c)
+
+Every newly generated ZIP named `<patch-stem>.zip` SHALL have a handoff JSON with **exactly the same stem**, `<patch-stem>.json`. The static name `apatch_patch_params.json` SHALL NOT be used for newly generated handoffs. This removes ambiguity between multiple pending patches in the same downloads directory.
+
+Each `apatch.sh` or `apatch.py` invocation SHALL receive an explicit positional handoff identifier, including `STS`, interactive menu mode, and future `opSeq` calls. There is no implicit project-derived JSON filename. An unqualified name without `.json` resolves to `<downloads_dir>/<name>.json`; an unqualified name already ending in `.json` resolves to the same configured directory. An explicit relative path (`./...`, `../...`) or absolute path resolves as supplied, appending `.json` if omitted. Existing explicit `.json` paths remain valid for backward compatibility; historical JSON contents and persisted patch state do not need migration.
+
+```bash
+apatch.sh apatch-PATCH-2026-10-24-00-42-example op=APL
+apatch.sh /path/to/apatch-PATCH-2026-10-24-00-42-example.json strict op=CHK
+apatch.sh apatch-PATCH-2026-10-24-00-42-example op=STS
+```
+
+Missing, empty, malformed, or nonexistent handoff identifiers MUST fail before Git/worktree effects with an actionable error. A malformed stem MUST NOT escape the downloads directory or select a different handoff implicitly. `--help` remains usable without a handoff. The read-only status operation still does not need the original ZIP, but **does** need an explicitly selected JSON; old no-JSON `STS --patch=...` access is intentionally withdrawn by this contract. In the chat handoff response, display the exact generated JSON **filename as standalone copyable text** in addition to its download link.
+
 ## 4. Ordered created-patch registry (P0-3)
 
 ### 4.1 Format and authority
@@ -140,9 +174,9 @@ ChatGPT must not invent missing historical lines. If the latest created registry
 Add direct execution of comma-separated operation numbers or acronyms:
 
 ```bash
-apatch.sh opSeq=BRN,APL,CHK,CMT,PSH,PR skipApproves=true
-apatch.sh opSeq=1,3,4,5,6,7 skipApproves=true
-apatch.sh opSeq=BAP,APL,CHK,CMT,PSH,PR skipApproves=true
+apatch.sh <patch-stem> opSeq=BRN,APL,CHK,CMT,PSH,PR skipApproves=true
+apatch.sh <patch-stem> opSeq=1,3,4,5,6,7 skipApproves=true
+apatch.sh <patch-stem> opSeq=BAP,APL,CHK,CMT,PSH,PR skipApproves=true
 ```
 
 `op` and `opSeq` are mutually exclusive. Whitespace around commas is permitted; unknown codes, empty elements, conflicting options, or a missing handoff MUST fail before the first side effect. `LOOSE` remains default. Every step SHALL use the same action implementation and checks as a standalone `op`, sequentially; it MUST refresh Git/GitHub state after the previous step. No hidden parallel execution or implied commit/push/merge is allowed.
@@ -154,7 +188,7 @@ Without `skipApproves=true`, ordinary step-level confirmations still apply; with
 `BAP` already applies the current handoff. Consequently `opSeq=BAP,APL,...` requires selecting a **different handoff** for its second patch operation. The P0 design proposes an optional `handoffSeq=<path1>,<path2>,...` parameter: successive handoffs are consumed by patch-applying steps (`BAP` or `APL`); subsequent `CHK/CMT/PSH/PR` use the most recently selected handoff.
 
 ```bash
-apatch.sh opSeq=BAP,APL,CHK,CMT,PSH,PR \
+apatch.sh <patch-stem> opSeq=BAP,APL,CHK,CMT,PSH,PR \
   handoffSeq=/path/first_patch_params.json,/path/second_patch_params.json \
   skipApproves=true
 ```
@@ -203,6 +237,12 @@ Persist bounded, redacted diagnostics; do not persist entire canonical-check str
 | AC-16 | Saved PR number but remote access disabled or unavailable | Show `RECORDED` or `UNKNOWN`, never fabricate remote verification |
 | AC-17 | Old state lacks branch creation/reuse provenance | Show origin `UNKNOWN` without failing the status operation |
 | AC-18 | Two matching workflows or conflicting saved/local SHA | Request disambiguation or report `CONFLICT`; never silently select or modify state |
+| AC-19 | Project `require_required_checks: false`, PR has no published CI, approvals independently disabled | Local CI gate permits merge attempt; server rejection still stops it |
+| AC-20 | Project CI override absent, no published checks | Inherited default retains `PR has no published checks` failure |
+| AC-21 | Project CI override `false`, PR identity/head invalid or GitHub merge command rejects | Merge remains blocked; no false `merged` checkpoint |
+| AC-22 | Two ZIPs with distinct stems; invoke CLI with a stem | Each ZIP has a same-stem JSON; CLI resolves the chosen stem under downloads without a default |
+| AC-23 | Missing handoff positional, malformed stem, no-JSON `STS --patch` | Fail early without Git changes; explicit `.json` paths still work |
+| AC-24 | Completed ChatGPT patch handoff | Response includes both linked artifacts and a separate copyable JSON filename |
 
 ## 7. Open decisions
 

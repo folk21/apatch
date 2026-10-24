@@ -98,14 +98,6 @@ class LocalGitWorkflowTest(unittest.TestCase):
         }
         self.params.write_text(json.dumps(self.payload))
 
-    def prepare_default_handoff_home(self):
-        """Isolate ~/Downloads from fixture downloads on case-insensitive filesystems."""
-        home_dir = self.base / "test_home"
-        downloads = home_dir / "Downloads"
-        downloads.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(self.params, downloads / f"{self.root.name}_patch_params.json")
-        return home_dir
-
     def prepare_test_launcher(self):
         """Retain the test interpreter's venv context when exercising the shell launcher."""
         executable = self.bin / ".venv" / "bin" / "python"
@@ -208,6 +200,37 @@ class LocalGitWorkflowTest(unittest.TestCase):
                 result = self.invoke_cli("op=EXT")
                 self.assertEqual(result.returncode, 2)
                 self.assertIn("require_review_approval must be a YAML boolean", result.stderr)
+
+    def test_project_ci_policy_inherits_global_setting_when_omitted(self):
+        global_config = load_config(self.bin)
+        for required in (True, False):
+            with self.subTest(global_required=required):
+                config = load_project_config(self.root, replace(global_config, require_checks=required))
+                self.assertIs(config.require_checks, required)
+                self.assertEqual(config.required_checks_source, "global")
+
+    def test_project_ci_policy_overrides_global_setting_independently(self):
+        global_config = load_config(self.bin)
+        for required in (True, False):
+            with self.subTest(project_required=required):
+                self.project_config.write_text(
+                    "schema_version: 1\nchecks:\n  - [\"./run_checks.sh\"]\n"
+                    "require_review_approval: true\n"
+                    f"require_required_checks: {str(required).lower()}\n")
+                config = load_project_config(self.root, replace(global_config, require_checks=not required))
+                self.assertIs(config.require_checks, required)
+                self.assertEqual(config.required_checks_source, "project")
+                self.assertTrue(config.require_approval)
+
+    def test_project_ci_policy_rejects_non_boolean_values(self):
+        for value in ('"false"', "0", "1", "null", "[]", "{}"):
+            with self.subTest(value=value):
+                self.project_config.write_text(
+                    f"schema_version: 1\nchecks:\n  - [\"./run_checks.sh\"]\n"
+                    f"require_required_checks: {value}\n")
+                result = self.invoke_cli("op=EXT")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("require_required_checks must be a YAML boolean", result.stderr)
 
     def test_project_config_can_run_a_nonstandard_check_script(self):
         script = self.root / "custom_verify.sh"
@@ -491,29 +514,28 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(command("git", "ls-remote", "--heads", "origin", "refs/heads/main",
                                  cwd=self.root).stdout.split()[0], remote_sha)
 
-    def test_shell_launcher_accepts_loose_without_explicit_handoff(self):
+    def test_shell_launcher_accepts_named_handoff_in_loose_mode(self):
         self.prepare_test_launcher()
-        home_dir = self.prepare_default_handoff_home()
-        for args in (("loose",), ("--loose",), (str(self.params), "loose")):
+        for args in (("loose", self.params.stem), (self.params.stem, "--loose"),
+                     (str(self.params), "loose")):
             with self.subTest(args=args):
                 result = subprocess.run(["sh", str(self.bin / "apatch.sh"), *args],
-                                        cwd=self.root, env={**os.environ, "HOME": str(home_dir)},
+                                        cwd=self.root,
                                         input="0\n", capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("Mode: LOOSE", result.stdout)
 
     def test_shell_launcher_handles_direct_actions_and_strict_mode(self):
         self.prepare_test_launcher()
-        home_dir = self.prepare_default_handoff_home()
-        for arguments, expected_mode in (((), "LOOSE"),
-                                         (("op=0",), "LOOSE"),
-                                         (("strict", "op=0"), "STRICT"),
+        for arguments, expected_mode in (((self.params.stem,), "LOOSE"),
+                                         ((self.params.stem, "op=0"), "LOOSE"),
+                                         (("strict", self.params.stem, "op=0"), "STRICT"),
                                          ((str(self.params), "strict", "op=0"), "STRICT"),
-                                         (("force", "op=0", "skipApproves=true"), "FORCE")):
+                                         (("force", self.params.stem, "op=0", "skipApproves=true"), "FORCE")):
             with self.subTest(arguments=arguments):
                 result = subprocess.run(["sh", str(self.bin / "apatch.sh"), *arguments],
-                                        cwd=self.root, env={**os.environ, "HOME": str(home_dir)},
-                                        input="0\n" if not arguments else "", capture_output=True, text=True)
+                                        cwd=self.root, input="0\n" if len(arguments) == 1 else "",
+                                        capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn(f"Mode: {expected_mode}", result.stdout)
                 if arguments and "op=0" in arguments:
@@ -693,38 +715,58 @@ class LocalGitWorkflowTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("Mode: FORCE", result.stdout)
 
-    def test_default_handoff_uses_current_project_directory(self):
+    def test_named_handoff_is_required_instead_of_project_default(self):
         self.prepare_test_launcher()
-        home_dir = self.prepare_default_handoff_home()
-        downloads = home_dir / "Downloads"
-        inferred_handoff = downloads / f"{self.root.name}_patch_params.json"
-        environment = {**os.environ, "HOME": str(home_dir)}
         cases = (
-            (["sh", str(self.bin / "apatch.sh")], False),
-            (["sh", str(self.bin / "apatch.sh"), "force"], True),
-            (["sh", str(self.bin / "apatch.sh"), "--force"], True),
-            ([sys.executable, str(self.bin / "apatch.py")], False),
-            ([sys.executable, str(self.bin / "apatch.py"), "--force"], True),
+            ["sh", str(self.bin / "apatch.sh")],
+            ["sh", str(self.bin / "apatch.sh"), "force"],
+            ["sh", str(self.bin / "apatch.sh"), "--force"],
+            [sys.executable, str(self.bin / "apatch.py")],
+            [sys.executable, str(self.bin / "apatch.py"), "--force"],
         )
-        for argv, force in cases:
+        before = command("git", "status", "--porcelain", cwd=self.root).stdout
+        for argv in cases:
             with self.subTest(argv=argv):
-                result = subprocess.run(argv, cwd=self.root, env=environment,
+                result = subprocess.run(argv, cwd=self.root,
                                         input="0\n", capture_output=True, text=True)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertIn(self.zip.name, result.stdout)
-                self.assertEqual("Mode: FORCE" in result.stdout, force)
-                self.assertIn(inferred_handoff.name, self.log_path.read_text())
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("HANDOFF_STEM|PATH.json", result.stderr)
+        self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, before)
+        self.assertFalse(self.state_path.exists())
 
-    def test_default_handoff_does_not_fall_back_to_unprefixed_name(self):
-        home_dir = self.base / "no_handoff_home"
-        home_dir.mkdir()
-        environment = {**os.environ, "HOME": str(home_dir)}
-        result = subprocess.run([sys.executable, str(self.bin / "apatch.py")],
-                                cwd=self.root, env=environment,
-                                input="0\n", capture_output=True, text=True)
-        self.assertEqual(result.returncode, 2)
-        self.assertIn(f"{self.root.name}_patch_params.json", result.stderr)
-        self.assertNotIn("/Downloads/patch_params.json", result.stderr)
+    def test_named_handoffs_select_distinct_json_files_under_configured_downloads(self):
+        first = self.params.stem
+        second = "example_service-PATCH-2026-10-24-01-00-second"
+        second_json = self.params.with_name(second + ".json")
+        second_payload = dict(self.payload, patch_file="another-patch.zip")
+        second_json.write_text(json.dumps(second_payload))
+        for identifier, patch_name in ((first, self.zip.name), (first + ".json", self.zip.name),
+                                       (second, "another-patch.zip"), (second + ".json", "another-patch.zip")):
+            with self.subTest(identifier=identifier):
+                result = subprocess.run([sys.executable, str(self.bin / "apatch.py"), identifier, "op=STS"],
+                                        cwd=self.root, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f"Patch: {patch_name}", result.stdout)
+        self.assertFalse(self.state_path.exists())
+
+    def test_explicit_relative_stem_and_json_path_still_work(self):
+        relative_json = self.root / "relative-handoff.json"
+        shutil.copy2(self.params, relative_json)
+        for identifier in ("./relative-handoff", "./relative-handoff.json", str(self.params)):
+            with self.subTest(identifier=identifier):
+                result = subprocess.run([sys.executable, str(self.bin / "apatch.py"), identifier, "op=STS"],
+                                        cwd=self.root, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f"Patch: {self.zip.name}", result.stdout)
+
+    def test_malformed_or_unknown_handoff_stem_fails_before_workflow_mutation(self):
+        for name in ("", "..", "missing-handoff", "evil:name"):
+            with self.subTest(name=name):
+                result = subprocess.run([sys.executable, str(self.bin / "apatch.py"), name, "op=APL"],
+                                        cwd=self.root, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 2)
+                self.assertFalse(self.state_path.exists())
+                self.assertFalse(self.history_path.exists())
 
     def test_force_adopts_manually_created_feature_branch(self):
         command("git", "switch", "-c", self.payload["feature_branch"], cwd=self.root)
@@ -1249,32 +1291,26 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, before_status)
         self.assertEqual(command("git", "show-ref", cwd=self.root).stdout, before_refs)
 
-    def test_status_without_handoff_resolves_unique_stored_patch(self):
+    def test_status_requires_handoff_even_if_unique_stored_patch_exists(self):
         self.assertEqual(self.invoke_cli("--strict", "op=BAP", "skipApproves=true").returncode, 0)
-        self.params.unlink()
         result = subprocess.run([sys.executable, str(self.bin / "apatch.py"), "op=STS"],
                                 cwd=self.root, capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn(self.zip.name, result.stdout)
-        self.assertIn("Next suggested: 4 [CHK]", result.stdout)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("HANDOFF_STEM|PATH.json", result.stderr)
 
-    def test_status_requires_explicit_selection_for_ambiguous_workflows(self):
+    def test_status_handoff_selects_exact_patch_despite_other_workflows(self):
         self.assertEqual(self.invoke_cli("--strict", "op=BAP", "skipApproves=true").returncode, 0)
         data = json.loads(self.state_path.read_text())
         another = dict(next(iter(data["workflows"].values())))
         another["patch_file"] = "another-patch.zip"
         data["workflows"]["independent-workflow-key"] = another
         self.state_path.write_text(json.dumps(data))
-        self.params.unlink()
-        base_command = [sys.executable, str(self.bin / "apatch.py")]
-        ambiguous = subprocess.run([*base_command, "op=STS"], cwd=self.root,
-                                   capture_output=True, text=True)
-        self.assertEqual(ambiguous.returncode, 2)
-        self.assertIn("Ambiguous patch workflow", ambiguous.stderr)
-        selected = subprocess.run([*base_command, "op=STS", "patch=another-patch.zip"],
-                                  cwd=self.root, capture_output=True, text=True)
+        selected = self.invoke_cli("op=STS")
         self.assertEqual(selected.returncode, 0, selected.stderr)
-        self.assertIn("Patch: another-patch.zip", selected.stdout)
+        self.assertIn(f"Patch: {self.zip.name}", selected.stdout)
+        mismatch = self.invoke_cli("op=STS", "patch=another-patch.zip")
+        self.assertEqual(mismatch.returncode, 2)
+        self.assertIn("does not match the supplied handoff JSON", mismatch.stderr)
 
     def test_missing_recorded_commit_is_conflict_not_next_action(self):
         self.assertEqual(self.invoke_cli("--strict", "op=BAP", "skipApproves=true").returncode, 0)
@@ -1636,6 +1672,10 @@ class GithubGuardTest(unittest.TestCase):
     def test_pending_check_blocks_merge(self):
         self.assertIn("pending checks", self.run_guard(check="PENDING"))
 
+    def test_no_published_ci_blocks_merge_by_default(self):
+        self.details["statusCheckRollup"] = []
+        self.assertIn("no published checks", self.run_guard())
+
     def test_missing_approval_blocks_merge(self):
         self.assertIn("not approved", self.run_guard(approval="REVIEW_REQUIRED"))
 
@@ -1661,13 +1701,45 @@ class GithubGuardTest(unittest.TestCase):
              patch.object(github, "confirm", return_value=True), redirect_stdout(console):
             github.merge_pr(self.config, self.handoff, self.root, self.record, lambda: None)
         self.assertIn("PR review approval: not required (source: project)", console.getvalue())
+        self.assertIn("PR CI checks: required (source: global)", console.getvalue())
         self.assertEqual(self.record["phase"], "merged")
         self.assertTrue(any(call.args[0][:3] == ["gh", "pr", "merge"] for call in fake_run.call_args_list))
 
+    def test_ci_opt_out_allows_no_published_checks_without_skipping_review_or_identity(self):
+        from apatch_lib import github
+        self.config = replace(self.config, require_checks=False, required_checks_source="project")
+        initial = dict(self.details, statusCheckRollup=[])
+        after = dict(initial, state="MERGED", mergedAt="2026-10-24T00:00:00Z")
+        console = StringIO()
+        with patch.object(github, "require_clean"), patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "pr_list", return_value=[dict(self.details)]), \
+             patch.object(github, "pr_details", side_effect=[initial, after]), \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "run") as fake_run, \
+             patch.object(github, "confirm", return_value=True), redirect_stdout(console):
+            github.merge_pr(self.config, self.handoff, self.root, self.record, lambda: None)
+        self.assertIn("PR review approval: required (source: global)", console.getvalue())
+        self.assertIn("PR CI checks: not required (source: project)", console.getvalue())
+        self.assertEqual(self.record["phase"], "merged")
+        self.assertTrue(any(call.args[0][:3] == ["gh", "pr", "merge"] for call in fake_run.call_args_list))
+        self.assertFalse(any(call.args[0][:3] == ["gh", "pr", "checks"] for call in fake_run.call_args_list))
+
+    def test_ci_opt_out_does_not_skip_required_review(self):
+        self.config = replace(self.config, require_checks=False, required_checks_source="project")
+        self.details["statusCheckRollup"] = []
+        self.assertIn("not approved", self.run_guard(approval="REVIEW_REQUIRED"))
+
+    def test_both_opt_outs_still_reject_drift(self):
+        self.config = replace(self.config, require_checks=False, required_checks_source="project",
+                              require_approval=False, review_approval_source="project")
+        self.details["statusCheckRollup"] = []
+        self.assertIn("drifted", self.run_guard(approval="REVIEW_REQUIRED", sha="b" * 40))
+
     def test_project_override_does_not_bypass_github_merge_rejection(self):
         from apatch_lib import github
-        self.config = replace(self.config, require_approval=False, review_approval_source="project")
-        pending_review = dict(self.details, reviewDecision="REVIEW_REQUIRED")
+        self.config = replace(self.config, require_approval=False, review_approval_source="project",
+                              require_checks=False, required_checks_source="project")
+        pending_review = dict(self.details, reviewDecision="REVIEW_REQUIRED", statusCheckRollup=[])
 
         def gh_command(_config, _root, argv):
             if argv[:3] == ["gh", "pr", "merge"]:

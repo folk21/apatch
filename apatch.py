@@ -3,6 +3,7 @@
 
 import argparse
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -12,8 +13,7 @@ from apatch_lib.logging_setup import LOG_FILENAME, configure, set_context
 from apatch_lib.migration import migrate_legacy_artifacts
 from apatch_lib.model import Abort, BASENAME_PATTERN, load_config, load_handoff, load_project_config
 from apatch_lib.state import locked_state, read_state_snapshot
-from apatch_lib.status import (display_status, inspect_patch, local_repository,
-                               select_record)
+from apatch_lib.status import display_status, inspect_patch, select_record
 from apatch_lib.workflow import ACTION_CODES, Workflow, action_number
 
 
@@ -47,24 +47,41 @@ def parse_operation(value):
     return value.upper()
 
 
+def resolve_handoff_path(identifier: str, downloads_dir: Path) -> Path:
+    """Resolve a required handoff stem under downloads, or keep an explicit path."""
+    if not identifier.strip() or identifier in {".", ".."}:
+        raise Abort("A handoff JSON name is required")
+    candidate = Path(identifier).expanduser()
+    if not candidate.name:
+        raise Abort("Handoff must name a JSON file, not a directory")
+    if not candidate.name.endswith(".json"):
+        candidate = candidate.with_name(candidate.name + ".json")
+    if candidate.parent == Path(".") and not identifier.startswith("./"):
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.json", candidate.name):
+            raise Abort("Handoff name must be a safe JSON filename")
+        return downloads_dir / candidate.name
+    return candidate
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=("Manage project patches. LOOSE is the default mode; STRICT enforces "
                      "workflow phases; FORCE recovers from manual changes."),
         epilog=("Examples:\n"
-                "  apatch.sh op=3 skipApproves=true\n"
-                "  apatch.sh op=APL skipApproves=true\n"
-                "  apatch.sh op=STS\n"
-                "  apatch.sh strict op=4\n"
-                "  apatch.sh strict op=CHK\n"
-                "  apatch.sh force op=5 skipApproves=true\n"
+                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example op=3 skipApproves=true\n"
+                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example op=APL\n"
+                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example op=STS\n"
+                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example strict op=CHK\n"
+                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example force op=CMT\n"
                 "Action codes: " + ", ".join(f"{i}={code}" for i, code in enumerate(ACTION_CODES)) + "\n"
+                "A handoff JSON stem or explicit JSON path is required for every invocation. "
+                "Bare stems resolve to <downloads_dir>/<stem>.json. "
                 "Without op=NUMBER or op=CODE, the numbered action menu is displayed. "
                 "skipApproves defaults to false and only skips confirmation prompts; "
                 "Git/archive safety checks remain active."),
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("handoff", nargs="?", type=Path,
-                        help="Path to a patch handoff JSON file (default: ~/Downloads/<project>_patch_params.json)")
+    parser.add_argument("handoff", metavar="HANDOFF_STEM|PATH.json",
+                        help="Required handoff name without .json (under downloads_dir), or explicit JSON path")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--loose", action="store_const", const="loose", dest="mode",
                        help="LOOSE (default): manual edits, shared branches, separate commit and push")
@@ -76,29 +93,22 @@ def main():
     parser.add_argument("--op", type=parse_operation, metavar="NUMBER|CODE",
                         help="Run an action directly by number (0-10) or uppercase code (e.g. APL, CHK, STS)")
     parser.add_argument("--patch", metavar="NAME.zip",
-                        help="Select a recorded patch by ZIP basename for read-only STS without a handoff")
+                        help="Filter read-only STS by ZIP basename; a handoff is still required")
     parser.add_argument("--skip-approves", "--skipApproves", type=parse_boolean,
                         default=False, metavar="{true,false}",
                         help="Skip interactive confirmations (default: false); does not bypass safety checks")
     args = parser.parse_args(normalize_arguments(sys.argv[1:]))
-    handoff_path = (args.handoff if args.handoff is not None else
-                    Path.home() / "Downloads" / f"{Path.cwd().resolve().name}_patch_params.json")
     script_dir = Path(__file__).resolve().parent
     try:
         config = load_config(script_dir)
+        handoff_path = resolve_handoff_path(args.handoff, config.downloads)
         if args.patch is not None and not BASENAME_PATTERN.fullmatch(args.patch):
             raise Abort("--patch must be an ASCII-safe ZIP basename")
         if args.patch is not None and args.op not in {"STS", "10"}:
             raise Abort("--patch is only supported for op=STS")
         status_only = args.op in {"STS", "10"}
-        explicit_handoff = args.handoff is not None
-        handoff = (load_handoff(handoff_path.expanduser()) if
-                   explicit_handoff or not status_only and args.patch is None
-                   or status_only and handoff_path.expanduser().exists() else None)
-        root = (repository_root(Path.cwd(), handoff.repository) if handoff is not None
-                else Path.cwd().resolve())
-        if handoff is None:
-            local_repository(root)
+        handoff = load_handoff(handoff_path)
+        root = repository_root(Path.cwd(), handoff.repository)
         config = load_project_config(root, config)
         if config.downloads.is_relative_to(root):
             raise Abort("The downloads directory must be outside the Git repository")

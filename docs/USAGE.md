@@ -7,10 +7,12 @@ This is the user-facing operational reference for `apatch`. Start with [Installa
 Start `apatch` **from the root of the project repository** whose development workflow you want to manage:
 
 ```bash
-/path/to/apatch/apatch.sh /path/to/change_params.json
+/path/to/apatch/apatch.sh apatch-PATCH-2026-10-24-00-42-example
 ```
 
-When the handoff argument is omitted, the launcher derives the filename from the name of the current project directory. For example, running `apatch.sh` from the root of `example-service` reads `~/Downloads/example-service_patch_params.json`. The same default applies when invoking `apatch.py` directly; an explicit JSON path always takes precedence.
+The **required** positional handoff identifier is the JSON stem or explicit JSON path. For example, `apatch.sh apatch-PATCH-2026-10-24-00-42-example` reads `<downloads_dir>/apatch-PATCH-2026-10-24-00-42-example.json`. An unqualified filename already ending in `.json` is also read from `downloads_dir`; `./relative/path.json`, `../relative/path.json`, and absolute paths select that explicit file. For a path lacking the extension, `.json` is appended. There is **no default handoff** inferred from the project directory. Missing names fail before Git operations. Use `--help` without a handoff to inspect CLI options.
+
+Each patch ZIP has its own JSON with the **same basename and a `.json` extension**, so multiple handoffs can coexist without overwriting one another. The JSON `patch_file` field still names its `.zip` partner.
 
 The argument is a JSON file describing the intended change. Global configuration is read from `apatch.conf` next to `apatch.py`; project verification commands and optional log directory overrides are read from the target repository's `.apatch/config.yaml`. The tool presents the actions currently available, validates the repository state before each operation, and records progress so the workflow can resume on a later invocation.
 
@@ -18,11 +20,11 @@ The argument is a JSON file describing the intended change. Global configuration
 
 | Mode | Invocation | Behavior |
 | --- | --- | --- |
-| **LOOSE (default)** | `apatch.sh` or `apatch.sh loose` | Allows manual edits, different branches, several patches per commit, and deferred push. |
-| **STRICT** | `apatch.sh strict` or `apatch.sh --strict` | Enforces the expected workflow phase, branch, and verification requirements. |
-| **FORCE** | `apatch.sh force` or `apatch.sh --force` | Reconciles externally performed Git operations, retaining integrity checks. |
+| **LOOSE (default)** | `apatch.sh <stem>` or `apatch.sh <stem> loose` | Allows manual edits, different branches, several patches per commit, and deferred push. |
+| **STRICT** | `apatch.sh <stem> strict` or `apatch.sh --strict <stem>` | Enforces the expected workflow phase, branch, and verification requirements. |
+| **FORCE** | `apatch.sh <stem> force` or `apatch.sh --force <stem>` | Reconciles externally performed Git operations, retaining integrity checks. |
 
-Use `apatch.sh --help` to see the modes, direct-action selection, and automation parameters. The interactive menu also displays the active mode and the other available modes.
+Use `apatch.sh --help` to see the modes, direct-action selection, and automation parameters. The interactive menu also displays the active mode and the other available modes. Replace `<stem>` in examples with your actual JSON filename without `.json`.
 
 ### Direct actions and unattended automation
 
@@ -30,37 +32,37 @@ Every menu action can be invoked directly by number or by its mnemonic code (2-4
 
 ```bash
 # Apply a patch in the default LOOSE mode; ask for any needed approvals.
-/path/to/apatch/apatch.sh op=3
+/path/to/apatch/apatch.sh <stem> op=3
 
 # Apply a patch without interactive confirmation prompts.
-/path/to/apatch/apatch.sh op=3 skipApproves=true
+/path/to/apatch/apatch.sh <stem> op=3 skipApproves=true
 
 # Equivalent mnemonic form (case-insensitive; displayed as APL).
-/path/to/apatch/apatch.sh op=APL skipApproves=true
+/path/to/apatch/apatch.sh <stem> op=APL skipApproves=true
 
 # Verify, then commit without pushing, then push in separate invocations.
-/path/to/apatch/apatch.sh op=4 skipApproves=true
-/path/to/apatch/apatch.sh op=5 skipApproves=true
-/path/to/apatch/apatch.sh op=6 skipApproves=true
+/path/to/apatch/apatch.sh <stem> op=4 skipApproves=true
+/path/to/apatch/apatch.sh <stem> op=5 skipApproves=true
+/path/to/apatch/apatch.sh <stem> op=6 skipApproves=true
 
 # The same sequence using action mnemonics.
-/path/to/apatch/apatch.sh op=CHK skipApproves=true
-/path/to/apatch/apatch.sh op=CMT skipApproves=true
-/path/to/apatch/apatch.sh op=PSH skipApproves=true
+/path/to/apatch/apatch.sh <stem> op=CHK skipApproves=true
+/path/to/apatch/apatch.sh <stem> op=CMT skipApproves=true
+/path/to/apatch/apatch.sh <stem> op=PSH skipApproves=true
 
 # Choose STRICT or FORCE explicitly when necessary.
-/path/to/apatch/apatch.sh strict op=4
-/path/to/apatch/apatch.sh force op=5 skipApproves=true
+/path/to/apatch/apatch.sh <stem> strict op=4
+/path/to/apatch/apatch.sh <stem> force op=5 skipApproves=true
 
-# Use a nondefault handoff file with automation parameters.
+# Use an explicit handoff path with automation parameters.
 /path/to/apatch/apatch.sh /path/to/change_params.json strict op=4 skipApproves=false
 
 # Inspect the current patch without modifying Git, checkpoints, or history.
-/path/to/apatch/apatch.sh op=STS
-/path/to/apatch/apatch.sh strict op=10
+/path/to/apatch/apatch.sh <stem> op=STS
+/path/to/apatch/apatch.sh <stem> strict op=10
 
-# Inspect an unambiguous stored patch without its original handoff or ZIP.
-/path/to/apatch/apatch.sh op=STS patch=example-PATCH-01.zip
+# Filter stored status by ZIP basename while still selecting a handoff.
+/path/to/apatch/apatch.sh <stem> op=STS patch=example-PATCH-01.zip
 ```
 
 `op=0` or `op=EXT` exits. Numbers `1`-`9` retain their original operations; `10`/`STS` is the read-only status command. Without `op`, the menu stays interactive and accepts either numbers or codes (for example `APL`). The Python entry point also accepts `--op=3`, `--op=APL`, `--op=STS`, `--skip-approves=true`, `--strict`, `--loose`, and `--force`.
@@ -78,7 +80,7 @@ Each status fact carries an evidence label:
 | `UNKNOWN` | Insufficient trustworthy evidence (including missing fields in older states). |
 | `CONFLICT` | Available local Git facts contradict the saved checkpoint. |
 
-Status does not contact GitHub or the Git remote by default. A recorded PR number or pushed SHA is not proof of its current remote state. It does not require the original ZIP and does not write to the worktree, Git refs, state file, history, or logs. When the default handoff JSON is absent, `STS` selects an unambiguous existing workflow for the current repository. For multiple matches, provide the original handoff JSON or `patch=NAME.zip`; if the patch basename itself is ambiguous, supply the handoff. Status cannot infer operations performed manually but never checkpointed.
+Status does not contact GitHub or the Git remote by default. A recorded PR number or pushed SHA is not proof of its current remote state. It does not require the original ZIP and does not write to the worktree, Git refs, state file, history, or logs. An explicit handoff JSON **is required**, including for `STS`. When multiple stored workflows match, `patch=NAME.zip` can narrow the query, but cannot substitute for the handoff argument. Status cannot infer operations performed manually but never checkpointed.
 
 After a successful, state-changing action, the result footer includes a potential next operation. A cancelled or unchanged action reports that no success-path recommendation can be assumed. A failed action stops with a nonzero exit code.
 
@@ -95,14 +97,14 @@ When an action returns, `apatch` prints a result summary with elapsed time, phas
 LOOSE is active automatically and is useful when several patches should accumulate on one branch, when you intend to edit additional files manually, or when committing and pushing should happen at different times:
 
 ```bash
-/path/to/apatch/apatch.sh loose
+/path/to/apatch/apatch.sh <stem> loose
 /path/to/apatch/apatch.sh /path/to/change_params.json loose
 /path/to/apatch/apatch.sh --loose /path/to/change_params.json
 ```
 
 LOOSE keeps the Git and ZIP integrity guards but treats workflow drift as a warning. It permits a checked-out branch other than the handoff's suggested branch, an existing dirty worktree, changed files after verification, and a stale handoff `base_commit`. Such mismatches are displayed before the relevant action; commits require explicit confirmation unless `skipApproves=true`. LOOSE never uses `git push --force`.
 
-To combine patches, apply the first ZIP using action 3 and leave the changes uncommitted. Update the handoff JSON to reference the next ZIP, run `apatch.sh loose` again from the **same branch**, and select action 3 again. Existing unrelated edits remain untouched. If the new archive contains a path with uncommitted changes, `apatch` lists those paths, requires approval, and backs up their previous contents under `.apatch/backups/` before replacing them. These backups are Git-ignored and are not deleted automatically. The archive still contains whole replacement files, not line-based merges: inspect overlapping edits before approving replacement.
+To combine patches, apply the first ZIP using action 3 and leave the changes uncommitted. Run `apatch.sh <next-patch-stem> loose` with the **next patch's separate JSON**, from the same branch, and select action 3 again. Existing unrelated edits remain untouched. If the new archive contains a path with uncommitted changes, `apatch` lists those paths, requires approval, and backs up their previous contents under `.apatch/backups/` before replacing them. These backups are Git-ignored and are not deleted automatically. The archive still contains whole replacement files, not line-based merges: inspect overlapping edits before approving replacement.
 
 After the final patch, action 4 runs the project's canonical checks. Git whitespace warnings are reported but do not prevent those checks from running. Action 5 reviews and commits **all** currently changed and staged paths using the active handoff's `commit_message`, without pushing. Check that the message describes the combined change. Action 6 pushes the current branch separately, either now or in a later invocation. Pushes must be fast-forward operations and can only publish committed Git history; any remaining dirty files stay local.
 
@@ -113,8 +115,8 @@ LOOSE, STRICT, and FORCE are mutually exclusive. Prefer the default LOOSE for on
 To recover after manually creating a feature branch, extracting a patch, committing, or pushing, use the explicit FORCE mode:
 
 ```bash
-# Use the default handoff in ~/Downloads/<project>_patch_params.json.
-/path/to/apatch/apatch.sh force
+# Select the specific handoff by its JSON stem.
+/path/to/apatch/apatch.sh <stem> force
 
 # Use a specific handoff file.
 /path/to/apatch/apatch.sh /path/to/change_params.json force
@@ -210,7 +212,7 @@ In LOOSE mode the new cycle is acknowledged automatically. Pending patches on th
 | `base_branch` | Target branch for feature creation and pull requests. |
 | `require_patch_feature_branch` | When `true`, restrict direct patch application (option 3) to the `feature_branch` from the handoff file. Defaults to `false`. |
 | `require_review_approval` | Require an approved PR review before merging; defaults to `true` and may be overridden by the target repository's `.apatch/config.yaml`. |
-| `require_required_checks` | Require successful GitHub checks before merging. |
+| `require_required_checks` | Require published, passing GitHub CI checks before merging; defaults to `true` and may be overridden per repository. |
 | `merge_method` | GitHub merge strategy: `merge`, `squash`, or `rebase`. |
 | `github_timeout_seconds` | Maximum wait for each `gh` CLI call, including PR discovery, creation, and verification; default `45`, allowed `5`–`300`. Does not limit project tests. |
 | `max_uncompressed_patch_bytes` | Maximum total extracted archive size. |
@@ -236,18 +238,21 @@ checks:
   - ["./gradlew", "check"]
 ```
 
-`log_directory`, `state_file`, `applied_patches_file`, and `require_review_approval` are optional and override their global counterparts. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. Separate lock files named `<state_file>.lock` and `<applied_patches_file>.lock` are created automatically in `.apatch/`. Omit these settings to inherit the global defaults.
+`log_directory`, `state_file`, `applied_patches_file`, `require_review_approval`, and `require_required_checks` are optional and override their global counterparts. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. Separate lock files named `<state_file>.lock` and `<applied_patches_file>.lock` are created automatically in `.apatch/`. Omit these settings to inherit the global defaults.
 
 To allow merging without an approved review **for one repository**, set the following in that repository's `.apatch/config.yaml` alongside the required `schema_version` and `checks` fields:
 
 ```yaml
 schema_version: 1
 require_review_approval: false
+require_required_checks: false
 checks:
   - ["./run_checks.sh"]
 ```
 
-The project override must be a YAML boolean (`true` or `false`); quoted strings, numbers, and `null` are rejected. If omitted, the setting inherits `require_review_approval` from the installed `apatch.conf` (default: `true`). Before MRG, `apatch` prints whether approval is required and whether the value came from `project` or `global`. Disabling this local approval gate does **not** bypass branch/PR identity checks, clean mergeability, required CI checks, GitHub branch protection or rulesets, or the separate confirmation controlled by `skipApproves`. If GitHub refuses the merge, the operation fails without recording a successful merge.
+Each project override must be a YAML boolean (`true` or `false`); quoted strings, numbers, and `null` are rejected. If omitted, each setting inherits its corresponding value from the installed `apatch.conf` (both default to `true`). Before MRG, `apatch` prints both effective policies and their independent sources (`project` or `global`).
+
+Disabling review approval does **not** disable CI checks. If your repository does not publish any GitHub CI checks, the default CI guard reports `PR has no published checks; refusing to assume CI passed`. Setting `require_required_checks: false` explicitly skips only `apatch`'s GitHub CI gate for that repository; it does not mean checks passed, and it does not skip the project-local `CHK` operation. The two opt-outs never bypass PR identity/head/base checks, mergeability, GitHub branch protection or rulesets, or the separate confirmation controlled by `skipApproves`. If GitHub refuses the merge, the operation fails without recording a successful merge.
 
 `checks` must be a non-empty list. A command can be an argument list (recommended) or a single command string parsed with shell-style quoting:
 
