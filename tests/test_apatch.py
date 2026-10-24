@@ -141,6 +141,11 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertIn(f"Date: {entry.date}\nPatch: {entry.patch}\n", self.history_path.read_text())
         return entry
 
+    def write_created_registry(self, *names):
+        registry = self.root / ".apatch" / "created_patches.txt"
+        registry.write_text("".join(f"{name}\n" for name in names), encoding="utf-8")
+        return registry
+
     def test_project_config_is_required(self):
         self.project_config.unlink()
         result = self.invoke("0\n")
@@ -1397,6 +1402,126 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertIn("history contains an invalid entry", result.stderr)
         self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(), "main")
+
+    def test_missing_created_predecessor_blocks_bap_and_apl_in_all_modes(self):
+        self.write_created_registry("first-generated.zip", self.zip.name, "later-generated.zip")
+        for mode in ("loose", "strict", "force"):
+            for operation in ("BAP", "APL"):
+                with self.subTest(mode=mode, operation=operation):
+                    result = self.invoke_cli(f"--{mode}", f"op={operation}",
+                                             "skipApproves=true")
+                    self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                    self.assertIn("[PATCH_ORDER] Patch first-generated.zip has not been applied!",
+                                  result.stderr)
+                    self.assertIn(f"Cannot apply {self.zip.name}", result.stderr)
+                    self.assertEqual(command("git", "branch", "--show-current", cwd=self.root)
+                                     .stdout.strip(), "main")
+                    self.assertFalse(command("git", "branch", "--list",
+                                             self.payload["feature_branch"], cwd=self.root)
+                                     .stdout.strip())
+                    self.assertFalse((self.root / "new.txt").exists())
+                    self.assertFalse(self.history_path.exists())
+
+    def test_registered_patch_after_applied_legacy_predecessor_can_be_applied(self):
+        self.write_created_registry("earlier-patch.zip", self.zip.name, "future-patch.zip")
+        self.history_path.write_text("earlier-patch.zip\n")
+        result = self.invoke_cli("--loose", "op=BAP", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([entry.patch for entry in AppliedPatchHistory(self.history_path).entries],
+                         ["earlier-patch.zip", self.zip.name])
+        self.assertTrue((self.root / "new.txt").exists())
+
+    def test_registered_first_patch_is_not_blocked_by_later_unapplied_patches(self):
+        self.write_created_registry(self.zip.name, "later-a.zip", "later-b.zip")
+        result = self.invoke_cli("--strict", "op=BAP", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assert_history(real_branch=self.payload["feature_branch"])
+
+    def test_force_applies_registry_patch_after_structured_predecessor(self):
+        from apatch_lib.patch_history import locked_history
+        self.write_created_registry("earlier-patch.zip", self.zip.name)
+        with locked_history(self.history_path) as history:
+            history.append("earlier-patch.zip", "feature/prior", "main")
+        result = self.invoke_cli("--force", "op=BAP", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(len(AppliedPatchHistory(self.history_path).entries), 2)
+        self.assertTrue((self.root / "new.txt").exists())
+
+    def test_unregistered_patch_is_rejected_in_every_mode(self):
+        registry = self.write_created_registry("another-generated.zip")
+        for mode in ("loose", "strict", "force"):
+            with self.subTest(mode=mode):
+                result = self.invoke_cli(f"--{mode}", "op=BAP", "skipApproves=true")
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn(f"Patch {self.zip.name} is not registered", result.stderr)
+                self.assertIn(str(registry), result.stderr)
+                self.assertEqual(command("git", "branch", "--show-current", cwd=self.root)
+                                 .stdout.strip(), "main")
+
+    def test_invalid_registry_lines_and_duplicates_reject_before_branch_mutation(self):
+        invalid_lists = (
+            ("blank", self.zip.name + "\n\n"),
+            ("traversal", "../other.zip\n" + self.zip.name + "\n"),
+            ("absolute", "/tmp/other.zip\n" + self.zip.name + "\n"),
+            ("comment", "# comment\n" + self.zip.name + "\n"),
+            ("json", "some.json\n" + self.zip.name + "\n"),
+            ("duplicate", self.zip.name + "\n" + self.zip.name + "\n"),
+        )
+        path = self.root / ".apatch" / "created_patches.txt"
+        for label, content in invalid_lists:
+            with self.subTest(label=label):
+                path.write_text(content)
+                result = self.invoke_cli("--loose", "op=BAP", "skipApproves=true")
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn("[PATCH_ORDER]", result.stderr)
+                self.assertIn("line", result.stderr)
+                self.assertEqual(command("git", "branch", "--show-current", cwd=self.root)
+                                 .stdout.strip(), "main")
+                self.assertFalse((self.root / "new.txt").exists())
+
+    def test_registry_symlink_and_invalid_utf8_are_rejected(self):
+        registry = self.root / ".apatch" / "created_patches.txt"
+        outside = self.base / "external-registry.txt"
+        outside.write_text(self.zip.name + "\n")
+        registry.symlink_to(outside)
+        result = self.invoke_cli("--force", "op=BAP", "skipApproves=true")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("must not be a symlink", result.stderr)
+        self.assertEqual(outside.read_text(), self.zip.name + "\n")
+        registry.unlink()
+        registry.write_bytes(b"\xff.zip\n")
+        invalid = self.invoke_cli("--loose", "op=APL", "skipApproves=true")
+        self.assertEqual(invalid.returncode, 2, invalid.stdout + invalid.stderr)
+        self.assertIn("Cannot read UTF-8", invalid.stderr)
+        self.assertFalse((self.root / "new.txt").exists())
+
+    def test_order_guard_runs_before_superseding_unfinished_state(self):
+        self.write_created_registry("unapplied-old.zip", self.zip.name)
+        original = {"schema_version": 1, "workflows": {"older": {
+            "repository": str(self.root.resolve()), "patch_file": "older.zip",
+            "branch": "feature/previous", "phase": "patch_applied"}}}
+        contents = json.dumps(original)
+        self.state_path.write_text(contents)
+        blocked = self.invoke_cli("--loose", "op=APL", "skipApproves=true")
+        self.assertEqual(blocked.returncode, 2, blocked.stdout + blocked.stderr)
+        self.assertIn("unapplied-old.zip has not been applied!", blocked.stderr)
+        self.assertEqual(self.state_path.read_text(), contents)
+
+    def test_missing_registry_retains_previous_apply_behavior(self):
+        self.assertFalse((self.root / ".apatch" / "created_patches.txt").exists())
+        result = self.invoke_cli("--loose", "op=APL", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assert_history(real_branch="main")
+
+    def test_created_registry_is_excluded_locally_without_tracking(self):
+        registry = self.write_created_registry(self.zip.name)
+        result = self.invoke_cli("--loose", "op=EXT")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(command("git", "check-ignore", ".apatch/created_patches.txt",
+                                 cwd=self.root).stdout.strip(), ".apatch/created_patches.txt")
+        self.assertNotIn("created_patches.txt", command("git", "status", "--porcelain",
+                                                          cwd=self.root).stdout)
+        self.assertEqual(registry.read_text(), self.zip.name + "\n")
 
     def test_misspelled_history_field_blocks_every_branch_action_before_switch(self):
         original = (

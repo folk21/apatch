@@ -400,6 +400,8 @@ class Workflow:
         label, operation, reason = options[number - 1]
         if reason:
             raise Abort(f"Action unavailable: {reason}")
+        if number in {2, 3}:
+            self.branch_patch.assert_patch_order()
         if not self.skip_previous_cycles:
             self.handle_previous_cycles()
         before_branch = current_branch(self.root)

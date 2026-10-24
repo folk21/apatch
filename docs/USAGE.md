@@ -304,6 +304,20 @@ If the same ZIP filename is encountered again, `apatch` warns and asks for an ex
 
 This history is independent of saved workflow progress. It detects duplicate **filenames**, not identical archive contents, and does not bypass Git or archive safety checks. Writes use a stable advisory lock and atomic file replacement. Older journals containing one ZIP filename per line remain readable; an entry is upgraded to the structured format if a corresponding commit is subsequently adopted.
 
+### Optional created-patch ordering (P0.3a)
+
+To prevent skipping a generated patch, maintain `<repository>/.apatch/created_patches.txt` with one ZIP **basename** per line, in creation order:
+
+```text
+patch-A.zip
+patch-B.zip
+patch-C.zip
+```
+
+When this file exists, `BAP` and `APL` in every mode require the selected ZIP to appear exactly once in the list. Every **earlier** listed ZIP must also appear in the applied-patch journal. For example, when only `patch-A.zip` is recorded as applied, `patch-B.zip` may be applied next, but `patch-C.zip` is rejected with an error identifying the missing `patch-B.zip`. Later un-applied entries do not block earlier entries. Neither FORCE nor `skipApproves=true` bypasses ordering validation. The check occurs before any branch switch, new branch creation, ZIP extraction, or superseding of earlier patch checkpoints.
+
+The registry is optional: projects without it retain the existing workflow. If the file exists, invalid basenames, duplicate or blank lines, unreadable UTF-8, and symlinks cause an explicit error. The file is automatically excluded from Git using `.git/info/exclude`; it is never staged as a source change. During P0.3a, `apatch` **reads but never creates or edits** this file. Append new verified filenames manually without inventing past entries. ZIP-contained registry metadata and automatic append-only updates are planned for P0.3b and are **not** supported yet; do not put `.apatch/created_patches.txt` into a normal source ZIP.
+
 Before any `BRN` or `BAP` branch creation or switch, every execution mode validates the applied-patch history. If a structured record has a misspelled or corrupted field header, the command stops without switching branches, extracting a ZIP, or altering the journal; its error identifies the line and expected field. Inspect the original entry and correct only the confirmed transcription error. Do not delete the journal or bypass this check to resume work. A prior invocation of an older version may already have created the feature branch before noticing a malformed journal; after repairing the record, that existing branch can be reused, or `APL` can continue the recorded `branch_created` workflow.
 
 ### Migration from older installations
