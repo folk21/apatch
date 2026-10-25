@@ -18,6 +18,10 @@ class Abort(RuntimeError):
     """A precondition failed; no further workflow step is safe."""
 
 
+class RemoteOutcomeUnknown(Abort):
+    """A remote mutation may have happened despite its failed acknowledgment."""
+
+
 @dataclass(frozen=True)
 class Config:
     downloads: Path

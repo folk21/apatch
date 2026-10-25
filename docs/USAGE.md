@@ -80,9 +80,18 @@ Legacy JSON-based sessions retain the old branch-first recovery path.
 
 Outcome lines use `SUCCESS` for an observed state transition,
 `ALREADY_SATISFIED` for a positively reverified `SYN`, `NO_OP` for other
-unchanged actions, `CANCELLED` for a declined confirmation, and `ERROR` for a
-known operation failure. Supported terminals
-show semantic colors; output redirected to a file remains plain text.
+unchanged actions, `CANCELLED` for a declined confirmation, `ERROR` for a
+known operation failure, and `UNKNOWN_REMOTE_RESULT` when a GitHub PR creation
+or merge request may have succeeded but its outcome cannot be confirmed.
+`apatch` never automatically retries a potentially completed PR mutation;
+inspect the live PR before using the normal reconciliation operations. A
+sequence stops at this outcome and identifies all skipped actions.
+
+Terminal output presents `SUCCESS` in green, `ERROR` in red, uncertainty in
+yellow, and `==> Next suggested: N [CODE]` in bold cyan when supported. The
+same labels appear without ANSI escapes in redirected output, CI, `NO_COLOR`
+mode, and `TERM=dumb`. The lifecycle recommendation is independent of a
+sequence's `Next scheduled` operation.
 
 ### Direct actions and unattended automation
 

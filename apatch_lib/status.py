@@ -6,6 +6,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from .console import next_action_label
 from .model import Abort, BRANCH_PATTERN
 
 
@@ -216,10 +217,10 @@ def inspect_patch(root: Path, config, record: dict, patch: str, planned_branch: 
 
 def display_recommendation(status: PatchStatus):
     if status.next_action is None:
-        print("Next suggested: NONE — " + status.guidance)
+        print("==> Next suggested: NONE — " + status.guidance)
     else:
         code, label = ACTION_NAMES[status.next_action]
-        print(f"Next suggested: {status.next_action} [{code}] — {label}")
+        print(f"==> {next_action_label(status.next_action, code)} — {label}")
         print("    " + status.guidance)
     if status.alternate_action is not None:
         code, label = ACTION_NAMES[status.alternate_action]

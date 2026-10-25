@@ -21,7 +21,7 @@ from unittest.mock import patch
 
 TOOL = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL))
-from apatch_lib.model import Abort, load_handoff, load_project_config, safe_relative
+from apatch_lib.model import Abort, RemoteOutcomeUnknown, load_handoff, load_project_config, safe_relative
 from apatch_lib.patch import inspect
 from apatch_lib.model import load_config
 from apatch_lib.patch_history import AppliedPatchHistory
@@ -876,16 +876,87 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertIn("RESULT 9 [SYN]: ALREADY_SATISFIED", console.getvalue())
 
     def test_result_color_is_terminal_only(self):
-        with patch("apatch_lib.workflow.sys.stdout.isatty", return_value=True), \
+        with patch("apatch_lib.console.sys.stdout.isatty", return_value=True), \
              patch.dict(os.environ, {"TERM": "xterm", "NO_COLOR": ""}):
             self.assertEqual(outcome_label("ERROR"), "ERROR")
-        with patch("apatch_lib.workflow.sys.stdout.isatty", return_value=True), \
+        with patch("apatch_lib.console.sys.stdout.isatty", return_value=True), \
              patch.dict(os.environ, {"TERM": "xterm"}, clear=True):
             self.assertEqual(outcome_label("SUCCESS"), "\033[32mSUCCESS\033[0m")
             self.assertEqual(outcome_label("ERROR"), "\033[31mERROR\033[0m")
-        with patch("apatch_lib.workflow.sys.stdout.isatty", return_value=False), \
+            self.assertEqual(outcome_label("UNKNOWN_REMOTE_RESULT"),
+                             "\033[33mUNKNOWN_REMOTE_RESULT\033[0m")
+        with patch("apatch_lib.console.sys.stdout.isatty", return_value=False), \
              patch.dict(os.environ, {"TERM": "xterm"}, clear=True):
             self.assertEqual(outcome_label("SUCCESS"), "SUCCESS")
+        with patch("apatch_lib.console.sys.stdout.isatty", return_value=True), \
+             patch.dict(os.environ, {"TERM": "dumb"}, clear=True):
+            self.assertEqual(outcome_label("SUCCESS"), "SUCCESS")
+
+    def test_next_suggested_is_highlighted_only_for_tty(self):
+        from apatch_lib.status import PatchStatus, display_recommendation
+
+        status = PatchStatus("example.zip", "feature/example", "verified", "main", {},
+                             5, 3, "Review commit scope before proceeding.")
+
+        class FakeTTY(StringIO):
+            def isatty(self):
+                return True
+
+        tty = FakeTTY()
+        with redirect_stdout(tty), patch.dict(os.environ, {"TERM": "xterm"}, clear=True):
+            display_recommendation(status)
+        self.assertIn("==> \033[1;36mNext suggested: 5 [CMT]\033[0m", tty.getvalue())
+        self.assertIn("Alternative: 3 [APL]", tty.getvalue())
+        plain = StringIO()
+        with redirect_stdout(plain), patch.dict(os.environ, {"TERM": "xterm"}, clear=True):
+            display_recommendation(status)
+        self.assertIn("==> Next suggested: 5 [CMT]", plain.getvalue())
+        self.assertNotIn("\033[", plain.getvalue())
+        dumb = FakeTTY()
+        with redirect_stdout(dumb), patch.dict(os.environ, {"TERM": "dumb"}, clear=True):
+            display_recommendation(status)
+        self.assertNotIn("\033[", dumb.getvalue())
+
+    def test_unknown_github_result_is_not_mislabeled_as_error(self):
+        from apatch_lib.workflow import Workflow
+
+        config = load_project_config(self.root, load_config(self.bin))
+        workflow = Workflow(self.root, config, load_handoff(self.params),
+                            {"schema_version": 1, "workflows": {}},
+                            force=True, skip_previous_cycles=True)
+        workflow.record["phase"] = "pushed"
+        console = StringIO()
+        with patch.object(workflow.force_actions, "pr",
+                          side_effect=RemoteOutcomeUnknown("GitHub PR create result is unknown")), \
+                redirect_stdout(console), self.assertRaises(RemoteOutcomeUnknown):
+            workflow.interactive("PR")
+        self.assertIn("RESULT 7 [PR]: UNKNOWN_REMOTE_RESULT", console.getvalue())
+        self.assertNotIn("RESULT 7 [PR]: ERROR", console.getvalue())
+        self.assertIn("Inspect the matching GitHub PR", console.getvalue())
+
+    def test_unavailable_action_emits_error_result_banner(self):
+        blocked = self.invoke_cli("--strict", "op=CMT", "skipApproves=true")
+        self.assertEqual(blocked.returncode, 2)
+        self.assertIn("RESULT 5 [CMT]: ERROR", blocked.stdout)
+        self.assertIn("Action unavailable", blocked.stderr)
+
+    def test_sequence_stops_on_unknown_remote_result_and_preserves_remaining_actions(self):
+        class RemoteFailureWorkflow:
+            def __init__(self):
+                self.calls = []
+
+            def interactive(self, code, *, show_header):
+                self.calls.append(code)
+                raise RemoteOutcomeUnknown("Request timed out after remote mutation")
+
+        workflow = RemoteFailureWorkflow()
+        console = StringIO()
+        with redirect_stdout(console), self.assertRaises(RemoteOutcomeUnknown):
+            execute_sequence(workflow, OperationSequence.parse("MRG,SYN,STS"))
+        self.assertEqual(workflow.calls, ["MRG"])
+        self.assertIn("SEQUENCE STOP: 8 [MRG]", console.getvalue())
+        self.assertIn("outcome=UNKNOWN_REMOTE_RESULT", console.getvalue())
+        self.assertIn("Remaining (not executed): 9 [SYN], 10 [STS]", console.getvalue())
 
     def test_direct_action_with_default_approvals_still_requires_confirmation(self):
         result = self.invoke_cli("op=3", "skipApproves=false")
@@ -2521,6 +2592,24 @@ class GithubGuardTest(unittest.TestCase):
                         "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
                         "statusCheckRollup": [{"name": "test", "conclusion": "SUCCESS"}], "mergedAt": None}
 
+    def test_mutating_github_transport_timeout_is_unknown_and_never_retried(self):
+        from apatch_lib import github
+
+        for operation in ("create", "merge"):
+            with self.subTest(operation=operation), \
+                    patch.object(github, "run", side_effect=Abort("Post API: i/o timeout")) as runner:
+                with self.assertRaises(RemoteOutcomeUnknown) as captured:
+                    github.gh_run(self.config, self.root, ["gh", "pr", operation, "--repo", "example/repo"])
+                self.assertIn("result is unknown", str(captured.exception))
+                self.assertIn("no automatic retry", str(captured.exception))
+                runner.assert_called_once()
+
+        with patch.object(github, "run", side_effect=Abort("GraphQL permission denied")) as runner:
+            with self.assertRaises(Abort) as captured:
+                github.gh_run(self.config, self.root, ["gh", "pr", "merge", "4"])
+            self.assertNotIsInstance(captured.exception, RemoteOutcomeUnknown)
+            runner.assert_called_once()
+
     def run_guard(self, *, approval=None, check=None, sha=None):
         from unittest.mock import patch
         from apatch_lib import github
@@ -2739,6 +2828,41 @@ class GithubGuardTest(unittest.TestCase):
         self.assertEqual(execute.call_count, 1)
         self.assertEqual(listing.call_count, 2)
 
+    def test_pr_create_verification_timeout_after_mutation_is_unknown(self):
+        from apatch_lib import github
+
+        record = {"phase": "pushed", "pushed_sha": self.sha}
+        with patch.object(github, "require_clean"), patch.object(github, "head", return_value=self.sha), \
+                patch.object(github, "repository", return_value="example/repo"), \
+                patch.object(github, "remote_head", return_value=self.sha), \
+                patch.object(github, "pr_list", side_effect=[[], Abort("GitHub timeout")]), \
+                patch.object(github, "gh_run") as mutation, \
+                patch.object(github, "confirm", return_value=True):
+            with self.assertRaises(RemoteOutcomeUnknown) as result:
+                github.create_pr(self.config, self.handoff, self.root, record, lambda: None)
+        mutation.assert_called_once()
+        self.assertIn("verification was unavailable", str(result.exception))
+        self.assertEqual(record["phase"], "pushed")
+
+    def test_pr_merge_confirmation_timeout_after_mutation_is_unknown(self):
+        from apatch_lib import github
+
+        record = dict(self.record)
+        with patch.object(github, "require_clean"), \
+                patch.object(github, "verified_repository", return_value="example/repo"), \
+                patch.object(github, "pr_list", return_value=[self.details]), \
+                patch.object(github, "pr_details", side_effect=[self.details, Abort("GitHub timeout")]), \
+                patch.object(github, "remote_head", return_value=self.sha), \
+                patch.object(github, "gh_run") as mutation, \
+                patch.object(github, "confirm", return_value=True):
+            with self.assertRaises(RemoteOutcomeUnknown) as result:
+                github.merge_pr(self.config, self.handoff, self.root, record, lambda: None,
+                                verified_repo="example/repo")
+        self.assertEqual(sum(call.args[2][:3] == ["gh", "pr", "merge"]
+                             for call in mutation.call_args_list), 1)
+        self.assertIn("confirmation was unavailable", str(result.exception))
+        self.assertEqual(record["phase"], "pr_created")
+
     def test_new_pr_can_follow_historical_merged_pr_on_same_branch(self):
         from apatch_lib import github
 
@@ -2809,7 +2933,7 @@ class GithubGuardTest(unittest.TestCase):
                 patch.object(github, "pr_list", side_effect=[[], [other_open, current_pr]]), \
                 patch.object(github, "gh_run") as execute, \
                 patch.object(github, "confirm", return_value=True):
-            with self.assertRaisesRegex(Abort, "could not be uniquely verified"):
+            with self.assertRaisesRegex(RemoteOutcomeUnknown, "no unique matching open PR"):
                 github.create_pr(self.config, self.handoff, self.root, record, lambda: None)
         execute.assert_called_once()
         self.assertEqual(record["phase"], "pushed")

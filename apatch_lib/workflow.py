@@ -3,19 +3,18 @@
 import hashlib
 import json
 import logging
-import os
-import sys
 import time
 from pathlib import Path
 
 from . import github
 from .branch_patch import BranchPatchActions
+from .console import outcome_label
 from .force import ForceActions
 from .loose import LooseActions
 from .gitutil import (clear_confirmation_declined, confirmation_was_declined,
                       confirm, current_branch, head, is_clean, output, remote_head,
                       require_branch, require_clean, run, status_paths, worktree_fingerprint)
-from .model import Abort
+from .model import Abort, RemoteOutcomeUnknown
 from .patch import inspect
 from .patch_history import locked_history
 from .state import save
@@ -28,15 +27,6 @@ PHASES = {"new", "branch_created", "applying", "patch_applied", "verified",
           "committed", "pushed", "pr_created", "merged", "synced"}
 
 ACTION_CODES = ("EXT", "BRN", "BAP", "APL", "CHK", "CMT", "PSH", "PR", "MRG", "SYN", "STS")
-
-
-def outcome_label(value):
-    """Keep outcome text readable without ANSI on non-interactive streams."""
-    if not sys.stdout.isatty() or "NO_COLOR" in os.environ or os.environ.get("TERM") in {None, "", "dumb"}:
-        return value
-    color = {"SUCCESS": "32", "ERROR": "31", "NO_OP": "33", "CANCELLED": "33",
-             "ALREADY_SATISFIED": "32"}.get(value)
-    return f"\033[{color}m{value}\033[0m" if color else value
 
 
 def action_number(value):
@@ -429,12 +419,6 @@ class Workflow:
             return "NO_OP"
         options = self.options()
         label, operation, reason = options[number - 1]
-        if reason:
-            raise Abort(f"Action unavailable: {reason}")
-        if number in {2, 3}:
-            self.branch_patch.assert_patch_order()
-        if not self.skip_previous_cycles:
-            self.handle_previous_cycles()
         before_branch = current_branch(self.root)
         before_head = head(self.root)
         before_phase = self.phase
@@ -446,11 +430,23 @@ class Workflow:
         started = time.monotonic()
         clear_confirmation_declined()
         try:
+            if reason:
+                raise Abort(f"Action unavailable: {reason}")
+            if number in {2, 3}:
+                self.branch_patch.assert_patch_order()
+            if not self.skip_previous_cycles:
+                self.handle_previous_cycles()
             operation_evidence = operation()
-        except (Abort, KeyboardInterrupt):
+        except (Abort, KeyboardInterrupt) as exc:
             elapsed = time.monotonic() - started
-            result = "CANCELLED" if confirmation_was_declined() else "ERROR"
+            result = ("CANCELLED" if confirmation_was_declined() else
+                      "UNKNOWN_REMOTE_RESULT" if isinstance(exc, RemoteOutcomeUnknown) else "ERROR")
             print(f"\n==> RESULT {number} [{ACTION_CODES[number]}]: {outcome_label(result)} ({elapsed:.2f}s)")
+            if result == "UNKNOWN_REMOTE_RESULT":
+                print("    Remote side effect is unconfirmed. Inspect the matching GitHub PR "
+                      "before retrying; no automatic replay is safe.")
+            elif result == "ERROR":
+                print("    Recovery: inspect 10 [STS] and the diagnostic below before resuming.")
             raise
         after_branch = current_branch(self.root)
         after_head = head(self.root)

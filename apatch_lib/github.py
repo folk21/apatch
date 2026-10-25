@@ -5,7 +5,7 @@ import re
 import time
 
 from .gitutil import confirm, head, output, remote_head, require_clean, run
-from .model import Abort
+from .model import Abort, RemoteOutcomeUnknown
 
 
 _TRANSIENT_GITHUB_ERROR = re.compile(
@@ -37,7 +37,16 @@ def gh_run(config, root, argv):
     """Bound every GitHub CLI call without shortening project verification commands."""
     if argv[:3] in (["gh", "auth", "status"], ["gh", "pr", "checks"]):
         return _github_read(config, root, argv, capture_output=False)
-    return run(argv, root, timeout=config.github_timeout_seconds)
+    try:
+        return run(argv, root, timeout=config.github_timeout_seconds)
+    except Abort as exc:
+        if (argv[:3] in (["gh", "pr", "create"], ["gh", "pr", "merge"])
+                and _TRANSIENT_GITHUB_ERROR.search(str(exc))):
+            raise RemoteOutcomeUnknown(
+                f"GitHub PR {argv[2]} result is unknown after a transport failure: {exc}. "
+                "Check live PR status before a manual reconciliation; no automatic retry was attempted."
+            ) from exc
+        raise
 
 
 def gh_output(config, root, argv):
@@ -153,10 +162,17 @@ def create_pr(config, handoff, root, record, save_checkpoint):
                           "--head", handoff.branch, "--title", handoff.subject,
                           "--body", handoff.message.split("\n", 1)[-1]])
     print("PR creation request completed; verifying the PR on GitHub...")
-    active_after_create = [pr for pr in pr_list(config, root, repo, handoff.branch)
-                           if pr["state"] == "OPEN"]
+    try:
+        active_after_create = [pr for pr in pr_list(config, root, repo, handoff.branch)
+                               if pr["state"] == "OPEN"]
+    except Abort as exc:
+        raise RemoteOutcomeUnknown(
+            f"PR creation command returned, but GitHub verification was unavailable: {exc}. "
+            "Inspect the live PR list before retrying."
+        ) from exc
     if len(active_after_create) != 1:
-        raise Abort("PR created but could not be uniquely verified; inspect GitHub")
+        raise RemoteOutcomeUnknown("PR creation command returned, but no unique matching open PR "
+                                   "was confirmed; inspect GitHub before retrying")
     assert_pr_matches_revision(config, handoff, active_after_create[0], local)
     _record_current_pr(record, active_after_create[0])
     save_checkpoint()
@@ -200,9 +216,16 @@ def merge_pr(config, handoff, root, record, save_checkpoint, *, verified_repo=No
     if not confirm("Merge this PR into the target branch?"):
         return
     gh_run(config, root, ["gh", "pr", "merge", str(pr["number"]), "--repo", repo, f"--{config.merge_method}"])
-    latest = pr_details(config, root, repo, pr["number"])
+    try:
+        latest = pr_details(config, root, repo, pr["number"])
+    except Abort as exc:
+        raise RemoteOutcomeUnknown(
+            f"PR merge command returned, but GitHub confirmation was unavailable: {exc}. "
+            "Inspect the PR before manually reconciling."
+        ) from exc
     if latest["state"] != "MERGED" or not latest.get("mergedAt"):
-        raise Abort("Merge command returned but GitHub does not confirm MERGED")
+        raise RemoteOutcomeUnknown("Merge command returned but GitHub does not confirm MERGED; "
+                                   "inspect the live PR before another merge attempt")
     assert_pr_matches_revision(config, handoff, latest, record.get("pushed_sha"), merged=True)
     record["phase"] = "merged"
     save_checkpoint()
