@@ -23,7 +23,7 @@ These rules apply to the entire `apatch` repository. They are implementation gui
 
 - Add focused regression tests for behavior changes, including failures and recovery paths.
 - Use temporary local Git repositories and mocked GitHub operations; never run destructive integration tests on a real developer repository.
-- Run `sh ./run_tests.sh` when available. If dependencies or permissions prevent tests, record the exact limitation.
+- Run `sh ./run_tests.sh` after each increment and `sh ./run_rare_checks.sh` before handoff or release; the extended suite includes regular tests. GitHub Actions is manual-only, so local extended checks are required before merging. If checks cannot run, record the exact limitation.
 - Update documentation in its owning file. Keep README as navigation, not a duplicate of Usage or Architecture.
 - Write source comments, docstrings, tests, and all project documentation in **English**.
 - Do not create or update active specifications, implementation plans, or roadmap stages unless that documentation work is explicitly requested.

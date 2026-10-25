@@ -8,8 +8,8 @@ Run the tests from the `apatch` directory after installing the dependencies:
 
 ```bash
 cd /path/to/apatch
-sh ./run_tests.sh quick
-sh ./run_tests.sh full
+sh ./run_tests.sh
+sh ./run_rare_checks.sh
 ```
 
 The script uses `.venv/bin/python` when available and otherwise falls back to `python3`. It checks that PyYAML is installed in the selected interpreter before running the suite. If PyYAML is missing, install the dependencies with `.venv/bin/python -m pip install -r requirements.txt`; activating a virtual environment alone does not install its dependencies.
@@ -20,7 +20,11 @@ To run the tests directly with the project virtual environment:
 .venv/bin/python -B -m unittest discover -s tests -v
 ```
 
-`quick` runs twelve high-priority Git/ZIP/CLI/progress safety smoke tests (approximately four seconds on the reference Linux environment). `full` is the default and runs every test (approximately one minute). Run `quick` after each implementation increment; run `full` before a patch handoff or merge. Tests are grouped in `tests/test_handoffs.py`, `test_safety.py`, `test_sequences.py`, `test_history.py`, `test_branches.py`, `test_modes.py`, `test_status.py`, `test_config_cli.py`, `test_github.py`, `test_progress.py`, and `test_validation.py`. Shared fixtures live in `tests/_support.py`.
+`run_tests.sh` defaults to a focused **regular** suite covering ZIP application, branch transitions, Git safety, GitHub guards, progress persistence, and launcher contracts. `quick` and `regular` are aliases for that suite. This is also the default local `CHK` command when a target repository config selects `./run_tests.sh`.
+
+`run_rare_checks.sh` runs **all** tests, including the regular suite, to preserve complete regression coverage with no omitted or duplicated test-selection lists. `run_tests.sh full` remains an equivalent compatibility command. Run the regular suite after each implementation increment and the extended suite locally before handoff, release, or merge. GitHub Actions has a manual `workflow_dispatch` trigger only; it does **not** run on push or pull request. The optional manual workflow still runs the extended suite across the configured Python/macOS/Linux matrix. A successful local `CHK` does not imply that extended tests have run. Verify that GitHub branch protection/rulesets do not require automatic checks before disabling them.
+
+Test durations depend heavily on the platform: the extended suite runs many subprocess-based temporary-Git integration tests and can take substantially longer on macOS. The regular suite avoids most of those invocations. Tests are grouped in `tests/test_handoffs.py`, `test_safety.py`, `test_sequences.py`, `test_history.py`, `test_branches.py`, `test_modes.py`, `test_status.py`, `test_config_cli.py`, `test_github.py`, `test_progress.py`, `test_validation.py`, and `test_runner_scripts.py`. Shared fixtures live in `tests/_support.py`.
 
 `-B` prevents bytecode cache files. Tests use temporary Git repositories and mocked GitHub commands. No developer project repository is modified. Python, PyYAML, and Git are required; the GitHub CLI is not required for tests. Linux results alone do not guarantee macOS behavior.
 
@@ -28,9 +32,9 @@ Global progress tests live in `tests/test_progress.py`; they use temporary tool 
 
 ## Local verification
 
-- Run focused regression tests for affected modes and edge cases before the full suite.
+- Run focused regression tests for affected modes and edge cases before the extended suite. Keep high-priority scenarios in the curated regular command when new regressions justify it.
 - Use temporary repositories and local bare remotes for Git integration tests; keep GitHub interactions mocked.
-- For shell changes, run `sh -n apatch.sh` and `sh -n run_tests.sh`.
+- For shell changes, run `sh -n apatch.sh`, `sh -n run_tests.sh`, and `sh -n run_rare_checks.sh`.
 - For documentation changes, verify relative links, file paths, CLI examples, and the separation between global and project configuration.
 - Report the tests actually run and their environment. Passing Linux tests does not establish macOS compatibility.
 
