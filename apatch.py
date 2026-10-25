@@ -140,9 +140,10 @@ def main():
         config = load_config(script_dir)
         if args.patch is not None and not BASENAME_PATTERN.fullmatch(args.patch):
             raise Abort("--patch must be an ASCII-safe ZIP basename")
-        if args.patch is not None and (args.op_seq is not None or args.op not in {"STS", "10"}):
-            raise Abort("--patch is only supported for op=STS")
-        status_only = args.op in {"STS", "10"}
+        sequence_only_status = args.op_seq is not None and args.op_seq.actions == (10,)
+        status_only = args.op in {"STS", "10"} or sequence_only_status
+        if args.patch is not None and not status_only:
+            raise Abort("--patch is only supported for op=STS or opSeq=STS")
         root_name = Path(output(["git", "rev-parse", "--show-toplevel"], Path.cwd())).resolve().name
         root = repository_root(Path.cwd(), root_name)
         config = load_project_config(root, config)
