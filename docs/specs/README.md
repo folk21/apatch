@@ -12,10 +12,10 @@ This directory holds proposed normative specifications and implementation plans 
 | Draft execution-history sub-specification | [APATCH-SUB-002 — Execution History and Repository Reconciliation](active/subspecs/subspec-02-state-history-audit.md) |
 | Advisory implementation plan | [APATCH-PLAN-001](plans/apatch-orchestrator-implementation-plan.md) |
 | Completed or archived specifications | None |
-| Implemented slices | P0.1–P0.4b, including self-contained handoffs, console outcomes, explicit `handoffSeq`, and legacy BAP compatibility |
-| Next planned stages | P0.5a — tool-wide progress storage; P0.5b — `info=PROGRESS` queries |
+| Implemented slices | P0.1–P0.5b, including self-contained handoffs, explicit `handoffSeq`, tool-wide progress recording, and read-only `info=PROGRESS` overview |
+| Next planned stages | P1.1 — detailed execution journal; P1.2 — global patch audit (`AUD`) |
 
-Until formal acceptance, [Usage](../USAGE.md) and [Architecture](../ARCHITECTURE.md) describe implemented behavior. P0.1–P0.4b have implementation and regression coverage, but are not certified or formally accepted. Numeric `2 [BAP]` remains for legacy JSON compatibility (AC-54 retirement incomplete). P0.5a/b, detailed P1 execution history, `AUD`, secure Git patch formats, scheduled checks, and P2/P3 extensions remain future work. A security/reliability refactor preceded P0.5 without changing the draft requirement set.
+Until formal acceptance, [Usage](../USAGE.md) and [Architecture](../ARCHITECTURE.md) describe implemented behavior. P0.1–P0.5b have implementation and regression coverage, but are not certified or formally accepted. Numeric `2 [BAP]` remains for legacy JSON compatibility (AC-54 retirement incomplete). Detailed P1 execution history, `AUD`, secure Git patch formats, scheduled checks, and P2/P3 extensions remain future work. A security/reliability refactor preceded P0.5 without changing the draft requirement set.
 
 ## Planned organization
 

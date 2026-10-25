@@ -429,11 +429,20 @@ If a project already has its generic `.apatch` state or history file, it takes p
 
 ## Logging
 
-### Cross-project progress history (P0.5a)
+### Cross-project progress history and overview (P0.5a–P0.5b)
 
 After each attempted lifecycle operation, including individual `opSeq` actions and read-only `STS`, `apatch` records a small event under its own installation directory: `<apatch_installation>/.apatch/progress/progress.json`. Per-project `<project>_progress.json` files are rebuilt from this master. The index distinguishes `SUCCESS`, `NO_OP`, `CANCELLED`, `FAILED`, and `UNKNOWN_REMOTE_RESULT`, with UTC time, patch, branch, recorded phase, optional SHA/PR evidence, and bounded generic error descriptions. It does not save canonical-check output, arbitrary command arguments, or credentials.
 
-This history begins only when the feature is installed; previous invocations are not invented. The files are private, ignored by Git, protected by an interprocess lock, and are never proof of current remote GitHub state. A `PROGRESS_UNAVAILABLE` warning means only secondary event persistence failed: inspect the primary project state to determine whether the operation actually succeeded. The `info=PROGRESS` command and configurable display limits will be introduced in P0.5b; they are not part of this stage.
+Use `apatch.sh info=PROGRESS` (or `apatch.py --info=PROGRESS`) from **any directory**, including outside a Git repository. No handoff, target `.apatch/config.yaml`, `git`, or `gh` is needed. The command reads the authoritative master without creating directories, updating files, or changing project checkpoints. It shows the latest 8 global operations and latest 3 per known project, newest first by UTC completion time and event ID. Each project includes its root, branch, patch, last result, recorded phase, suggested next action, and warnings for unfinished or uncertain operations. These display limits can be changed in the installation's **global** `apatch.conf`:
+
+```ini
+progress_global_limit = 8
+progress_project_limit = 3
+```
+
+The limits accept 1–100 and 1–50 respectively and never truncate stored history. `info=PROGRESS` cannot be combined with handoff selection, lifecycle operations, modes, or approval flags. Malformed history and unsafe symlinks fail closed without rewriting the master. An empty history is normal immediately after installation. Project names can repeat; separate roots are identified by stable IDs.
+
+History starts only when the feature is installed; previous invocations are not invented. The files are private, ignored by Git, protected by an interprocess lock, and are never proof of current remote GitHub state. A `PROGRESS_UNAVAILABLE` warning means only secondary event persistence failed: inspect the primary project state to determine whether the operation actually succeeded. Use target-local `op=STS` or live GitHub checks to verify current status.
 
 `apatch` uses Python's standard `logging` module and writes an append-only log to `<repository>/.apatch/<log_directory>/apatch.log`. Every entry includes a timestamp and the change archive's filename as its operation identifier, along with the repository, feature branch, severity, and relevant event details.
 

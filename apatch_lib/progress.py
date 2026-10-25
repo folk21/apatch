@@ -124,8 +124,102 @@ def _validate_master(data):
                 or not isinstance(event.get("result"), str)
                 or event["result"] not in RESULTS):
             raise Abort("Malformed or duplicate global progress event")
+        number = event.get("operation_number")
+        if (type(number) is not int or not 1 <= number < len(ACTION_CODES)
+                or event.get("operation_code") != ACTION_CODES[number]
+                or event.get("project_root") != data["projects"][event["project_id"]]["root"]):
+            raise Abort("Malformed global progress event identity")
+        for field in ("started_at_utc", "finished_at_utc"):
+            _event_timestamp(event.get(field))
         seen.add(event["event_id"])
     return data
+
+
+def _event_timestamp(value):
+    if not isinstance(value, str) or not value.endswith("Z"):
+        raise Abort("Invalid global progress event timestamp")
+    try:
+        timestamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise Abort("Invalid global progress event timestamp") from exc
+    if timestamp.utcoffset() is None:
+        raise Abort("Global progress timestamps must be UTC")
+    return timestamp
+
+
+def _event_sort_key(event):
+    return _event_timestamp(event["finished_at_utc"]), event["event_id"]
+
+
+def _terminal_safe(value, limit=280):
+    if value is None:
+        return "-"
+    sanitized = "".join(character if character.isprintable() and character not in "\x1b\x7f"
+                        else "?" for character in str(value))
+    return sanitized[:limit] + ("..." if len(sanitized) > limit else "")
+
+
+def _event_row(event):
+    return (f"    {_terminal_safe(event['finished_at_utc'])}  "
+            f"{_terminal_safe(event['operation_number'])} "
+            f"[{_terminal_safe(event['operation_code'])}] "
+            f"{_terminal_safe(event['result'])}  "
+            f"{_terminal_safe(event.get('project_name'))} "
+            f"[{_terminal_safe(event['project_id'][:12])}]")
+
+
+def render_progress(snapshot, *, global_limit=8, project_limit=3):
+    """Render only recorded master-ledger facts; do not consult live repositories."""
+    _validate_master(snapshot)
+    if (type(global_limit) is not int or not 1 <= global_limit <= 100
+            or type(project_limit) is not int or not 1 <= project_limit <= 50):
+        raise Abort("Invalid global progress display limits")
+    events = sorted(snapshot["events"], key=_event_sort_key, reverse=True)
+    projects = snapshot["projects"]
+    lines = ["==> APATCH GLOBAL PROGRESS [RECORDED]",
+             f"Projects: {len(projects)} | Recorded operations: {len(events)}"]
+    if not events:
+        lines.append("No recorded operations yet. History starts with the first invocation after installation;")
+        lines.append("previous activity is not backfilled or discovered automatically.")
+        if not projects:
+            return "\n".join(lines)
+    else:
+        lines.append(f"Recent global operations (latest {min(global_limit, len(events))}):")
+        for event in events[:global_limit]:
+            lines.append(_event_row(event))
+
+    grouped = {project_id: [] for project_id in projects}
+    for event in events:
+        grouped[event["project_id"]].append(event)
+    ordered_projects = sorted(projects, key=lambda project_id: (
+        _event_sort_key(grouped[project_id][0]) if grouped[project_id] else
+        (datetime.min.replace(tzinfo=timezone.utc), ""), project_id), reverse=True)
+    lines.append(f"Projects ({len(ordered_projects)}):")
+    for project_id in ordered_projects:
+        project = projects[project_id]
+        recent = grouped[project_id]
+        lines.append(f"  {_terminal_safe(project['name'])} [{project_id[:12]}]")
+        lines.append(f"    Root: {_terminal_safe(project['root'], limit=1024)}")
+        if not recent:
+            lines.append("    No recorded operations for this project.")
+            continue
+        last = recent[0]
+        lines.append(f"    Latest: {_terminal_safe(last['operation_code'])} / "
+                     f"{_terminal_safe(last['result'])} at {_terminal_safe(last['finished_at_utc'])}")
+        lines.append(f"    Branch: {_terminal_safe(last.get('branch_after'))} | "
+                     f"Patch: {_terminal_safe(last.get('patch_file'))} | "
+                     f"Phase: {_terminal_safe(last.get('phase_after'))}")
+        lines.append(f"    Next suggested [RECORDED]: {_terminal_safe(last.get('next_suggested'))}")
+        if last["result"] == "UNKNOWN_REMOTE_RESULT":
+            lines.append("    ATTENTION: Remote outcome unknown; verify GitHub before retrying.")
+        elif last["result"] in {"FAILED", "CANCELLED"}:
+            lines.append("    ATTENTION: Last attempt did not complete; inspect project status.")
+        elif last.get("phase_after") != "synced":
+            lines.append("    UNFINISHED: No synchronized checkpoint recorded for this workflow.")
+        lines.append(f"    Recent project operations (latest {min(project_limit, len(recent))}):")
+        lines.extend(_event_row(event) for event in recent[:project_limit])
+    lines.append("Recorded history is not live Git/GitHub verification; use STS or SYN for current status.")
+    return "\n".join(lines)
 
 
 @dataclass(frozen=True)
@@ -192,6 +286,9 @@ class ProgressStore:
 
     def read_snapshot(self):
         """Read the authoritative master without creating or fixing anything."""
+        for directory in (self.directory.parent, self.directory):
+            if directory.is_symlink() or (directory.exists() and not directory.is_dir()):
+                raise Abort(f"Unsafe global progress directory: {directory}")
         data = _read_json(self.master_path)
         return _validate_master(data) if data is not None else _empty_master()
 
