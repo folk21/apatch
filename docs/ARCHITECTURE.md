@@ -59,6 +59,13 @@ uses the normal overlapping-file approval, backups, registry ordering and
 per-ZIP checkpoints. This is not an implicit multi-ZIP replay and cannot
 be combined with `handoffSeq`.
 
+Applied-ZIP history prevents accidental replay: unattended `APL` checks for
+duplicates before previous-cycle reconciliation, overlap approvals, or file
+replacement. A deliberate interactive reapplication still requires explicit
+duplicate confirmation. A completed `APL` reports success from extraction and
+persisted checkpoint evidence, even when Git HEAD, phase, and the changed-path
+set do not vary; filesystem path-set equality alone is not a reliable no-op test.
+
 `RemoteOutcomeUnknown` identifies GitHub PR create/merge transport failures and
 unverifiable post-mutation responses without conflating them with known
 failures. The workflow displays `UNKNOWN_REMOTE_RESULT`, preserves the

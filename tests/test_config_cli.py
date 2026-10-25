@@ -285,12 +285,15 @@ class ConfigCliTests(LocalGitFixture):
         self.assertEqual(rejected.returncode, 2)
         self.assertIn("Action unavailable: requires phase: verified", rejected.stderr)
 
-    def test_direct_action_reapply_duplicate_auto_approves_duplicate_prompt(self):
+    def test_direct_action_reapply_duplicate_is_blocked_with_skip_approves(self):
         self.history_path.write_text(f"{self.zip.name}\n")
         result = self.invoke_cli("op=3", "skipApproves=true")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("Duplicate patch reapplication [auto-approved", result.stdout)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("Patch already applied", result.stderr)
+        self.assertIn("opSeq=CHK,STS", result.stderr)
         self.assertEqual(len(AppliedPatchHistory(self.history_path).entries), 1)
+        self.assertFalse((self.root / "new.txt").exists())
+        self.assertFalse((self.root / ".apatch" / "backups").exists())
 
     def test_direct_action_auto_approval_still_backs_up_overlapping_manual_edits(self):
         (self.root / "existing.txt").write_text("manual changes before patch\n")

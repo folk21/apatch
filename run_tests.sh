@@ -27,6 +27,10 @@ case "${1:-regular}" in
             tests.test_handoffs.HandoffsTests.test_multi_zip_sequence_combines_patches_and_final_status \
             tests.test_handoffs.HandoffsTests.test_explicit_followup_zip_after_previous_invocation_combines_uncommitted_changes \
             tests.test_handoffs.HandoffsTests.test_followup_refuses_dirty_feature_branch_without_an_applied_predecessor \
+            tests.test_handoffs.HandoffsTests.test_repeated_followup_is_rejected_before_overwriting_manual_repairs \
+            tests.test_handoffs.HandoffsTests.test_explicit_interactive_reapplication_with_same_path_set_reports_success \
+            tests.test_config_cli.ConfigCliTests.test_direct_action_reapply_duplicate_is_blocked_with_skip_approves \
+            tests.test_modes.ModesTests.test_force_repeated_adoption_is_successful_with_unchanged_path_set \
             tests.test_handoffs.HandoffsTests.test_self_contained_lifecycle_strict \
             tests.test_handoffs.HandoffsTests.test_self_contained_lifecycle_loose \
             tests.test_safety.SafetyTests.test_untrusted_zip_cannot_change_project_policy_or_runtime_state \

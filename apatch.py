@@ -250,7 +250,9 @@ def main():
             if (args.handoff is None or
                     not ((args.op is not None and action_number(args.op) == 3) or
                          (args.op_seq is not None and args.op_seq.actions[0] == 3))):
-                raise Abort("followup=true requires an explicit ZIP and op=APL or opSeq starting with APL")
+                raise Abort("followup=true is only for applying a new ZIP: provide the ZIP "
+                            "and start with APL. To resume an already applied patch, use "
+                            "opSeq=CHK,STS without the ZIP or followup=true")
         root_name = Path(output(["git", "rev-parse", "--show-toplevel"], Path.cwd())).resolve().name
         root = repository_root(Path.cwd(), root_name)
         config = load_project_config(root, config)
@@ -327,7 +329,9 @@ def main():
                                      and saved.get("archive_sha256") == handoff.patch_sha256)
                 if not recover_cache:
                     raise Abort("A newly selected self-contained ZIP must start with op=APL; "
-                                "BRN is only allowed to recover an already applied matching ZIP")
+                                "BRN is only allowed to recover an already applied matching ZIP. "
+                                "If the ZIP was already applied, omit the ZIP name and "
+                                "followup=true to resume with opSeq=CHK,STS")
         ensure_runtime_ignored(root, config.log_directory, LOG_FILENAME,
                                config.state_path, config.applied_patches_path)
         set_context(patch=handoff.patch, branch=handoff.branch, repository=handoff.repository)

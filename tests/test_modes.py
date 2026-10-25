@@ -424,6 +424,18 @@ class ModesTests(LocalGitFixture):
         self.assertEqual(next(iter(json.loads(self.state_path.read_text())["workflows"].values()))["phase"],
                          "verified")
 
+    def test_force_repeated_adoption_is_successful_with_unchanged_path_set(self):
+        (self.root / "existing.txt").write_text("manual modification\n")
+        (self.root / "new.txt").write_text("new\n")
+        first = self.invoke_force("3\nYES\n")
+        self.assertEqual(first.returncode, 0, first.stderr + first.stdout)
+        before = command("git", "status", "--porcelain", cwd=self.root).stdout
+        repeated = self.invoke_force("3\nYES\n")
+        self.assertEqual(repeated.returncode, 0, repeated.stdout + repeated.stderr)
+        self.assertEqual(before, command("git", "status", "--porcelain", cwd=self.root).stdout)
+        self.assertIn("RESULT 3 [APL]: SUCCESS", repeated.stdout)
+        self.assertIn("Patch application/adoption completed and was checkpointed", repeated.stdout)
+
     def test_force_warns_when_manual_worktree_differs_from_zip_contents(self):
         (self.root / "existing.txt").write_text("manual edits\n")
         (self.root / "new.txt").write_text("new\n")

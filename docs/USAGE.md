@@ -138,7 +138,21 @@ a later single `CMT` associates both with the combined commit. The repair ZIP
 supplies the commit message and becomes the cached handoff. Resume with `CHK`,
 not another `BRN`; do not reset a branch to fit the initial ZIP workflow.
 
-Outcome lines use `SUCCESS` for an observed state transition,
+`followup=true` is needed only for the **first** application of a new repair ZIP.
+After a failed `CHK`, fix the files and resume the cached workflow without a ZIP
+selection or `followup=true`:
+
+```bash
+/path/to/apatch/apatch.sh opSeq=CHK,STS skipApproves=true
+```
+
+Unattended `APL` refuses a ZIP already recorded in the applied-patch history,
+even with `skipApproves=true`. This prevents accidentally restoring old archive
+bytes over manual fixes. Deliberate reapplication remains available through
+interactive `APL` with `skipApproves=false` and an explicit duplicate confirmation.
+
+Outcome lines use `SUCCESS` for an observed state transition or a completed,
+checkpointed archive application,
 `ALREADY_SATISFIED` for a positively reverified `SYN`, `NO_OP` for other
 unchanged actions, `CANCELLED` for a declined confirmation, `ERROR` for a
 known operation failure, and `UNKNOWN_REMOTE_RESULT` when a GitHub PR creation
@@ -214,7 +228,7 @@ Status does not contact GitHub or the Git remote by default. A recorded PR numbe
 
 After a successful, state-changing action, the result footer includes a potential next operation. A cancelled or unchanged action reports that no success-path recommendation can be assumed. A failed action stops with a nonzero exit code.
 
-**`skipApproves=false` is the default.** With `skipApproves=false`, direct actions still request their normal confirmations. With `skipApproves=true`, the tool records and auto-approves confirmations, including warnings about a different destination branch, duplicate patches, manual changes, and the current Git remote. It does **not** skip ZIP validation, working-tree checks, backup creation for overlapping edits, remote fast-forward checks, STRICT phase gates, or GitHub review/CI policies. All files selected by a commit action are still staged together. Review the affected paths and repository destination before running unattended actions; there is no automatic rollback of an executed commit or push.
+**`skipApproves=false` is the default.** With `skipApproves=false`, direct actions still request their normal confirmations. With `skipApproves=true`, the tool records and auto-approves ordinary confirmations, including warnings about a different destination branch, manual changes, and the current Git remote. **Previously applied ZIPs are not auto-approved for replay.** It does **not** skip ZIP validation, working-tree checks, backup creation for overlapping edits, remote fast-forward checks, STRICT phase gates, or GitHub review/CI policies. All files selected by a commit action are still staged together. Review the affected paths and repository destination before running unattended actions; there is no automatic rollback of an executed commit or push.
 
 ### Console progress and results
 
@@ -238,7 +252,7 @@ To combine later patches, use `handoffSeq` as described above: apply the first Z
 
 After the final patch, action 4 runs the project's canonical checks. Git whitespace warnings are reported but do not prevent those checks from running. Action 5 reviews and commits **all** currently changed and staged paths using the active handoff's `commit_message`, without pushing. Check that the message describes the combined change. Action 6 pushes the current branch separately, either now or in a later invocation. Pushes must be fast-forward operations and can only publish committed Git history; any remaining dirty files stay local.
 
-Applied patch history keeps one entry per ZIP. When multiple pending patches on the same branch are committed together, their workflow checkpoints record the same commit SHA and are reconciled together when that commit is pushed. Switching ZIPs in LOOSE preserves earlier checkpoints automatically; nothing is reset or discarded. To apply a new ZIP that intentionally reuses a filename, the duplicate-history warning still requires confirmation unless `skipApproves=true`.
+Applied patch history keeps one entry per ZIP. When multiple pending patches on the same branch are committed together, their workflow checkpoints record the same commit SHA and are reconciled together when that commit is pushed. Switching ZIPs in LOOSE preserves earlier checkpoints automatically; nothing is reset or discarded. A ZIP filename already in the applied-patch history cannot be replayed unattended; intentional reapplication requires interactive confirmation with `skipApproves=false`.
 
 LOOSE, STRICT, and FORCE are mutually exclusive. Prefer the default LOOSE for ongoing development, STRICT for strict phase enforcement, and FORCE for reconciling work already committed or pushed manually.
 
