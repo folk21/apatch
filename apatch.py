@@ -15,7 +15,8 @@ from apatch_lib.migration import migrate_legacy_artifacts
 from apatch_lib.model import Abort, BASENAME_PATTERN, load_config, load_handoff, load_project_config
 from apatch_lib.params_cache import load_cached_handoff, save_cached_handoff
 from apatch_lib.patch import handoff_from_zip
-from apatch_lib.sequence import OperationSequence, execute_sequence
+from apatch_lib.sequence import (OperationSequence, execute_sequence,
+                                 parse_handoff_sequence, validate_multi_handoff_actions)
 from apatch_lib.state import locked_state, read_state_snapshot
 from apatch_lib.status import display_status, inspect_patch, select_record, workflow_key
 from apatch_lib.workflow import ACTION_CODES, Workflow, action_number
@@ -36,6 +37,8 @@ def normalize_arguments(arguments):
             normalized.append("--op=" + argument[len("op="):])
         elif argument.startswith("opSeq="):
             normalized.append("--op-seq=" + argument[len("opSeq="):])
+        elif argument.startswith("handoffSeq="):
+            normalized.append("--handoff-seq=" + argument[len("handoffSeq="):])
         elif argument.startswith("patch="):
             normalized.append("--patch=" + argument[len("patch="):])
         elif argument.startswith("skipApproves="):
@@ -55,7 +58,7 @@ def parse_operation(value):
 
 def parse_operation_sequence(value):
     try:
-        return OperationSequence.parse(value)
+        return OperationSequence.parse(value, allow_multiple_apl=True)
     except ValueError as exc:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
@@ -92,6 +95,29 @@ def resolve_selected_handoff(identifier, config, root):
     return handoff_from_zip(config, root, name), str(config.downloads / name), True
 
 
+def resolve_sequence_zip_names(raw: str, config):
+    """Select explicit ZIPs only from the configured download directory."""
+    try:
+        selections = parse_handoff_sequence(raw)
+    except ValueError as exc:
+        raise Abort(str(exc)) from exc
+    names = []
+    for selection in selections:
+        selected = Path(selection).expanduser()
+        if selected.parent != Path("."):
+            if selected.suffix != ".zip" or selected.parent.resolve() != config.downloads:
+                raise Abort("handoffSeq ZIP paths must resolve within configured downloads_dir")
+            name = selected.name
+        else:
+            name = selection if selection.endswith(".zip") else selection + ".zip"
+        if not BASENAME_PATTERN.fullmatch(name):
+            raise Abort(f"Unsafe handoffSeq ZIP filename: {selection}")
+        if name in names:
+            raise Abort(f"handoffSeq repeats the same ZIP: {name}")
+        names.append(name)
+    return tuple(names)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=("Manage project patches. LOOSE is the default mode; STRICT enforces "
@@ -102,6 +128,7 @@ def main():
                 "  apatch.sh op=BRN\n"
                 "  apatch.sh op=CHK\n"
                 "  apatch.sh apatch-PATCH-2026-10-24-00-42-example opSeq=APL,BRN,CHK,CMT,PSH skipApproves=true\n"
+                "  apatch.sh opSeq=APL,BRN,APL,CHK,CMT handoffSeq=first.zip,second.zip skipApproves=true\n"
                 "  apatch.sh op=STS\n"
                 "  apatch.sh strict op=CHK\n"
                 "  apatch.sh force op=CMT\n"
@@ -129,6 +156,8 @@ def main():
     operation_selection.add_argument("--op-seq", "--opSeq", type=parse_operation_sequence,
                                      metavar="CODE,CODE,...",
                                      help="Run sequential actions; stop after any error or no-op; pair with skipApproves=true for unattended use")
+    parser.add_argument("--handoff-seq", "--handoffSeq", metavar="ZIP1,ZIP2,...",
+                        help="Explicit ZIP per APL in opSeq; multi-ZIP accumulation requires LOOSE")
     parser.add_argument("--patch", metavar="NAME.zip",
                         help="Filter read-only STS by ZIP basename")
     parser.add_argument("--skip-approves", "--skipApproves", type=parse_boolean,
@@ -147,13 +176,36 @@ def main():
         root_name = Path(output(["git", "rev-parse", "--show-toplevel"], Path.cwd())).resolve().name
         root = repository_root(Path.cwd(), root_name)
         config = load_project_config(root, config)
-        handoff, source_label, zip_selected = resolve_selected_handoff(args.handoff, config, root)
-        if handoff.repository != root.name:
-            raise Abort("Handoff parameters belong to a different repository")
         if config.downloads.is_relative_to(root):
             raise Abort("The downloads directory must be outside the Git repository")
         if config.applied_patches_path == config.state_path:
             raise Abort("Applied patch history must have a dedicated path")
+        selected_handoffs = ()
+        if args.handoff_seq is not None:
+            if args.op_seq is None:
+                raise Abort("handoffSeq requires opSeq; it cannot accompany op= or an interactive menu")
+            names = resolve_sequence_zip_names(args.handoff_seq, config)
+            try:
+                validate_multi_handoff_actions(args.op_seq, names, args.mode)
+            except ValueError as exc:
+                raise Abort(str(exc)) from exc
+            if args.op_seq.actions[0] != 3:
+                raise Abort("handoffSeq requires APL as the first operation")
+            if args.handoff is not None:
+                positional = resolve_sequence_zip_names(args.handoff, config)
+                if positional != names[:1]:
+                    raise Abort("Positional ZIP selection must equal the first handoffSeq ZIP")
+            selected_handoffs = tuple(handoff_from_zip(config, root, name) for name in names)
+            if len({handoff.branch for handoff in selected_handoffs}) != 1:
+                raise Abort("All handoffSeq ZIPs must target the same feature branch")
+            handoff, source_label, zip_selected = (selected_handoffs[0],
+                                                  str(config.downloads / names[0]), True)
+        else:
+            if args.op_seq is not None and sum(action in {2, 3} for action in args.op_seq.actions) > 1:
+                raise Abort("Multiple APL actions require explicit handoffSeq ZIP selections")
+            handoff, source_label, zip_selected = resolve_selected_handoff(args.handoff, config, root)
+        if handoff.repository != root.name:
+            raise Abort("Handoff parameters belong to a different repository")
         if status_only:
             state = read_state_snapshot(config.state_path)
             record, patch, planned = select_record(root, state, handoff, patch=args.patch)
@@ -210,9 +262,22 @@ def main():
                                     force=args.mode == "force", loose=args.mode == "loose",
                                     zip_selected=zip_selected)
                 if args.op_seq is not None:
+                    selections = iter(selected_handoffs)
+
+                    def select_for_apply(step, active):
+                        selected = next(selections)
+                        if selected == active.handoff:
+                            return active
+                        set_context(patch=selected.patch, branch=selected.branch,
+                                    repository=selected.repository)
+                        return Workflow(root, config, selected, state,
+                                        force=args.mode == "force", loose=args.mode == "loose",
+                                        zip_selected=True, allow_followup_zip=True)
+
                     execute_sequence(workflow, args.op_seq,
-                                     on_completed=lambda action: save_cached_handoff(root, handoff)
-                                     if zip_selected and (action == 3 or (recover_cache and action == 1)) else None)
+                                     select_workflow=select_for_apply if selected_handoffs else None,
+                                     on_completed=lambda action, active: save_cached_handoff(root, active.handoff)
+                                     if active.zip_selected and (action == 3 or (recover_cache and action == 1)) else None)
                 else:
                     result = workflow.interactive(args.op, show_header=not menu_shown)
                     if zip_selected and result == "SUCCESS" and (args.op in {"APL", "3"}
