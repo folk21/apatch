@@ -26,9 +26,14 @@ Inputs include an untrusted ZIP with embedded handoff metadata (or a legacy exte
 
 The CLI can be invoked interactively, by a direct operation number/mnemonic,
 or with a validated comma-separated `opSeq`. A sequence reuses the same action
-dispatch, refreshes branch/phase checks before each step, and halts on the first
-error, cancellation, or unchanged action. It does not roll back completed Git
-side effects. Canonical action identities are defined in `apatch_lib/workflow.py`.
+dispatch, refreshes branch/phase checks before each operation, and halts on an
+error, cancellation, or unverified state-changing no-op. Read-only `STS` may be
+included anywhere, and a `SYN` that positively reverifies a synchronized base
+and matching merged PR is treated as already satisfied. Progress output uses
+canonical operation numbers rather than batch-relative ordinals. The sequence
+does not roll back completed Git side effects. A singleton `opSeq=STS` uses the
+same early read-only path as direct `STS`. Canonical action identities are
+defined in `apatch_lib/workflow.py`.
 
 ## Module ownership
 

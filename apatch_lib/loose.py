@@ -313,4 +313,4 @@ class LooseActions:
         self.w.force_actions.merge()
 
     def sync(self):
-        self.w.force_actions.sync()
+        return self.w.force_actions.sync()

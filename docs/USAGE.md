@@ -49,21 +49,38 @@ new self-contained ZIP workflow, apply first and create the branch second:
 /path/to/apatch/apatch.sh <zip-stem> opSeq=3,1,4,5,6 skipApproves=true
 ```
 
+Include `STS` (`10`) anywhere to display a read-only snapshot of the current
+patch, including **at the end** of a batch:
+
+```bash
+/path/to/apatch/apatch.sh <zip-stem> opSeq=APL,BRN,CHK,CMT,PSH,PR,MRG,SYN,STS skipApproves=true
+/path/to/apatch/apatch.sh opSeq=STS
+```
+
+`opSeq=STS` alone uses the same read-only, lock-free path as `op=STS`. During a
+longer sequence, the status report is displayed in order and execution
+continues. Each progress line identifies the **real operation number** (e.g.
+`9 [SYN]`, `10 [STS]`), never a separate ordinal such as `7/7`.
+
 `skipApproves=true` suppresses confirmation prompts in **every** step, but does
 not bypass branch checks, unsafe ZIP checks, CI policies, or GitHub review.
 Without the flag, normal confirmations remain required. A failed, interrupted,
-or unchanged/cancelled step stops the sequence; earlier successful steps are
-not rolled back. The output identifies the last completed step and actions
+or cancelled step stops the sequence; earlier successful steps are
+not rolled back. An unchanged state-changing operation normally stops the
+sequence; the exceptions are read-only `STS` and a `SYN` that positively
+reverifies an already synchronized local base and the matching merged PR.
+The output identifies the last completed operation and actions
 not executed, so inspect `op=STS` and resume explicitly with `op=` or a
 shorter `opSeq`. Never automatically rerun an uncertain remote mutation.
 
 `op` and `opSeq` are mutually exclusive. Reject empty/unknown operations,
-`EXT`/`STS` in a sequence, or more than one apply action (`APL`/legacy `BAP`) with
+`EXT` in a sequence, or more than one apply action (`APL`/legacy `BAP`) with
 the same handoff. Different ZIPs in one sequence are not yet supported.
 Legacy JSON-based sessions retain the old branch-first recovery path.
 
-Outcome lines use `SUCCESS` for an observed state transition, `NO_OP` for an
-unchanged action, `CANCELLED` for a declined confirmation, and `ERROR` for a
+Outcome lines use `SUCCESS` for an observed state transition,
+`ALREADY_SATISFIED` for a positively reverified `SYN`, `NO_OP` for other
+unchanged actions, `CANCELLED` for a declined confirmation, and `ERROR` for a
 known operation failure. Supported terminals
 show semantic colors; output redirected to a file remains plain text.
 

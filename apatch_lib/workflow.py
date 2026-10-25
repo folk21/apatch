@@ -34,7 +34,8 @@ def outcome_label(value):
     """Keep outcome text readable without ANSI on non-interactive streams."""
     if not sys.stdout.isatty() or "NO_COLOR" in os.environ or os.environ.get("TERM") in {None, "", "dumb"}:
         return value
-    color = {"SUCCESS": "32", "ERROR": "31", "NO_OP": "33", "CANCELLED": "33"}.get(value)
+    color = {"SUCCESS": "32", "ERROR": "31", "NO_OP": "33", "CANCELLED": "33",
+             "ALREADY_SATISFIED": "32"}.get(value)
     return f"\033[{color}m{value}\033[0m" if color else value
 
 
@@ -445,7 +446,7 @@ class Workflow:
         started = time.monotonic()
         clear_confirmation_declined()
         try:
-            operation()
+            operation_evidence = operation()
         except (Abort, KeyboardInterrupt):
             elapsed = time.monotonic() - started
             result = "CANCELLED" if confirmation_was_declined() else "ERROR"
@@ -457,7 +458,11 @@ class Workflow:
         elapsed = time.monotonic() - started
         unchanged = (before_branch == after_branch and before_head == after_head
                      and before_phase == self.phase and before_paths == after_paths)
-        result = "CANCELLED" if confirmation_was_declined() else "NO_OP" if unchanged else "SUCCESS"
+        verified_existing_sync = (number == 9 and unchanged and before_phase == "synced"
+                                  and operation_evidence is True)
+        result = ("CANCELLED" if confirmation_was_declined() else
+                  "ALREADY_SATISFIED" if verified_existing_sync else
+                  "NO_OP" if unchanged else "SUCCESS")
         print(f"\n==> RESULT {number} [{ACTION_CODES[number]}]: {outcome_label(result)} ({elapsed:.2f}s)")
         print(f"    Phase: {before_phase} -> {self.phase}")
         print(f"    Branch: {before_branch or 'detached HEAD'} -> {after_branch or 'detached HEAD'}")
@@ -465,6 +470,8 @@ class Workflow:
         print(f"    Working-tree changes: {len(before_paths)} -> {len(after_paths)} path(s)")
         if result == "CANCELLED":
             print("    A required confirmation was declined; later actions must not be inferred as safe.")
+        elif verified_existing_sync:
+            print("    Already synchronized; local base and matching merged PR were reverified.")
         elif unchanged:
             print("    No tracked workflow or Git-state transition detected; the action may have been "
                   "cancelled or already satisfied.")
@@ -472,7 +479,7 @@ class Workflow:
             preview = ", ".join(sorted(after_paths)[:10])
             remaining = len(after_paths) - min(len(after_paths), 10)
             print(f"    Changed paths: {preview}" + (f" (+{remaining} more)" if remaining else ""))
-        if result != "SUCCESS":
+        if result not in {"SUCCESS", "ALREADY_SATISFIED"}:
             print("Next suggested: NONE — No completed action transition was confirmed; inspect status with 10 [STS].")
         else:
             display_recommendation(inspect_patch(self.root, self.config, self.record,

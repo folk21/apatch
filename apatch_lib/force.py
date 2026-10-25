@@ -454,7 +454,7 @@ class ForceActions:
                 return
             print(f"PR #{pr['number']} merge was reverified for the current patch revision; "
                   "local base synchronization refreshed.")
-            return
+            return True
         try:
             handoff = self._effective_handoff()
             pr = github.confirmed_merged_pr(w.config, handoff, w.root, w.record)

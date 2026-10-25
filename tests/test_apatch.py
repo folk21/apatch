@@ -26,7 +26,7 @@ from apatch_lib.patch import inspect
 from apatch_lib.model import load_config
 from apatch_lib.patch_history import AppliedPatchHistory
 from apatch_lib.workflow import ACTION_CODES, action_number
-from apatch_lib.sequence import OperationSequence
+from apatch_lib.sequence import OperationSequence, execute_sequence
 from apatch_lib.workflow import outcome_label
 
 
@@ -608,6 +608,26 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertIn("could not be verified", console.getvalue())
         self.assertNotIn("reverified for the current patch", console.getvalue())
 
+    def test_synced_checkpoint_returns_positive_evidence_for_matching_merged_pr(self):
+        from apatch_lib import github
+        from apatch_lib.workflow import Workflow
+
+        config = load_project_config(self.root, load_config(self.bin))
+        handoff = load_handoff(self.params)
+        workflow = Workflow(self.root, config, handoff, {"schema_version": 1, "workflows": {}}, force=True)
+        workflow.record.update(phase="synced", applied_branch=handoff.branch,
+                               pushed_sha=self.head, pr_number=5)
+        matching_pr = {"number": 5, "state": "MERGED", "mergedAt": "2026-10-25T00:00:00Z",
+                       "headRefName": handoff.branch, "baseRefName": "main", "headRefOid": self.head}
+        console = StringIO()
+        with patch.object(github, "remote_repository", return_value="example/repo"), \
+                patch.object(github, "pr_list", return_value=[matching_pr]), \
+                redirect_stdout(console):
+            evidence = workflow.force_actions.sync()
+        self.assertIs(evidence, True)
+        self.assertEqual(workflow.phase, "synced")
+        self.assertIn("merge was reverified for the current patch revision", console.getvalue())
+
     def test_sync_git_failure_is_not_reported_as_success(self):
         command("git", "switch", "-c", self.payload["feature_branch"], cwd=self.root)
         command("git", "remote", "set-url", "origin", str(self.base / "missing-remote.git"), cwd=self.root)
@@ -715,18 +735,20 @@ class LocalGitWorkflowTest(unittest.TestCase):
 
     def test_operation_sequence_parses_numbers_and_codes_and_rejects_unsafe_forms(self):
         self.assertEqual(OperationSequence.parse("3, CHK,5, PSH").actions, (3, 4, 5, 6))
+        self.assertEqual(OperationSequence.parse("STS,9,10").actions, (10, 9, 10))
         for invalid in ("", "APL,", ",APL", "APL,,CHK", "unknown,CHK", "0,APL",
-                        "STS", "APL,APL", "BAP,APL", ",".join(["CHK"] * 21)):
+                        "APL,APL", "BAP,APL", ",".join(["CHK"] * 21)):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 OperationSequence.parse(invalid)
 
     def test_sequence_executes_all_actions_without_prompts_and_preserves_git_guards(self):
         result = self.invoke_cli("opSeq=APL,CHK,CMT,PSH", "skipApproves=true")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("SEQUENCE STEP 1/4: 3 [APL]", result.stdout)
-        self.assertIn("SEQUENCE STEP 4/4: 6 [PSH]", result.stdout)
-        self.assertIn("Next scheduled: 4 [CHK] (2/4)", result.stdout)
-        self.assertIn("SEQUENCE RESULT: SUCCESS (4/4 steps)", result.stdout)
+        self.assertIn("SEQUENCE ACTION 3 [APL]", result.stdout)
+        self.assertIn("SEQUENCE ACTION 6 [PSH]", result.stdout)
+        self.assertIn("Next scheduled: 4 [CHK]", result.stdout)
+        self.assertIn("SEQUENCE RESULT: SUCCESS | completed: 3 [APL], 4 [CHK], 5 [CMT], 6 [PSH]", result.stdout)
+        self.assertNotIn("SEQUENCE STEP", result.stdout)
         self.assertIn("RESULT 3 [APL]: SUCCESS", result.stdout)
         self.assertNotIn("Type YES to continue:", result.stdout)
         self.assertNotRegex(result.stdout, r"\x1b\[[0-9;]*m")
@@ -737,7 +759,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
     def test_sequence_creates_feature_branch_then_applies_and_checks(self):
         result = self.invoke_cli("opSeq=BRN,APL,CHK", "skipApproves=true")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("SEQUENCE RESULT: SUCCESS (3/3 steps)", result.stdout)
+        self.assertIn("SEQUENCE RESULT: SUCCESS | completed: 1 [BRN], 3 [APL], 4 [CHK]", result.stdout)
         self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
                          self.payload["feature_branch"])
         self.assertEqual(next(iter(json.loads(self.state_path.read_text())["workflows"].values()))["phase"],
@@ -747,9 +769,8 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.project_config.write_text('schema_version: 1\nchecks:\n  - ["false"]\n')
         result = self.invoke_cli("opSeq=APL,CHK,CMT", "skipApproves=true")
         self.assertEqual(result.returncode, 2)
-        self.assertIn("SEQUENCE STOP: step 2/3 (4 [CHK])", result.stdout)
-        self.assertIn("last completed: 1/3 (3 [APL])", result.stdout)
-        self.assertIn("Remaining (not executed): CMT", result.stdout)
+        self.assertIn("SEQUENCE STOP: 4 [CHK] | last confirmed: 3 [APL]", result.stdout)
+        self.assertIn("Remaining (not executed): 5 [CMT]", result.stdout)
         self.assertIn("RESULT 4 [CHK]: ERROR", result.stdout)
         self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(), self.head)
         self.assertEqual(next(iter(json.loads(self.state_path.read_text())["workflows"].values()))["phase"],
@@ -758,7 +779,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
     def test_sequence_requires_explicit_unattended_approval_and_stops_on_cancel(self):
         result = self.invoke_cli("opSeq=APL,CHK,CMT")
         self.assertEqual(result.returncode, 2)
-        self.assertIn("SEQUENCE STOP: step 1/3 (3 [APL])", result.stdout)
+        self.assertIn("SEQUENCE STOP: 3 [APL] | last confirmed: NONE", result.stdout)
         self.assertIn("Interactive confirmation required", result.stderr)
         self.assertFalse((self.root / "new.txt").exists())
 
@@ -766,14 +787,14 @@ class LocalGitWorkflowTest(unittest.TestCase):
         result = self.invoke_cli("opSeq=APL,CHK,CMT,PSH", text="YES\nYES\nNO\n")
         self.assertEqual(result.returncode, 2)
         self.assertIn("RESULT 5 [CMT]: CANCELLED", result.stdout)
-        self.assertIn("SEQUENCE STOP: step 3/4", result.stdout)
-        self.assertIn("remaining (not executed): PSH", result.stdout)
-        self.assertNotIn("SEQUENCE STEP 4/4", result.stdout)
+        self.assertIn("SEQUENCE STOP: 5 [CMT]", result.stdout)
+        self.assertIn("remaining (not executed): 6 [PSH]", result.stdout)
+        self.assertNotIn("SEQUENCE ACTION 6 [PSH]", result.stdout)
         self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(), self.head)
 
     def test_sequence_cli_rejects_conflicts_and_duplicates_before_mutations(self):
         for options in (("opSeq=APL,",), ("opSeq=APL,APL",),
-                        ("opSeq=STS,CHK",), ("op=APL", "opSeq=CHK"),
+                        ("opSeq=EXT,CHK",), ("op=APL", "opSeq=CHK"),
                         ("opSeq=ALP,CHK",), ("opSeq=APL", "patch=any.zip")):
             with self.subTest(options=options):
                 result = self.invoke_cli(*options, "skipApproves=true")
@@ -785,7 +806,74 @@ class LocalGitWorkflowTest(unittest.TestCase):
         result = self.invoke_cli("--strict", "opSeq=CMT", "skipApproves=true")
         self.assertEqual(result.returncode, 2)
         self.assertIn("Action unavailable: requires phase: verified", result.stderr)
-        self.assertIn("SEQUENCE STOP: step 1/1", result.stdout)
+        self.assertIn("SEQUENCE STOP: 5 [CMT]", result.stdout)
+
+    def test_sequence_can_end_with_status_report_after_check(self):
+        result = self.invoke_cli("opSeq=APL,CHK,STS", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Next scheduled: 10 [STS]", result.stdout)
+        self.assertIn("SEQUENCE ACTION 10 [STS]", result.stdout)
+        self.assertIn("PATCH STATUS 10 [STS]", result.stdout)
+        self.assertIn("SEQUENCE REPORT 10 [STS]: DISPLAYED (read-only)", result.stdout)
+        self.assertIn("SEQUENCE RESULT: SUCCESS | completed: 3 [APL], 4 [CHK], 10 [STS]", result.stdout)
+        self.assertNotIn("SEQUENCE STEP", result.stdout)
+        self.assertEqual(next(iter(json.loads(self.state_path.read_text())["workflows"].values()))["phase"],
+                         "verified")
+
+    def test_read_only_status_sequence_does_not_initialize_workflow_files(self):
+        self.zip.unlink()
+        exclude = self.root / ".git" / "info" / "exclude"
+        before_exclude = exclude.read_bytes()
+        result = self.invoke_cli("opSeq=STS", "patch=" + self.zip.name)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("PATCH STATUS 10 [STS]", result.stdout)
+        for path in (self.state_path, self.lock_path, self.log_path, self.history_path):
+            self.assertFalse(path.exists(), str(path))
+        self.assertEqual(exclude.read_bytes(), before_exclude)
+
+    def test_status_in_sequence_is_read_only_and_does_not_prevent_later_action(self):
+        result = self.invoke_cli("opSeq=STS,APL,STS", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.count("PATCH STATUS 10 [STS]"), 2)
+        self.assertIn("Next scheduled: 3 [APL]", result.stdout)
+        self.assertIn("SEQUENCE RESULT: SUCCESS | completed: 10 [STS], 3 [APL], 10 [STS]", result.stdout)
+
+    def test_verified_sync_no_op_allows_final_status_but_ordinary_no_op_fails(self):
+        class ReverifiedWorkflow:
+            def __init__(self, outcomes):
+                self.outcomes = iter(outcomes)
+                self.called = []
+
+            def interactive(self, code, *, show_header):
+                self.called.append((code, show_header))
+                return next(self.outcomes)
+
+        workflow = ReverifiedWorkflow(("SUCCESS", "ALREADY_SATISFIED", "NO_OP"))
+        console = StringIO()
+        with redirect_stdout(console):
+            execute_sequence(workflow, OperationSequence.parse("MRG,SYN,STS"))
+        self.assertEqual([code for code, _ in workflow.called], ["MRG", "SYN", "STS"])
+        self.assertIn("SEQUENCE CONTINUE: 9 [SYN] already synchronized", console.getvalue())
+        self.assertIn("SEQUENCE RESULT: SUCCESS | completed: 8 [MRG], 9 [SYN], 10 [STS]", console.getvalue())
+        with redirect_stdout(StringIO()), self.assertRaises(Abort):
+            execute_sequence(ReverifiedWorkflow(("NO_OP",)), OperationSequence.parse("SYN,STS"))
+
+    def test_workflow_labels_reverified_syn_as_already_satisfied(self):
+        from apatch_lib.workflow import Workflow
+
+        config = load_project_config(self.root, load_config(self.bin))
+        workflow = Workflow(self.root, config, load_handoff(self.params),
+                            {"schema_version": 1, "workflows": {}},
+                            force=True, skip_previous_cycles=True)
+        workflow.record["phase"] = "synced"
+        console = StringIO()
+        with patch.object(workflow.force_actions, "sync", return_value=True), \
+                patch("apatch_lib.workflow.inspect_patch", return_value={}), \
+                patch("apatch_lib.workflow.display_recommendation"), \
+                redirect_stdout(console):
+            result = workflow.interactive("SYN")
+        self.assertEqual(result, "ALREADY_SATISFIED")
+        self.assertIn("RESULT 9 [SYN]: ALREADY_SATISFIED", console.getvalue())
 
     def test_result_color_is_terminal_only(self):
         with patch("apatch_lib.workflow.sys.stdout.isatty", return_value=True), \
@@ -866,7 +954,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
                                  "opSeq=APL,CHK", "skipApproves=true"], cwd=self.root,
                                 capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("SEQUENCE RESULT: SUCCESS (2/2 steps)", result.stdout)
+        self.assertIn("SEQUENCE RESULT: SUCCESS | completed: 3 [APL], 4 [CHK]", result.stdout)
 
     def test_shell_launcher_handles_direct_actions_and_strict_mode(self):
         self.prepare_test_launcher()
