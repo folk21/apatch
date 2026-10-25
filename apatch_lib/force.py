@@ -7,10 +7,11 @@ from datetime import datetime, timezone
 
 from . import github
 from .branch_guard import assert_no_unfinished_feature_branches
+from .created_patches import persist_registry
 from .gitutil import (branch_exists, confirm, current_branch, head, output, remote_head,
                       require_clean, run, worktree_fingerprint)
 from .model import Abort
-from .patch import apply, inspect, patch_file
+from .patch import REGISTRY_MEMBER, apply, inspect, patch_file
 from .patch_history import locked_history
 
 
@@ -115,6 +116,8 @@ class ForceActions:
                     if item.is_dir():
                         continue
                     relative = item.filename.split("/", 1)[1]
+                    if relative == REGISTRY_MEMBER:
+                        continue
                     if (w.root / relative).read_bytes() != source.read(item):
                         return False
         except OSError:
@@ -147,6 +150,7 @@ class ForceActions:
             print("WARNING: The committed files differ from the ZIP. The recorded patch will be a manual override.")
         if not confirm("Adopt this existing commit as the patch's commit?"):
             return False
+        persist_registry(w.root, archive.created_registry)
         parent = output(["git", "rev-parse", "HEAD^"], w.root)
         self.checkpoint("committed", "manual commit adopted", applied_branch=branch,
                         before_patch_head=parent, commit_sha=current, changed_paths=sorted(paths),
@@ -174,13 +178,15 @@ class ForceActions:
                                   and w.record.get("before_patch_head") == head(w.root)
                                   and w.record.get("applied_branch") == branch)
         phase = "verified" if preserved_verification else "patch_applied"
-        self.checkpoint(phase, "manual worktree adopted", applied_branch=branch,
-                        before_patch_head=head(w.root), changed_paths=sorted(paths),
-                        archive_sha256=archive.sha256, remote_url=self.remote_url(),
-                        remote_before_patch_head=self.previous_remote_head(branch),
-                        manually_adopted=manual_override,
-                        branch_origin=w.record.get("branch_origin", "REUSED"))
         with locked_history(w.config.applied_patches_path) as history:
+            w.branch_patch.assert_patch_order(history, archive)
+            persist_registry(w.root, archive.created_registry)
+            self.checkpoint(phase, "manual worktree adopted", applied_branch=branch,
+                            before_patch_head=head(w.root), changed_paths=sorted(paths),
+                            archive_sha256=archive.sha256, remote_url=self.remote_url(),
+                            remote_before_patch_head=self.previous_remote_head(branch),
+                            manually_adopted=manual_override,
+                            branch_origin=w.record.get("branch_origin", "REUSED"))
             history.append(w.handoff.patch, w.handoff.branch, branch)
         return True
 
@@ -201,7 +207,7 @@ class ForceActions:
                 print("The patch is already committed; no files were overwritten.")
             return
         with locked_history(w.config.applied_patches_path) as history:
-            w.branch_patch.assert_patch_order(history)
+            w.branch_patch.assert_patch_order(history, archive)
             if not w.branch_patch.warn_if_previously_applied(history):
                 return
             if not confirm(f"FORCE: Apply ZIP {w.handoff.patch} to clean branch {branch}?"):
@@ -217,6 +223,7 @@ class ForceActions:
             fingerprint, paths = worktree_fingerprint(w.root)
             if set(paths) != set(w.record["changed_paths"]):
                 raise Abort("Applied ZIP produced unexpected changes; inspect worktree manually")
+            persist_registry(w.root, archive.created_registry)
             history.append(w.handoff.patch, w.handoff.branch, branch)
             self.checkpoint("patch_applied", "apply completed")
             print("Patch applied in FORCE mode. Run checks before publishing if possible.")

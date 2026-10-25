@@ -10,6 +10,7 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from .created_patches import parse_registry
 from .gitutil import run
 from .model import Abort, safe_relative
 
@@ -20,6 +21,10 @@ LOGGER = logging.getLogger("apatch.patch")
 class Archive:
     sha256: str
     changed: frozenset[str]
+    created_registry: tuple[str, ...] | None = None
+
+
+REGISTRY_MEMBER = ".apatch/created_patches.txt"
 
 
 def patch_file(config, handoff):
@@ -36,6 +41,8 @@ def inspect(config, handoff, root, *, before_apply=True):
     if handoff.patch_sha256 and handoff.patch_sha256 != digest:
         raise Abort("Patch SHA-256 does not match the handoff file")
     changed = set()
+    incoming_registry = None
+    metadata_seen = False
     total = 0
     try:
         with zipfile.ZipFile(target) as archive:
@@ -58,6 +65,12 @@ def inspect(config, handoff, root, *, before_apply=True):
                 kind = (info.external_attr >> 16) & 0o170000
                 if kind not in (0, stat.S_IFREG):
                     raise Abort(f"Unsupported ZIP file type: {name}")
+                if relative == REGISTRY_MEMBER:
+                    if metadata_seen or relative in handoff.delete_paths:
+                        raise Abort(f"Duplicate/conflicting created-patch metadata: {name}")
+                    incoming_registry = parse_registry(archive.read(info), name)
+                    metadata_seen = True
+                    continue
                 if relative in changed or relative in handoff.delete_paths:
                     raise Abort(f"Duplicate/conflicting path: {relative}")
                 changed.add(relative)
@@ -81,7 +94,7 @@ def inspect(config, handoff, root, *, before_apply=True):
         run(["git", "ls-files", "--error-unmatch", "--", relative], root)
     LOGGER.info("patch inspected name=%s sha256=%s files=%d deletions=%d",
                 handoff.patch, digest, len(changed), len(handoff.delete_paths))
-    return Archive(digest, frozenset(changed))
+    return Archive(digest, frozenset(changed), incoming_registry)
 
 
 def apply(config, handoff, root, archive_data):
@@ -94,6 +107,8 @@ def apply(config, handoff, root, archive_data):
             if info.is_dir():
                 continue
             relative = info.filename.split("/", 1)[1]
+            if relative == REGISTRY_MEMBER:
+                continue
             destination = root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             existing_mode = stat.S_IMODE(destination.stat().st_mode) if destination.exists() else None

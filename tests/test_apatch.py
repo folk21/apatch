@@ -146,6 +146,12 @@ class LocalGitWorkflowTest(unittest.TestCase):
         registry.write_text("".join(f"{name}\n" for name in names), encoding="utf-8")
         return registry
 
+    def add_registry_member(self, content):
+        with zipfile.ZipFile(self.zip, "a") as archive:
+            archive.writestr(f"{self.root.name}/.apatch/created_patches.txt", content)
+        self.payload["patch_sha256"] = hashlib.sha256(self.zip.read_bytes()).hexdigest()
+        self.params.write_text(json.dumps(self.payload))
+
     def test_project_config_is_required(self):
         self.project_config.unlink()
         result = self.invoke("0\n")
@@ -1522,6 +1528,136 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertNotIn("created_patches.txt", command("git", "status", "--porcelain",
                                                           cwd=self.root).stdout)
         self.assertEqual(registry.read_text(), self.zip.name + "\n")
+
+    def assert_registry_metadata_bootstrap(self, mode):
+        self.add_registry_member(self.zip.name + "\n")
+        self.assertFalse((self.root / ".apatch" / "created_patches.txt").exists())
+        result = self.invoke_cli(f"--{mode}", "op=BAP", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        registry = self.root / ".apatch" / "created_patches.txt"
+        self.assertEqual(registry.read_text(), self.zip.name + "\n")
+        state = json.loads(self.state_path.read_text())
+        record = next(iter(state["workflows"].values()))
+        self.assertNotIn(".apatch/created_patches.txt", record.get("changed_paths", []))
+        self.assertNotIn("created_patches.txt", command("git", "status", "--porcelain",
+                                                          cwd=self.root).stdout)
+        self.assertTrue((self.root / "new.txt").exists())
+        self.assert_history(real_branch=self.payload["feature_branch"])
+
+    def test_zip_registry_metadata_bootstraps_in_loose(self):
+        self.assert_registry_metadata_bootstrap("loose")
+
+    def test_zip_registry_metadata_bootstraps_in_strict(self):
+        self.assert_registry_metadata_bootstrap("strict")
+
+    def test_zip_registry_metadata_bootstraps_in_force(self):
+        self.assert_registry_metadata_bootstrap("force")
+
+    def test_zip_registry_metadata_extends_existing_prefix(self):
+        old = "earlier-generated.zip"
+        self.write_created_registry(old)
+        self.history_path.write_text(old + "\n")
+        self.add_registry_member(old + "\n" + self.zip.name + "\n")
+        result = self.invoke_cli("--loose", "op=BAP", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((self.root / ".apatch" / "created_patches.txt").read_text(),
+                         old + "\n" + self.zip.name + "\n")
+        self.assertEqual(len(AppliedPatchHistory(self.history_path).entries), 2)
+
+    def test_zip_registry_metadata_rejects_missing_predecessors_before_branch(self):
+        self.add_registry_member("missing-first.zip\n" + self.zip.name + "\n")
+        for mode in ("loose", "strict", "force"):
+            with self.subTest(mode=mode):
+                result = self.invoke_cli(f"--{mode}", "op=BAP", "skipApproves=true")
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn("missing-first.zip has not been applied!", result.stderr)
+                self.assertFalse((self.root / ".apatch" / "created_patches.txt").exists())
+                self.assertFalse((self.root / "new.txt").exists())
+                self.assertEqual(command("git", "branch", "--show-current", cwd=self.root)
+                                 .stdout.strip(), "main")
+
+    def test_zip_registry_metadata_prefix_conflict_preserves_original_bytes(self):
+        path = self.write_created_registry("first.zip", "second.zip")
+        original = path.read_bytes()
+        self.add_registry_member("first.zip\n" + self.zip.name + "\n")
+        denied = self.invoke_cli("--loose", "op=BAP", "skipApproves=true")
+        self.assertEqual(denied.returncode, 2, denied.stdout + denied.stderr)
+        self.assertIn("does not extend the existing prefix", denied.stderr)
+        self.assertEqual(path.read_bytes(), original)
+        self.assertFalse((self.root / "new.txt").exists())
+
+    def test_zip_registry_metadata_rejects_corruption_and_duplicate_members(self):
+        self.add_registry_member(self.zip.name + "\n" + self.zip.name + "\n")
+        denied = self.invoke_cli("--strict", "op=BAP", "skipApproves=true")
+        self.assertEqual(denied.returncode, 2, denied.stdout + denied.stderr)
+        self.assertIn("Duplicate created patch", denied.stderr)
+
+    def test_zip_registry_metadata_rejects_invalid_utf8(self):
+        self.add_registry_member(b"\xff\xfe")
+        denied = self.invoke_cli("--loose", "op=BAP", "skipApproves=true")
+        self.assertEqual(denied.returncode, 2, denied.stdout + denied.stderr)
+        self.assertIn("Cannot read UTF-8 created-patch registry", denied.stderr)
+        self.assertFalse((self.root / "new.txt").exists())
+
+    def test_zip_registry_metadata_rejects_symlink_member(self):
+        member = zipfile.ZipInfo(f"{self.root.name}/.apatch/created_patches.txt")
+        member.create_system = 3
+        member.external_attr = (stat.S_IFLNK | 0o777) << 16
+        with zipfile.ZipFile(self.zip, "a") as archive:
+            archive.writestr(member, "target")
+        self.payload["patch_sha256"] = hashlib.sha256(self.zip.read_bytes()).hexdigest()
+        self.params.write_text(json.dumps(self.payload))
+        denied = self.invoke_cli("--force", "op=BAP", "skipApproves=true")
+        self.assertEqual(denied.returncode, 2, denied.stdout + denied.stderr)
+        self.assertIn("Unsupported ZIP file type", denied.stderr)
+        self.assertFalse((self.root / "new.txt").exists())
+
+    def test_registry_persistence_is_idempotent(self):
+        from apatch_lib.created_patches import persist_registry
+        self.write_created_registry(self.zip.name)
+        registry = self.root / ".apatch" / "created_patches.txt"
+        original = registry.stat()
+        self.assertFalse(persist_registry(self.root, (self.zip.name,)))
+        after = registry.stat()
+        self.assertEqual(after.st_ino, original.st_ino)
+        self.assertEqual(after.st_mtime_ns, original.st_mtime_ns)
+
+    def test_zip_registry_metadata_rejects_duplicate_archive_members(self):
+        self.add_registry_member(self.zip.name + "\n")
+        with zipfile.ZipFile(self.zip, "a") as archive:
+            archive.writestr(f"{self.root.name}/.apatch/created_patches.txt", self.zip.name + "\n")
+        self.payload["patch_sha256"] = hashlib.sha256(self.zip.read_bytes()).hexdigest()
+        self.params.write_text(json.dumps(self.payload))
+        denied = self.invoke_cli("--strict", "op=BAP", "skipApproves=true")
+        self.assertEqual(denied.returncode, 2, denied.stdout + denied.stderr)
+        self.assertIn("Duplicate/conflicting created-patch metadata", denied.stderr)
+        self.assertFalse((self.root / "new.txt").exists())
+
+    def test_registry_persist_failure_after_extraction_is_recoverable(self):
+        from apatch_lib.gitutil import set_skip_approvals, reset_skip_approvals
+        from apatch_lib.workflow import Workflow
+        self.add_registry_member(self.zip.name + "\n")
+        config = load_project_config(self.root, load_config(self.bin))
+        handoff = load_handoff(self.params)
+        workflow = Workflow(self.root, config, handoff,
+                            {"schema_version": 1, "workflows": {}}, loose=True)
+        token = set_skip_approvals(True)
+        try:
+            with patch("apatch_lib.loose.persist_registry", side_effect=Abort("simulated registry I/O failure")):
+                with self.assertRaisesRegex(Abort, "simulated registry I/O failure"):
+                    workflow.loose_actions.apply_patch()
+        finally:
+            reset_skip_approvals(token)
+        self.assertTrue((self.root / "new.txt").exists())
+        self.assertFalse((self.root / ".apatch" / "created_patches.txt").exists())
+        self.assertFalse(self.history_path.exists())
+        saved = json.loads(self.state_path.read_text())
+        self.assertEqual(saved["workflows"][workflow.key]["phase"], "applying")
+        recovered = self.invoke_cli("--force", "op=APL", "skipApproves=true")
+        self.assertEqual(recovered.returncode, 0, recovered.stdout + recovered.stderr)
+        self.assertEqual((self.root / ".apatch" / "created_patches.txt").read_text(),
+                         self.zip.name + "\n")
+        self.assert_history(real_branch="main")
 
     def test_misspelled_history_field_blocks_every_branch_action_before_switch(self):
         original = (
