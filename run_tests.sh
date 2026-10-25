@@ -25,6 +25,8 @@ case "${1:-regular}" in
             tests.test_runner_scripts \
             tests.test_validation \
             tests.test_handoffs.HandoffsTests.test_multi_zip_sequence_combines_patches_and_final_status \
+            tests.test_handoffs.HandoffsTests.test_explicit_followup_zip_after_previous_invocation_combines_uncommitted_changes \
+            tests.test_handoffs.HandoffsTests.test_followup_refuses_dirty_feature_branch_without_an_applied_predecessor \
             tests.test_handoffs.HandoffsTests.test_self_contained_lifecycle_strict \
             tests.test_handoffs.HandoffsTests.test_self_contained_lifecycle_loose \
             tests.test_safety.SafetyTests.test_untrusted_zip_cannot_change_project_policy_or_runtime_state \

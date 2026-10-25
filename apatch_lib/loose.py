@@ -94,25 +94,47 @@ class LooseActions:
         LOGGER.warning("LOOSE overlapping edits backed up path=%s count=%d", directory, len(sources))
         return str(directory)
 
+    def assert_followup_selection(self, *, archive=None):
+        """Require explicit intent and a matching uncommitted predecessor on the feature branch."""
+        w = self.w
+        if w.phase != WorkflowPhase.NEW or not (w.zip_selected or
+                (archive is not None and archive.embedded_handoff is not None)):
+            return
+        branch = self.branch()
+        if branch == w.config.base:
+            if w.allow_followup_zip:
+                raise Abort("followup=true requires the existing feature branch, not the base branch")
+            return
+        if not w.allow_followup_zip:
+            raise Abort("A new self-contained ZIP on an unfinished feature branch requires "
+                        "followup=true or an upfront handoffSeq")
+        if branch != w.handoff.branch:
+            raise Abort(f"Follow-up ZIP targets {w.handoff.branch}, but current branch is {branch}")
+        if not status_paths(w.root):
+            raise Abort("followup=true requires previous uncommitted changes on the feature branch")
+        current_head = head(w.root)
+        current_remote_url = output(["git", "remote", "get-url", w.config.remote], w.root)
+        matching = any(
+            isinstance(record, dict)
+            and record.get("repository") == str(w.root.resolve())
+            and record.get("branch") == w.handoff.branch
+            and record.get("applied_branch") == branch
+            and record.get("phase") in PENDING_PHASES - {WorkflowPhase.APPLYING}
+            and record.get("before_patch_head") == current_head
+            and record.get("remote_url") == current_remote_url
+            for key, record in w.state["workflows"].items() if key != w.key
+        )
+        if not matching:
+            raise Abort("followup=true requires a matching unfinished, uncommitted ZIP workflow "
+                        "at the current HEAD; inspect 10 [STS] before retrying")
+
     def apply_patch(self):
         w = self.w
         branch = self.branch()
         archive = inspect(w.config, w.handoff, w.root)
         before = status_paths(w.root)
         zip_first = archive.embedded_handoff is not None and branch == w.config.base
-        if archive.embedded_handoff is not None and branch != w.config.base and w.phase == WorkflowPhase.NEW:
-            predecessors = (record for record in w.state["workflows"].values()
-                            if isinstance(record, dict)
-                            and record.get("repository") == str(w.root.resolve())
-                            and record.get("branch") == w.handoff.branch
-                            and record.get("applied_branch") == branch
-                            and record.get("phase") in {WorkflowPhase.PATCH_APPLIED, WorkflowPhase.VERIFIED}
-                            and record.get("before_patch_head") == head(w.root)
-                            and record.get("remote_url") == output(
-                                ["git", "remote", "get-url", w.config.remote], w.root))
-            if not (w.allow_followup_zip and branch == w.handoff.branch and any(predecessors)):
-                raise Abort("A new self-contained ZIP must start on the base branch; "
-                            "a follow-up on the feature branch requires an explicit multi-ZIP sequence")
+        self.assert_followup_selection(archive=archive)
         if zip_first and before:
             raise Abort("A new self-contained ZIP must start on a clean base branch")
         if zip_first:

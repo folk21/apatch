@@ -50,6 +50,15 @@ patch checkpoints. The cache is updated only after each successful APL, so
 `STS` and later invocations use the latest successfully applied handoff. A
 failed action stops the sequence without undoing earlier effects.
 
+A separately selected repair ZIP may use explicit LOOSE `followup=true` after
+an earlier invocation has applied its predecessor and moved uncommitted files
+onto the planned feature branch. Before superseding any previous checkpoint,
+the tool requires a matching pending workflow at the same HEAD and remote,
+uncommitted changes, and the current planned feature branch. Extraction still
+uses the normal overlapping-file approval, backups, registry ordering and
+per-ZIP checkpoints. This is not an implicit multi-ZIP replay and cannot
+be combined with `handoffSeq`.
+
 `RemoteOutcomeUnknown` identifies GitHub PR create/merge transport failures and
 unverifiable post-mutation responses without conflating them with known
 failures. The workflow displays `UNKNOWN_REMOTE_RESULT`, preserves the
