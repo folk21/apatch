@@ -26,6 +26,8 @@ from apatch_lib.patch import inspect
 from apatch_lib.model import load_config
 from apatch_lib.patch_history import AppliedPatchHistory
 from apatch_lib.workflow import ACTION_CODES, action_number
+from apatch_lib.sequence import OperationSequence
+from apatch_lib.workflow import outcome_label
 
 
 def command(*args, cwd):
@@ -576,6 +578,92 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(next(iter(json.loads(self.state_path.read_text())["workflows"].values()))["phase"],
                          "pushed")
 
+    def test_operation_sequence_parses_numbers_and_codes_and_rejects_unsafe_forms(self):
+        self.assertEqual(OperationSequence.parse("3, CHK,5, PSH").actions, (3, 4, 5, 6))
+        for invalid in ("", "APL,", ",APL", "APL,,CHK", "unknown,CHK", "0,APL",
+                        "STS", "APL,APL", "BAP,APL", ",".join(["CHK"] * 21)):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                OperationSequence.parse(invalid)
+
+    def test_sequence_executes_all_actions_without_prompts_and_preserves_git_guards(self):
+        result = self.invoke_cli("opSeq=APL,CHK,CMT,PSH", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("SEQUENCE STEP 1/4: 3 [APL]", result.stdout)
+        self.assertIn("SEQUENCE STEP 4/4: 6 [PSH]", result.stdout)
+        self.assertIn("Next scheduled: 4 [CHK] (2/4)", result.stdout)
+        self.assertIn("SEQUENCE RESULT: SUCCESS (4/4 steps)", result.stdout)
+        self.assertIn("RESULT 3 [APL]: SUCCESS", result.stdout)
+        self.assertNotIn("Type YES to continue:", result.stdout)
+        self.assertNotRegex(result.stdout, r"\x1b\[[0-9;]*m")
+        self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(),
+                         command("git", "ls-remote", "--heads", "origin", "refs/heads/main",
+                                 cwd=self.root).stdout.split()[0])
+
+    def test_sequence_creates_feature_branch_then_applies_and_checks(self):
+        result = self.invoke_cli("opSeq=BRN,APL,CHK", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("SEQUENCE RESULT: SUCCESS (3/3 steps)", result.stdout)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         self.payload["feature_branch"])
+        self.assertEqual(next(iter(json.loads(self.state_path.read_text())["workflows"].values()))["phase"],
+                         "verified")
+
+    def test_sequence_stops_on_second_action_failure_without_committing(self):
+        self.project_config.write_text('schema_version: 1\nchecks:\n  - ["false"]\n')
+        result = self.invoke_cli("opSeq=APL,CHK,CMT", "skipApproves=true")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("SEQUENCE STOP: step 2/3 (4 [CHK])", result.stdout)
+        self.assertIn("last completed: 1/3 (3 [APL])", result.stdout)
+        self.assertIn("Remaining (not executed): CMT", result.stdout)
+        self.assertIn("RESULT 4 [CHK]: ERROR", result.stdout)
+        self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(), self.head)
+        self.assertEqual(next(iter(json.loads(self.state_path.read_text())["workflows"].values()))["phase"],
+                         "patch_applied")
+
+    def test_sequence_requires_explicit_unattended_approval_and_stops_on_cancel(self):
+        result = self.invoke_cli("opSeq=APL,CHK,CMT")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("SEQUENCE STOP: step 1/3 (3 [APL])", result.stdout)
+        self.assertIn("Interactive confirmation required", result.stderr)
+        self.assertFalse((self.root / "new.txt").exists())
+
+    def test_sequence_stops_when_a_later_commit_confirmation_is_declined(self):
+        result = self.invoke_cli("opSeq=APL,CHK,CMT,PSH", text="YES\nYES\nNO\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("RESULT 5 [CMT]: CANCELLED", result.stdout)
+        self.assertIn("SEQUENCE STOP: step 3/4", result.stdout)
+        self.assertIn("remaining (not executed): PSH", result.stdout)
+        self.assertNotIn("SEQUENCE STEP 4/4", result.stdout)
+        self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(), self.head)
+
+    def test_sequence_cli_rejects_conflicts_and_duplicates_before_mutations(self):
+        for options in (("opSeq=APL,",), ("opSeq=APL,APL",),
+                        ("opSeq=STS,CHK",), ("op=APL", "opSeq=CHK"),
+                        ("opSeq=ALP,CHK",), ("opSeq=APL", "patch=any.zip")):
+            with self.subTest(options=options):
+                result = self.invoke_cli(*options, "skipApproves=true")
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(), self.head)
+                self.assertFalse((self.root / "new.txt").exists())
+
+    def test_sequence_skipped_validation_cannot_override_strict_phase(self):
+        result = self.invoke_cli("--strict", "opSeq=CMT", "skipApproves=true")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Action unavailable: requires phase: verified", result.stderr)
+        self.assertIn("SEQUENCE STOP: step 1/1", result.stdout)
+
+    def test_result_color_is_terminal_only(self):
+        with patch("apatch_lib.workflow.sys.stdout.isatty", return_value=True), \
+             patch.dict(os.environ, {"TERM": "xterm", "NO_COLOR": ""}):
+            self.assertEqual(outcome_label("ERROR"), "ERROR")
+        with patch("apatch_lib.workflow.sys.stdout.isatty", return_value=True), \
+             patch.dict(os.environ, {"TERM": "xterm"}, clear=True):
+            self.assertEqual(outcome_label("SUCCESS"), "\033[32mSUCCESS\033[0m")
+            self.assertEqual(outcome_label("ERROR"), "\033[31mERROR\033[0m")
+        with patch("apatch_lib.workflow.sys.stdout.isatty", return_value=False), \
+             patch.dict(os.environ, {"TERM": "xterm"}, clear=True):
+            self.assertEqual(outcome_label("SUCCESS"), "SUCCESS")
+
     def test_direct_action_with_default_approvals_still_requires_confirmation(self):
         result = self.invoke_cli("op=3", "skipApproves=false")
         self.assertEqual(result.returncode, 2)
@@ -636,6 +724,14 @@ class LocalGitWorkflowTest(unittest.TestCase):
                                         input="0\n", capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("Mode: LOOSE", result.stdout)
+
+    def test_shell_launcher_executes_sequence_with_legacy_named_handoff(self):
+        self.prepare_test_launcher()
+        result = subprocess.run(["sh", str(self.bin / "apatch.sh"), self.params.stem,
+                                 "opSeq=APL,CHK", "skipApproves=true"], cwd=self.root,
+                                capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("SEQUENCE RESULT: SUCCESS (2/2 steps)", result.stdout)
 
     def test_shell_launcher_handles_direct_actions_and_strict_mode(self):
         self.prepare_test_launcher()

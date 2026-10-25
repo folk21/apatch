@@ -3,6 +3,8 @@
 import hashlib
 import json
 import logging
+import os
+import sys
 import time
 from pathlib import Path
 
@@ -10,7 +12,8 @@ from . import github
 from .branch_patch import BranchPatchActions
 from .force import ForceActions
 from .loose import LooseActions
-from .gitutil import (confirm, current_branch, head, is_clean, output, remote_head,
+from .gitutil import (clear_confirmation_declined, confirmation_was_declined,
+                      confirm, current_branch, head, is_clean, output, remote_head,
                       require_branch, require_clean, run, status_paths, worktree_fingerprint)
 from .model import Abort
 from .patch import inspect
@@ -25,6 +28,14 @@ PHASES = {"new", "branch_created", "applying", "patch_applied", "verified",
           "committed", "pushed", "pr_created", "merged", "synced"}
 
 ACTION_CODES = ("EXT", "BRN", "BAP", "APL", "CHK", "CMT", "PSH", "PR", "MRG", "SYN", "STS")
+
+
+def outcome_label(value):
+    """Keep outcome text readable without ANSI on non-interactive streams."""
+    if not sys.stdout.isatty() or "NO_COLOR" in os.environ or os.environ.get("TERM") in {None, "", "dumb"}:
+        return value
+    color = {"SUCCESS": "32", "ERROR": "31", "NO_OP": "33", "CANCELLED": "33"}.get(value)
+    return f"\033[{color}m{value}\033[0m" if color else value
 
 
 def action_number(value):
@@ -389,13 +400,13 @@ class Workflow:
             print(f"Selected action via op={choice} (#{number}, {ACTION_CODES[number]})")
         if number == 0:
             print("Exit selected. No action was run.")
-            return
+            return "NO_OP"
         if number == 10:
             from .status import display_status
             display_status(inspect_patch(self.root, self.config, self.record,
                                          self.handoff.patch, self.handoff.branch,
                                          "loose" if self.loose else "force" if self.force else "strict"))
-            return
+            return "NO_OP"
         options = self.options()
         label, operation, reason = options[number - 1]
         if reason:
@@ -413,29 +424,40 @@ class Workflow:
         print(f"    Working-tree changes: {len(before_paths)} path(s)", flush=True)
         LOGGER.info("action selected feature=%s phase=%s action=%s", self.handoff.branch, self.phase, label)
         started = time.monotonic()
-        operation()
+        clear_confirmation_declined()
+        try:
+            operation()
+        except (Abort, KeyboardInterrupt):
+            elapsed = time.monotonic() - started
+            result = "CANCELLED" if confirmation_was_declined() else "ERROR"
+            print(f"\n==> RESULT {number} [{ACTION_CODES[number]}]: {outcome_label(result)} ({elapsed:.2f}s)")
+            raise
         after_branch = current_branch(self.root)
         after_head = head(self.root)
         after_paths = status_paths(self.root)
         elapsed = time.monotonic() - started
-        print(f"\n==> RESULT {number} [{ACTION_CODES[number]}]: Finished without an error ({elapsed:.2f}s)")
+        unchanged = (before_branch == after_branch and before_head == after_head
+                     and before_phase == self.phase and before_paths == after_paths)
+        result = "CANCELLED" if confirmation_was_declined() else "NO_OP" if unchanged else "SUCCESS"
+        print(f"\n==> RESULT {number} [{ACTION_CODES[number]}]: {outcome_label(result)} ({elapsed:.2f}s)")
         print(f"    Phase: {before_phase} -> {self.phase}")
         print(f"    Branch: {before_branch or 'detached HEAD'} -> {after_branch or 'detached HEAD'}")
         print(f"    HEAD: {before_head[:12]} -> {after_head[:12]}")
         print(f"    Working-tree changes: {len(before_paths)} -> {len(after_paths)} path(s)")
-        unchanged = (before_branch == after_branch and before_head == after_head
-                     and before_phase == self.phase and before_paths == after_paths)
-        if unchanged:
+        if result == "CANCELLED":
+            print("    A required confirmation was declined; later actions must not be inferred as safe.")
+        elif unchanged:
             print("    No tracked workflow or Git-state transition detected; the action may have been "
                   "cancelled or already satisfied.")
         elif after_paths:
             preview = ", ".join(sorted(after_paths)[:10])
             remaining = len(after_paths) - min(len(after_paths), 10)
             print(f"    Changed paths: {preview}" + (f" (+{remaining} more)" if remaining else ""))
-        if unchanged:
-            print("Next suggested: NONE — This action may have been cancelled or already satisfied; inspect status with 10 [STS].")
+        if result != "SUCCESS":
+            print("Next suggested: NONE — No completed action transition was confirmed; inspect status with 10 [STS].")
         else:
             display_recommendation(inspect_patch(self.root, self.config, self.record,
                                                   self.handoff.patch, self.handoff.branch,
                                                   "loose" if self.loose else "force" if self.force else "strict"))
         LOGGER.info("action completed feature=%s phase=%s action=%s", self.handoff.branch, self.phase, label)
+        return result

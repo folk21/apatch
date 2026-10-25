@@ -24,7 +24,11 @@ Inputs include an untrusted handoff JSON, a ZIP patch archive, repository-local 
 
 `STS` takes an earlier, separate read-only path: it validates the repository and configuration, loads a snapshot without creating a state lock, and inspects local Git evidence. Interactive menu selection is also performed before opening the writable workflow state; choosing `STS` never enters the mutation path.
 
-The CLI can be invoked interactively or by a direct operation number or mnemonic. Canonical action identities are defined centrally in `apatch_lib/workflow.py`.
+The CLI can be invoked interactively, by a direct operation number/mnemonic,
+or with a validated comma-separated `opSeq`. A sequence reuses the same action
+dispatch, refreshes branch/phase checks before each step, and halts on the first
+error, cancellation, or unchanged action. It does not roll back completed Git
+side effects. Canonical action identities are defined in `apatch_lib/workflow.py`.
 
 ## Module ownership
 
@@ -32,6 +36,7 @@ The CLI can be invoked interactively or by a direct operation number or mnemonic
 | --- | --- |
 | `apatch.py`, `apatch.sh` | CLI parsing, handoff discovery, mode selection, top-level error handling |
 | `apatch_lib/workflow.py` | Action dispatch, phase coordination, menu and progress summaries |
+| `apatch_lib/sequence.py` | Sequence syntax validation, ordered dispatch, and fail-stop diagnostics |
 | `apatch_lib/loose.py` | Incremental patch cycles, manual edits, accumulated commits, deferred push |
 | `apatch_lib/force.py` | Explicit recovery of externally performed branch, patch, and Git operations |
 | `apatch_lib/branch_patch.py` | Preparing branches and coordinating patch application |
@@ -56,7 +61,11 @@ Keep safety validation close to its owning domain. Avoid distributing the same c
 
 `STRICT` enforces the expected branch, clean-tree state, and phase transitions. `FORCE` explicitly reconciles manual operations, but it does not bypass unsafe archive, Git remote, or GitHub policy checks. In STRICT and FORCE, the `CMT` action uses their combined commit/push workflow. The detailed action matrix is maintained in [Usage](USAGE.md#workflow).
 
-The `skipApproves` option changes confirmation behavior; it does not disable validation. Because unattended actions can still modify a repository, callers must decide the target and affected files deliberately.
+The `skipApproves` option changes confirmation behavior across standalone and
+sequence operations; it does not disable validation. Declined confirmations
+remain distinct from success even if intermediate Git staging occurred. Because
+unattended actions can modify a repository, callers must choose the target and
+affected files deliberately.
 
 ## Configuration and state ownership
 
