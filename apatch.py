@@ -14,6 +14,7 @@ from apatch_lib.local_ignore import ensure_runtime_ignored
 from apatch_lib.logging_setup import LOG_FILENAME, configure, set_context
 from apatch_lib.migration import migrate_legacy_artifacts
 from apatch_lib.model import Abort, BASENAME_PATTERN, load_config, load_handoff, load_project_config
+from apatch_lib.operation_events import unresolved_runs
 from apatch_lib.params_cache import load_cached_handoff, save_cached_handoff
 from apatch_lib.patch import handoff_from_zip
 from apatch_lib.progress import ProgressEvent, ProgressRecorder, ProgressStore, render_progress, utc_now
@@ -133,6 +134,7 @@ def show_status_with_progress(root, config, state, handoff, patch, mode, recorde
     try:
         if state is None:
             state = read_state_snapshot(config.state_path)
+        show_unresolved_operations(state, root)
         record, selected_patch, planned = select_record(root, state, handoff, patch=patch)
         display_status(inspect_patch(root, config, record, selected_patch, planned, mode))
         result, error = "SUCCESS", None
@@ -153,6 +155,18 @@ def show_status_with_progress(root, config, state, handoff, patch, mode, recorde
             print(f"WARNING: PROGRESS_UNAVAILABLE ({type(exc).__name__}); "
                   "the status result is unchanged.", flush=True)
         recorder.flush(tool_dir)
+
+
+def show_unresolved_operations(state, root):
+    """Expose unfinished historical runs without modifying their persisted outcome."""
+    unfinished = unresolved_runs(state, root)
+    if not unfinished:
+        return
+    print(f"WARNING: {len(unfinished)} operation run(s) remain STARTED in the project journal.")
+    print("    A run may still be active or may have been interrupted; inspect current Git/PR state.")
+    for run in unfinished[-3:]:
+        print(f"    {run['run_id']} | {run['operation']['number']} "
+              f"[{run['operation']['code']}] | patch={run['patch']}")
 
 
 def main():
@@ -313,6 +327,7 @@ def main():
         try:
             with locked_state(config.state_path) as state:
                 migrate_legacy_artifacts(root, script_dir, config, state)
+                show_unresolved_operations(state, root)
                 workflow = Workflow(root, config, handoff, state,
                                     force=args.mode == "force", loose=args.mode == "loose",
                                     zip_selected=zip_selected, progress_recorder=recorder)

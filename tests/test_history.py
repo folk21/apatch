@@ -267,7 +267,12 @@ class HistoryTests(LocalGitFixture):
         blocked = self.invoke_cli("--loose", "op=APL", "skipApproves=true")
         self.assertEqual(blocked.returncode, 2, blocked.stdout + blocked.stderr)
         self.assertIn("unapplied-old.zip has not been applied!", blocked.stderr)
-        self.assertEqual(self.state_path.read_text(), contents)
+        updated = json.loads(self.state_path.read_text())
+        self.assertEqual(updated["workflows"], original["workflows"])
+        self.assertEqual(updated["schema_version"], 2)
+        self.assertEqual(len(updated["operation_runs"]), 1)
+        self.assertEqual(updated["operation_runs"][0]["outcome"], "FAILED")
+        self.assertEqual(updated["operation_runs"][0]["operation"]["code"], "APL")
 
     def test_missing_registry_retains_previous_apply_behavior(self):
         self.assertFalse((self.root / ".apatch" / "created_patches.txt").exists())

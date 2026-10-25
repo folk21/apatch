@@ -231,7 +231,8 @@ class ProgressEvent:
     @classmethod
     def capture(cls, *, root, patch_file, operation_number, mode, result,
                 phase_before, phase_after, branch_before, branch_after, record,
-                started_at_utc, duration_seconds, error=None, sequence=None):
+                started_at_utc, duration_seconds, error=None, sequence=None,
+                event_id=None):
         project_id, canonical = project_identity(root)
         if result not in RESULTS or not 1 <= operation_number <= 10:
             raise Abort("Invalid operation summary for global progress")
@@ -249,7 +250,7 @@ class ProgressEvent:
                    else "Operation failed; inspect target project diagnostic log" if result == "FAILED"
                    else None)
         data = {
-            "event_id": uuid.uuid4().hex,
+            "event_id": event_id or uuid.uuid4().hex,
             "started_at_utc": started_at_utc,
             "finished_at_utc": utc_now(),
             "project_id": project_id,

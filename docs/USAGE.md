@@ -429,6 +429,10 @@ If a project already has its generic `.apatch` state or history file, it takes p
 
 ## Logging
 
+### Project-local operation attempts (P1.1)
+
+Project-local action evidence is kept separately in `.apatch/apply_patch.state.json` under `operation_runs` (schema version 2). Lifecycle actions 1–9 record a unique `STARTED` attempt and a terminal result when possible, including phase/branch/HEAD context, safe error classification, optional sequence ID/step, and only verified checkpoint facts. The event ID in the global progress history matches the project-local run ID. A missing finish after a crash remains `STARTED`; `op=STS` warns about such entries without modifying the journal. Retrying an action creates a new record; consult Git/GitHub before retrying a potentially completed remote operation. A schema-v1 file is upgraded only on write, without inventing earlier operations. Journal growth stops at 100,000 attempts or 32 MiB pending manual archival; no automatic records are removed.
+
 ### Cross-project progress history and overview (P0.5a–P0.5b)
 
 After each attempted lifecycle operation, including individual `opSeq` actions and read-only `STS`, `apatch` records a small event under its own installation directory: `<apatch_installation>/.apatch/progress/progress.json`. Per-project `<project>_progress.json` files are rebuilt from this master. The index distinguishes `SUCCESS`, `NO_OP`, `CANCELLED`, `FAILED`, and `UNKNOWN_REMOTE_RESULT`, with UTC time, patch, branch, recorded phase, optional SHA/PR evidence, and bounded generic error descriptions. It does not save canonical-check output, arbitrary command arguments, or credentials.

@@ -42,6 +42,7 @@ case "${1:-regular}" in
             tests.test_progress.ProgressStorageTests.test_master_and_derived_symlinks_are_refused \
             tests.test_progress.ProgressStorageTests.test_corrupted_master_is_never_replaced \
             tests.test_progress.ProgressOverviewTests \
+            tests.test_operation_journal \
             tests.test_progress.ProgressCliTests.test_cli_sequence_records_each_attempt_and_identity
         ;;
     full)
