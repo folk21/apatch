@@ -13,12 +13,14 @@ Before scheduled quality checks and model reviews, implement these first-priorit
 3. Independent project-level GitHub review-approval and required-CI gates.
 4. Ordered `created_patches.txt` check against actual applied history.
 5. `opSeq` execution with per-step console progress and actionable failure details.
-6. Unique, explicitly selected handoff JSON names for every invocation.
+6. Current explicit handoff JSON compatibility and a planned self-contained ZIP with project-local parameter caching.
 7. Mandatory unfinished-feature-branch preflight before creating a new feature branch.
 8. Bounded GitHub read retries and one repository-identity verification per operation.
 9. A tool-wide, concurrency-safe progress ledger and an aggregated project overview.
 
 All modes (`LOOSE`, `STRICT`, `FORCE`) SHALL retain their present safety rules and operation semantics.
+
+The self-contained ZIP and apply-before-branch workflow in §3.6 is a **pending lifecycle change**, not a description of the installed CLI. Until its migration stage passes acceptance tests, the existing explicit-JSON and branch-before-apply contracts remain authoritative.
 
 ### 1.1 Current patch status (P0-0)
 
@@ -58,6 +60,8 @@ After each completed standalone action, `apatch` SHALL report a **potential next
 | `0 [EXT]` | None |
 
 Actual branch/phase and live guards take precedence over this table. A no-op/cancelled/failed action MUST show its real outcome, not a success-path next step. An `opSeq` displays the next **scheduled** action independently of the next **recommended** action.
+
+After P0.3c activates, the table's `BRN`/`BAP`/`APL` entries describe **legacy** branch-first workflows only. For a new patch applied on the base branch, `3 [APL]` SHALL instead suggest `1 [BRN]`; after that branch transition, `1 [BRN]` SHALL suggest `4 [CHK]`. `2 [BAP]` becomes an unsupported/deprecated action without reassigning its number. The CLI MUST continue to distinguish a new cycle from a legacy resumed cycle when recommending the next operation.
 
 Example:
 
@@ -119,7 +123,7 @@ checks:
 - Before the merge attempt, print the effective review **and** CI policies, including each source (`project` or `global`). An explicit `false` is a conscious opt-out, not proof that CI passed. `skipApproves` remains independent.
 - Project-local canonical commands configured in `checks` remain unchanged and SHALL NOT be skipped by `require_required_checks: false` when the separate `CHK` operation runs.
 
-### 3.2 Unique, required handoff JSON selection (P0-2c)
+### 3.2 Unique, required handoff JSON selection (P0-2c; implemented legacy contract)
 
 Every newly generated ZIP named `<patch-stem>.zip` SHALL have a handoff JSON with **exactly the same stem**, `<patch-stem>.json`. The static name `apatch_patch_params.json` SHALL NOT be used for newly generated handoffs. This removes ambiguity between multiple pending patches in the same downloads directory.
 
@@ -163,6 +167,20 @@ The `MRG` operation SHALL NOT repeat `gh auth status` and `gh repo view` when it
 2. Explicitly mutating GitHub calls (`gh pr create`, `gh pr merge`, and any future operation with uncertain external side effects) SHALL NOT be automatically retried. On timeout, report the uncertain outcome and require live reconciliation through `PR`, `MRG`, or `SYN` as appropriate.
 3. Authentication failures, permission denials, invalid command arguments, non-transient API rejections, and invalid response data SHALL fail without retries. The implementation SHALL NOT convert connection failures into successful review, CI, PR, or merge evidence.
 4. No retry or identity reuse may bypass PR source SHA, base, status, merge timestamp, branch protection, review policy, CI policy, or explicit confirmation rules. The retry mechanism SHALL apply to all modes and preserve the console's operation and failure reports.
+
+### 3.6 ZIP-only handoff, cached parameters, and apply-before-branch lifecycle (P0.3c; pending)
+
+**Single-file delivery:** A new patch ZIP SHALL contain one reserved regular-file metadata member at `<repository>/.apatch/params.json`, including validated schema-v1 handoff fields: `repository`, `feature_branch`, the ZIP's exact `patch_file` basename, complete `commit_message`, and optional `base_commit`/`delete_paths`. Its `patch_sha256` field MUST be absent: a ZIP cannot embed a hash of its own final bytes without circular dependency. `apatch` SHALL calculate SHA-256 after reading the finalized ZIP and save that digest in the local cache. The optional reserved `created_patches.txt` member retains all existing ordering and append-only safety rules. Neither reserved metadata member is an application source file, a changed path, or a Git commit candidate.
+
+**Selecting and caching parameters:** On a new `APL` cycle, the developer identifies the ZIP by unique stem or ZIP basename, for example `apatch.sh <patch-stem> op=APL`. The tool SHALL locate it within configured `downloads_dir`, validate archive root, member type, filename/repository identity, ZIP content, and embedded handoff schema, then create or atomically replace `<target>/.apatch/params.json` with a verified canonical copy containing the calculated archive SHA. The cache must be project-local, Git-ignored, lock-protected, protected from symlinks/path traversal, and never overwritten with partially validated data. Preserve the former cache on a failed validation or write, and require an explicit selection when changing to a different unfinished patch cycle.
+
+If a handoff JSON path is explicitly supplied, the old externally generated `.json` format SHALL continue to take precedence for migration and recovery. Otherwise, an invocation **without** a handoff (`apatch.sh op=BRN`, `apatch.sh op=CHK`, `apatch.sh op=STS`, or menu mode) SHALL load the current project's validated `.apatch/params.json`. The cached ZIP SHA and repository identity SHALL be checked before any later file-applying action. A missing, corrupt, unsafe, or ambiguous cache without an explicit handoff SHALL fail before side effects. Selecting a *new* ZIP still requires an explicit stem/basename; never guess the newest file in Downloads. Repeating `APL` with the current cached patch is a deliberate, guarded retry, not an automatic duplicate extraction.
+
+**New operation order:** For a new patch cycle, the normal mandatory order SHALL be `APL` → `BRN` → `CHK` → `CMT` → `PSH` → `PR` → `MRG` → `SYN` as applicable. `APL` initially extracts verified patch files on the checked-out base branch **without creating a commit on base**. `BRN` then creates or safely adopts the proposed feature branch from the same base HEAD and carries the uncommitted patch changes across. Before creating a branch, require the existing mandatory local/remote unfinished-feature preflight, appropriate dirty-worktree checks, remote/base HEAD identity, and explicit consent. After the switch, atomically reconcile the checkpoint's actual `applied_branch` and source/verification evidence; record that extraction originally occurred on base while preserving truth in the applied-patch history. Changes MUST remain on the feature branch, with no commit on `main`. `CHK`/`CMT`/publishing SHALL NOT bypass the necessary feature-branch transition for a new cycle; interrupted `APL` or `BRN` SHALL be safely retryable without reapplying already extracted files.
+
+**Retire `BAP` without reassigning operation IDs:** Remove `BAP` from the supported action menu and dispatch. A legacy `op=BAP` or numeric `op=2` SHALL stop with migration guidance, never run another operation. The existing numeric aliases for the remaining operations SHALL initially stay stable (`3 [APL]`, `1 [BRN]`): *first* and *second* mean chronological steps, not new numeric IDs. Existing branch-first workflows and persisted state SHALL remain resumable with their original evidence; any renumbering requires a separate versioned compatibility decision. FORCE and `skipApproves=true` cannot bypass extraction integrity, branch preflight, or safe recovery boundaries.
+
+**Bootstrap:** The tool version that first implements this contract must still be distributed in the **old** ZIP+JSON handoff format because older `apatch` binaries cannot parse this new metadata or use a missing handoff argument. Once that upgrade is installed, new ChatGPT patch responses SHALL offer just one downloadable ZIP with a separately copyable basename and the full commit message in the chat. A plain standalone `params.json` download SHALL no longer be required. The external user's repository must not be modified merely to construct the patch response.
 
 ## 4. Ordered created-patch registry (P0-3)
 
@@ -223,26 +241,25 @@ ChatGPT must not invent missing historical lines. If the latest created registry
 Add direct execution of comma-separated operation numbers or acronyms:
 
 ```bash
-apatch.sh <patch-stem> opSeq=BRN,APL,CHK,CMT,PSH,PR skipApproves=true
-apatch.sh <patch-stem> opSeq=1,3,4,5,6,7 skipApproves=true
-apatch.sh <patch-stem> opSeq=BAP,APL,CHK,CMT,PSH,PR skipApproves=true
+apatch.sh <patch-stem> opSeq=APL,BRN,CHK,CMT,PSH,PR skipApproves=true
+apatch.sh <patch-stem> opSeq=3,1,4,5,6,7 skipApproves=true
 ```
 
-`op` and `opSeq` are mutually exclusive. Whitespace around commas is permitted; unknown codes, empty elements, conflicting options, or a missing handoff MUST fail before the first side effect. `LOOSE` remains default. Every step SHALL use the same action implementation and checks as a standalone `op`, sequentially; it MUST refresh Git/GitHub state after the previous step. No hidden parallel execution or implied commit/push/merge is allowed.
+These examples target the proposed P0.3c/P0.4 combination, not the current installation. `op` and `opSeq` are mutually exclusive. Whitespace around commas is permitted; unknown codes, empty elements, conflicting options, or a missing **explicit ZIP selection or safe current-project cache** MUST fail before the first side effect. `LOOSE` remains default. Every step SHALL use the same action implementation and checks as a standalone `op`, sequentially; it MUST refresh Git/GitHub state after the previous step. No hidden parallel execution or implied commit/push/merge is allowed.
 
 Without `skipApproves=true`, ordinary step-level confirmations still apply; without a TTY, missing approval must produce an immediate actionable error. `skipApproves=true` skips confirmation prompts **only**, not safety validation, required CI, or GitHub policy.
 
 ### 5.2 Multiple patches in one sequence
 
-`BAP` already applies the current handoff. Consequently `opSeq=BAP,APL,...` requires selecting a **different handoff** for its second patch operation. The P0 design proposes an optional `handoffSeq=<path1>,<path2>,...` parameter: successive handoffs are consumed by patch-applying steps (`BAP` or `APL`); subsequent `CHK/CMT/PSH/PR` use the most recently selected handoff.
+Under P0.3c, `BAP` is unavailable. The P0 design proposes an optional `handoffSeq=<zip1>,<zip2>,...` parameter: successive ZIPs are consumed by `APL` steps; subsequent `BRN/CHK/CMT/PSH/PR` use the most recently selected verified handoff. No sequence may leave changes from a newly applied base-branch patch behind without the required `BRN` transition.
 
 ```bash
-apatch.sh <patch-stem> opSeq=BAP,APL,CHK,CMT,PSH,PR \
-  handoffSeq=/path/first_patch_params.json,/path/second_patch_params.json \
+apatch.sh <patch-stem> opSeq=APL,BRN,APL,CHK,CMT,PSH,PR \
+  handoffSeq=/path/first_patch.zip,/path/second_patch.zip \
   skipApproves=true
 ```
 
-Without `handoffSeq`, actions use the existing single handoff. A duplicate `BAP,APL` sequence with no handoff change SHOULD be rejected at preflight with an explicit explanation, not silently reapply the same ZIP. No implicit filename guessing or handoff replacement is allowed. Existing LOOSE accumulation and STRICT/FORCE gates still apply; handoff switches preserve all earlier records. This additional parameter is proposed and requires developer approval.
+Without `handoffSeq`, actions use the existing selected/cache handoff. Duplicate `APL` steps with no explicit handoff change SHOULD be rejected at preflight with an explanation, not silently reapply the same ZIP. No implicit filename guessing or handoff replacement is allowed. Existing LOOSE accumulation and STRICT/FORCE guards still apply; handoff switches preserve all earlier records. This additional parameter is proposed and requires developer approval.
 
 ### 5.3 Console progress and failure contract
 
@@ -326,9 +343,9 @@ There is no automatic knowledge of target projects used **before** this feature 
 | AC-06 | Created `A,B,C`, applied `A`, selected `C` | Stop with missing `B` before side effects |
 | AC-07 | Registry reorder/duplicate or incoming prefix mismatch | Block without truncation or overwrite |
 | AC-08 | Registry absent in old handoff | Preserve current application behavior |
-| AC-09 | `opSeq=BRN,APL,CHK` | Execute in order and show detailed progress |
-| AC-10 | `opSeq=BAP,APL` plus two handoffs | Use declared handoff order and regular mode guards |
-| AC-11 | Invalid `opSeq`, conflicting `op`, or duplicate unqualified `BAP,APL` | Reject before any Git/archive mutation |
+| AC-09 | `opSeq=APL,BRN,CHK` after P0.3c | Apply on base, move changes to feature, then verify in order with detailed progress |
+| AC-10 | `opSeq=APL,BRN,APL` plus two explicit ZIP handoffs | Use declared ZIP order and regular mode guards without reapplying the first archive |
+| AC-11 | Invalid `opSeq`, conflicting `op`, or duplicated `APL` without another explicit ZIP selection | Reject before any Git/archive mutation |
 | AC-12 | Second or later sequence step fails | Stop immediately, show failed/last-completed steps, preserve previous effects |
 | AC-13 | `skipApproves=true`, required CI fails | No policy bypass; fail and stop sequence |
 | AC-14 | PR or merge CLI timeout | Mark remote result unknown, do not automatically repeat side effects |
@@ -366,6 +383,13 @@ There is no automatic knowledge of target projects used **before** this feature 
 | AC-46 | Successful `APL` in an ANSI-capable terminal | Show green `SUCCESS` in the result banner and a prominent, separately labeled `Next suggested: 4 [CHK]` with number/code; the result must be readable without interpreting colors |
 | AC-47 | Operation throws an error, is cancelled, is already satisfied, or has an uncertain remote outcome | Show red `ERROR` only for a proven failure; distinguish `CANCELLED`, `NO_OP`, and `UNKNOWN_REMOTE_RESULT`, and provide a safe next/recovery step without claiming false success |
 | AC-48 | Output is redirected, `NO_COLOR` is set, or `TERM=dumb` | Never emit ANSI escapes; preserve exact readable outcome labels and next-action number/code in all modes and in `opSeq` |
+| AC-49 | New self-contained ZIP contains a valid `.apatch/params.json` member and no external JSON | `APL` loads metadata, computes final ZIP SHA, applies source files, and writes a Git-ignored, verified target-local cache without staging metadata |
+| AC-50 | `APL` completed on base with uncommitted changes, then `BRN` is called without a handoff | Read cached parameters; verify base HEAD and changed paths; enforce the unfinished-feature gate; carry the changes to feature branch and suggest `CHK` without committing on base |
+| AC-51 | No explicit handoff and cache is missing, malformed, a symlink, or belongs to another repository | Fail before Git/archive mutation; do not guess a ZIP or overwrite previous cache |
+| AC-52 | ZIP embeds an incorrect repository/patch name, unsafe metadata member, or missing mandatory field | Reject before extraction; preserve existing cached parameters and earlier work |
+| AC-53 | Existing handoff JSON supplied explicitly or a legacy branch-first checkpoint resumed | Retain legacy format support and safe recovery; never discard or silently migrate earlier commits/history |
+| AC-54 | `BAP` selected after the new lifecycle is enabled | Show a specific deprecation error for `BAP`/numeric `2`; keep numeric identifiers for other actions unchanged |
+| AC-55 | Crash between ZIP application, cache replacement, and feature-branch creation | Preserve evidence and previous cache where necessary; safely retry/reconcile without duplicate application or an unintended main-branch commit |
 
 ## 8. Open decisions
 
@@ -373,5 +397,6 @@ There is no automatic knowledge of target projects used **before** this feature 
 2. Approve the reserved `.apatch/created_patches.txt` ZIP metadata member and separate-file bootstrap before support is implemented.
 3. Approve strict rejection when a selected patch is missing from an existing created registry, rather than auto-registering it.
 4. Confirm the suggested default `<apatch_installation>/.apatch/progress/` and whether a future override for read-only installations should follow an OS-specific user-data directory.
+5. Confirm retaining the numeric operation aliases (`3 [APL]`, `1 [BRN]`, reserved `2 [BAP]`) during the ZIP-only migration rather than renumbering and breaking existing scripts.
 
 Mark this sub-spec `ACCEPTED` only after these choices are resolved. No implementation is authorized by this DRAFT.
