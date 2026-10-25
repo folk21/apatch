@@ -378,6 +378,8 @@ Commands run sequentially from the target repository root; execution stops on th
 
 `check_timeout_seconds` bounds each canonical check (integer 1–3600, default `900`). On timeout, `apatch` terminates the check's process group and stops the sequence before commit or publication. Choose a project-specific value that accommodates the full integration suite.
 
+For the `apatch` tool's own repository, `./run_tests.sh` runs the fast regular safety suite by default, and `./run_rare_checks.sh` runs the complete regression suite. `CHK` executes only the checks explicitly listed in the target repository's `.apatch/config.yaml`; it does not automatically run the extended suite. GitHub Actions is manual-only and publishes no automatic push/PR test results. Run the extended suite locally before merging, even when `require_required_checks: false` is configured. GitHub branch-protection rules may independently require checks; verify those rules before relying on manual-only testing. See [Development](DEVELOPMENT.md).
+
 If the project configuration is missing, malformed, or has no commands, `apatch` stops with an explicit error. Adjust the example commands to match each target repository.
 
 ## Applied-change history
