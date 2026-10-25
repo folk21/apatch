@@ -109,7 +109,34 @@ Earlier applied-patch history and checkpoints are preserved; the project-local
 The final ZIP supplies the combined commit message; ensure that it describes
 all changes. A failed step stops the sequence without rolling back earlier
 applications. Resume only after checking Git state and the relevant ZIP
-checkpoint. Without `handoffSeq`, repeated `APL` is rejected at preflight.
+checkpoint. Applying an additional ZIP on the feature branch in a later invocation
+requires the explicit `followup=true` option described below.
+
+### Unplanned repair ZIP on an unfinished feature branch (`followup=true`)
+
+When an earlier standalone ZIP has completed `APL,BRN` but remains uncommitted,
+a separately generated repair ZIP can be applied without replaying the first:
+
+```bash
+/path/to/apatch/apatch.sh repair-patch followup=true \
+  opSeq=APL,CHK,CMT,STS skipApproves=true
+```
+
+`followup=true` is LOOSE-only and separate from `handoffSeq`. It requires a
+newly selected self-contained ZIP, a leading `APL`, the exact planned feature
+branch, existing uncommitted changes, and a matching previous `patch_applied`
+or `verified` workflow at the current HEAD and Git remote. An initial ZIP on
+the base branch, unrelated dirty feature branch, already committed predecessor,
+or STRICT/FORCE invocation cannot use this option. The guard runs before
+previous workflows are marked as superseded; a rejected application preserves
+their checkpoints.
+
+Overlapping uncommitted files are backed up before approved replacement.
+With `skipApproves=true`, overlap confirmation is automatic: inspect the incoming
+ZIP first. A successful follow-up registers both ZIPs as separately applied;
+a later single `CMT` associates both with the combined commit. The repair ZIP
+supplies the commit message and becomes the cached handoff. Resume with `CHK`,
+not another `BRN`; do not reset a branch to fit the initial ZIP workflow.
 
 Outcome lines use `SUCCESS` for an observed state transition,
 `ALREADY_SATISFIED` for a positively reverified `SYN`, `NO_OP` for other

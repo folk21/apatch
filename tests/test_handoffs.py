@@ -64,6 +64,83 @@ class HandoffsTests(LocalGitFixture):
         changed = command("git", "show", "--pretty=", "--name-only", "HEAD", cwd=self.root).stdout.splitlines()
         self.assertEqual(set(changed), {"existing.txt", "new.txt", "second.txt"})
 
+    def test_explicit_followup_zip_after_previous_invocation_combines_uncommitted_changes(self):
+        first = self.make_self_contained_zip()
+        initial = self.invoke_zip("opSeq=APL,BRN", "skipApproves=true", selection=first)
+        self.assertEqual(initial.returncode, 0, initial.stderr + initial.stdout)
+        original_workflows = json.loads(self.state_path.read_text())["workflows"]
+        second = self.make_followup_zip()
+
+        implicit = self.invoke_zip("op=APL", "skipApproves=true", selection=second.stem)
+        self.assertEqual(implicit.returncode, 2)
+        self.assertIn("followup=true", implicit.stderr)
+        self.assertEqual(json.loads(self.state_path.read_text())["workflows"], original_workflows)
+        self.assertFalse((self.root / "second.txt").exists())
+
+        repaired = self.invoke_zip("followup=true", "opSeq=APL,CHK,CMT,STS",
+                                   "skipApproves=true", selection=second.stem)
+        self.assertEqual(repaired.returncode, 0, repaired.stderr + repaired.stdout)
+        self.assertIn("Backed up 1 overlapping file", repaired.stdout)
+        backups = list((self.root / ".apatch/backups").glob("overlap-*/existing.txt"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_text(), "updated\n")
+        self.assertIn("PATCH STATUS 10 [STS]", repaired.stdout)
+        self.assertEqual((self.root / "existing.txt").read_text(), "second revision\n")
+        self.assertEqual((self.root / "new.txt").read_text(), "new\n")
+        self.assertEqual((self.root / "second.txt").read_text(), "second patch\n")
+        self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, "")
+        self.assertEqual(len(AppliedPatchHistory(self.history_path).entries), 2)
+        workflows = json.loads(self.state_path.read_text())["workflows"]
+        self.assertEqual(len(workflows), 2)
+        self.assertEqual({item["phase"] for item in workflows.values()}, {"committed"})
+        self.assertEqual(len({item["commit_sha"] for item in workflows.values()}), 1)
+        self.assertEqual(json.loads((self.root / ".apatch/params.json").read_text())["patch_file"],
+                         second.name)
+
+    def test_followup_requires_matching_pending_branch_and_rejects_mode_conflicts(self):
+        first = self.make_self_contained_zip()
+        second = self.make_followup_zip()
+        invalid = (
+            ("followup=true", "op=APL", "skipApproves=true"),
+            ("followup=true", "op=CHK", "skipApproves=true"),
+            ("followup=true", "--strict", "op=APL", "skipApproves=true"),
+            ("followup=true", "--force", "op=APL", "skipApproves=true"),
+            ("followup=true", "opSeq=APL,BRN,APL", f"handoffSeq={first},{second.stem}",
+             "skipApproves=true"),
+        )
+        for options in invalid:
+            with self.subTest(options=options):
+                denied = self.invoke_zip(*options, selection=second.stem)
+                self.assertEqual(denied.returncode, 2, denied.stderr + denied.stdout)
+                self.assertFalse((self.root / "second.txt").exists())
+        prior = json.loads(self.state_path.read_text())
+        self.assertEqual(prior["workflows"], {})
+        self.assertEqual([run["outcome"] for run in prior["operation_runs"]], ["FAILED"])
+
+        self.assertEqual(self.invoke_zip("opSeq=APL,BRN", "skipApproves=true",
+                                         selection=first).returncode, 0)
+        unchanged = json.loads(self.state_path.read_text())["workflows"]
+        mismatched = self.make_followup_zip(filename="example_service-PATCH-wrong-branch.zip",
+                                            override={"feature_branch": "feature/other"})
+        denied = self.invoke_zip("followup=true", "op=APL", "skipApproves=true",
+                                 selection=mismatched.stem)
+        self.assertEqual(denied.returncode, 2, denied.stderr + denied.stdout)
+        self.assertIn("targets feature/other", denied.stderr)
+        self.assertFalse((self.root / "second.txt").exists())
+        self.assertEqual(json.loads(self.state_path.read_text())["workflows"], unchanged)
+
+    def test_followup_refuses_dirty_feature_branch_without_an_applied_predecessor(self):
+        second = self.make_followup_zip()
+        command("git", "switch", "-c", self.payload["feature_branch"], cwd=self.root)
+        (self.root / "manual.txt").write_text("user-owned change\n")
+        denied = self.invoke_zip("followup=true", "op=APL", "skipApproves=true",
+                                 selection=second.stem)
+        self.assertEqual(denied.returncode, 2, denied.stderr + denied.stdout)
+        self.assertIn("matching unfinished, uncommitted ZIP workflow", denied.stderr)
+        self.assertEqual((self.root / "manual.txt").read_text(), "user-owned change\n")
+        self.assertFalse((self.root / "second.txt").exists())
+        self.assertEqual(json.loads(self.state_path.read_text())["workflows"], {})
+
     def test_multi_zip_shell_launcher_accepts_download_paths_and_pushes_combined_commit(self):
         first = self.make_self_contained_zip()
         second = self.make_followup_zip()

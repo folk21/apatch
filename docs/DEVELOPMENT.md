@@ -32,6 +32,12 @@ Global progress tests live in `tests/test_progress.py`; they use temporary tool 
 
 Project-local run tests live in `tests/test_operation_journal.py`; they cover schema-v1 migration, journal validation, separate process writers, STARTED/retry semantics, action outcomes, `opSeq` correlation, and read-only status. Preserve the distinction between per-target operation evidence and installed-tool progress summaries when changing either format.
 
+`test_handoffs.py` also covers explicit cross-invocation `followup=true`. Rejected
+follow-ups preserve prior workflow checkpoints while recording the failed attempt;
+accepted repairs keep both ZIP histories and one combined commit. Redaction
+assertions must match sensitive tokens or diagnostic fields, not platform path
+components such as macOS `/private/var`.
+
 ## Local verification
 
 - Run focused regression tests for affected modes and edge cases before the extended suite. Keep high-priority scenarios in the curated regular command when new regressions justify it.

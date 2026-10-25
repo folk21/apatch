@@ -42,6 +42,8 @@ def normalize_arguments(arguments):
             normalized.append("--op-seq=" + argument[len("opSeq="):])
         elif argument.startswith("handoffSeq="):
             normalized.append("--handoff-seq=" + argument[len("handoffSeq="):])
+        elif argument.startswith("followup="):
+            normalized.append("--followup=" + argument[len("followup="):])
         elif argument.startswith("patch="):
             normalized.append("--patch=" + argument[len("patch="):])
         elif argument.startswith("skipApproves="):
@@ -180,6 +182,7 @@ def main():
                 "  apatch.sh op=CHK\n"
                 "  apatch.sh apatch-PATCH-2026-10-24-00-42-example opSeq=APL,BRN,CHK,CMT,PSH skipApproves=true\n"
                 "  apatch.sh opSeq=APL,BRN,APL,CHK,CMT handoffSeq=first.zip,second.zip skipApproves=true\n"
+                "  apatch.sh repair-patch followup=true opSeq=APL,CHK,CMT skipApproves=true\n"
                 "  apatch.sh op=STS\n"
                 "  apatch.sh info=PROGRESS\n"
                 "  apatch.sh strict op=CHK\n"
@@ -212,6 +215,8 @@ def main():
                                      help="Read-only global progress overview; no handoff or Git repository required")
     parser.add_argument("--handoff-seq", "--handoffSeq", metavar="ZIP1,ZIP2,...",
                         help="Explicit ZIP per APL in opSeq; multi-ZIP accumulation requires LOOSE")
+    parser.add_argument("--followup", type=parse_boolean, default=False, metavar="{true,false}",
+                        help="Explicitly apply a new ZIP to a matching unfinished LOOSE feature branch")
     parser.add_argument("--patch", metavar="NAME.zip",
                         help="Filter read-only STS by ZIP basename")
     parser.add_argument("--skip-approves", "--skipApproves", type=parse_boolean,
@@ -223,7 +228,7 @@ def main():
     try:
         config = load_config(script_dir)
         if args.info is not None:
-            lifecycle_flags = {"--loose", "--strict", "--force", "--skip-approves"}
+            lifecycle_flags = {"--loose", "--strict", "--force", "--skip-approves", "--followup"}
             if (args.handoff is not None or args.handoff_seq is not None or args.patch is not None
                     or any(token.split("=", 1)[0] in lifecycle_flags for token in normalized_args)):
                 raise Abort("info=PROGRESS cannot be combined with a handoff, operation, or lifecycle options")
@@ -237,6 +242,15 @@ def main():
         status_only = args.op in {"STS", "10"} or sequence_only_status
         if args.patch is not None and not status_only:
             raise Abort("--patch is only supported for op=STS or opSeq=STS")
+        if args.followup:
+            if args.mode != "loose":
+                raise Abort("followup=true requires LOOSE mode")
+            if args.handoff_seq is not None:
+                raise Abort("followup=true is separate from handoffSeq; select only the new ZIP")
+            if (args.handoff is None or
+                    not ((args.op is not None and action_number(args.op) == 3) or
+                         (args.op_seq is not None and args.op_seq.actions[0] == 3))):
+                raise Abort("followup=true requires an explicit ZIP and op=APL or opSeq starting with APL")
         root_name = Path(output(["git", "rev-parse", "--show-toplevel"], Path.cwd())).resolve().name
         root = repository_root(Path.cwd(), root_name)
         config = load_project_config(root, config)
@@ -273,6 +287,8 @@ def main():
             if args.op_seq is not None and sum(action in {2, 3} for action in args.op_seq.actions) > 1:
                 raise Abort("Multiple APL actions require explicit handoffSeq ZIP selections")
             handoff, source_label, zip_selected = resolve_selected_handoff(args.handoff, config, root)
+        if args.followup and not zip_selected:
+            raise Abort("followup=true requires a self-contained ZIP, not a legacy handoff JSON")
         if handoff is not None and handoff.repository != root.name:
             raise Abort("Handoff parameters belong to a different repository")
         if status_only:
@@ -330,7 +346,8 @@ def main():
                 show_unresolved_operations(state, root)
                 workflow = Workflow(root, config, handoff, state,
                                     force=args.mode == "force", loose=args.mode == "loose",
-                                    zip_selected=zip_selected, progress_recorder=recorder)
+                                    zip_selected=zip_selected, allow_followup_zip=args.followup,
+                                    progress_recorder=recorder)
                 if args.op_seq is not None:
                     selections = iter(selected_handoffs)
 

@@ -119,6 +119,8 @@ class OperationPresentation:
                 raise Abort(f"Action unavailable: {reason}")
             if number in {2, 3}:
                 self.branch_patch.assert_patch_order()
+            if number == 3 and self.loose:
+                self.loose_actions.assert_followup_selection()
             if not self.skip_previous_cycles:
                 self.handle_previous_cycles()
             operation_evidence = operation()
