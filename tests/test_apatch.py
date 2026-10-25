@@ -134,6 +134,22 @@ class LocalGitWorkflowTest(unittest.TestCase):
                 archive.writestr(f"{self.root.name}/.apatch/params.json", json.dumps(parameters))
         return self.zip.stem
 
+    def make_followup_zip(self, *, filename="example_service-PATCH-followup.zip", override=None,
+                          extra_files=None):
+        """Create a second real handoff for cumulative multi-ZIP sequence tests."""
+        archive_path = self.base / "downloads" / filename
+        payload = {key: value for key, value in self.payload.items() if key != "patch_sha256"}
+        payload["patch_file"] = filename
+        payload["commit_message"] = "test: combine verified patches\n\n- Include both changes."
+        payload.update(override or {})
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr(f"{self.root.name}/existing.txt", "second revision\n")
+            archive.writestr(f"{self.root.name}/second.txt", "second patch\n")
+            for relative, data in (extra_files or {}).items():
+                archive.writestr(f"{self.root.name}/{relative}", data)
+            archive.writestr(f"{self.root.name}/.apatch/params.json", json.dumps(payload))
+        return archive_path
+
     def invoke_zip(self, *options, selection=None, text=""):
         arguments = ([selection] if selection is not None else []) + list(options)
         return subprocess.run([sys.executable, str(self.bin / "apatch.py"), *arguments],
@@ -186,6 +202,111 @@ class LocalGitWorkflowTest(unittest.TestCase):
         stale_bap = self.invoke_zip("op=2", "skipApproves=true")
         self.assertEqual(stale_bap.returncode, 2)
         self.assertIn("deprecated", stale_bap.stderr)
+
+    def test_multi_zip_sequence_combines_patches_and_final_status(self):
+        first = self.make_self_contained_zip()
+        second = self.make_followup_zip()
+        result = self.invoke_zip("opSeq=APL,BRN,APL,CHK,CMT,STS",
+                                 f"handoffSeq={first},{second.stem}", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(result.stdout.count("SEQUENCE ACTION 3 [APL]"), 2)
+        self.assertIn(f"Selected ZIP: {self.zip.name}", result.stdout)
+        self.assertIn(f"Selected ZIP: {second.name}", result.stdout)
+        self.assertIn("Backed up 1 overlapping file", result.stdout)
+        self.assertIn("PATCH STATUS 10 [STS]", result.stdout)
+        self.assertIn(f"Patch: {second.name}", result.stdout)
+        self.assertIn("SEQUENCE RESULT: SUCCESS", result.stdout)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         self.payload["feature_branch"])
+        self.assertEqual((self.root / "existing.txt").read_text(), "second revision\n")
+        self.assertEqual((self.root / "new.txt").read_text(), "new\n")
+        self.assertEqual((self.root / "second.txt").read_text(), "second patch\n")
+        self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, "")
+        self.assertEqual(len(AppliedPatchHistory(self.history_path).entries), 2)
+        workflows = json.loads(self.state_path.read_text())["workflows"]
+        self.assertEqual(len(workflows), 2)
+        self.assertTrue(all(record["phase"] == "committed" for record in workflows.values()))
+        self.assertEqual(json.loads((self.root / ".apatch" / "params.json").read_text())["patch_file"],
+                         second.name)
+        changed = command("git", "show", "--pretty=", "--name-only", "HEAD", cwd=self.root).stdout.splitlines()
+        self.assertEqual(set(changed), {"existing.txt", "new.txt", "second.txt"})
+
+    def test_multi_zip_shell_launcher_accepts_download_paths_and_pushes_combined_commit(self):
+        first = self.make_self_contained_zip()
+        second = self.make_followup_zip()
+        self.prepare_test_launcher()
+        result = subprocess.run(
+            ["sh", str(self.bin / "apatch.sh"), first,
+             "opSeq=APL,BRN,APL,CHK,CMT,PSH,STS",
+             f"handoffSeq={self.zip},{second}", "skipApproves=true"],
+            cwd=self.root, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("SEQUENCE ACTION 10 [STS]", result.stdout)
+        self.assertNotIn("step 7/7", result.stdout.lower())
+        self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, "")
+        commit = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        remote = command("git", "ls-remote", "--heads", "origin",
+                         "refs/heads/feature/test-local-handoff", cwd=self.root).stdout.split()[0]
+        self.assertEqual(commit, remote)
+        records = json.loads(self.state_path.read_text())["workflows"]
+        self.assertEqual(len(records), 2)
+        self.assertEqual({record.get("pushed_sha") for record in records.values()}, {commit})
+
+    def test_single_explicit_handoff_sequence_matches_normal_zip_workflow(self):
+        first = self.make_self_contained_zip()
+        result = self.invoke_zip("opSeq=APL,BRN,CHK", f"handoffSeq={first}",
+                                 "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("SEQUENCE RESULT: SUCCESS", result.stdout)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         self.payload["feature_branch"])
+
+    def test_multi_zip_preflight_rejects_inconsistent_inputs_without_side_effects(self):
+        first = self.make_self_contained_zip()
+        second = self.make_followup_zip()
+        valid = f"handoffSeq={first},{second.stem}"
+        invalid = (
+            ("opSeq=APL,BRN,APL,CHK", f"handoffSeq={first}"),
+            ("opSeq=APL,BRN,APL,CHK", f"handoffSeq={first},{first}"),
+            ("opSeq=APL,APL,BRN,CHK", valid),
+            ("opSeq=APL,BRN,APL,CMT,CHK", f"handoffSeq={first},missing"),
+            ("opSeq=APL,BRN,APL", f"handoffSeq={first},../{second.name}"),
+            ("opSeq=APL,BRN,APL", valid, "--strict"),
+            ("opSeq=APL,BRN,APL", valid, "--force"),
+            ("opSeq=APL,BRN,APL,CMT,APL", valid),
+            ("opSeq=APL", f"handoffSeq={first},{second.stem}"),
+            ("op=APL", valid),
+            ("opSeq=APL,BRN,APL", valid, self.zip.stem + "-wrong"),
+            ("opSeq=APL,BRN,APL", f"handoffSeq={first},{self.base / second.name}"),
+        )
+        for options in invalid:
+            with self.subTest(options=options):
+                result = self.invoke_zip(*options, "skipApproves=true")
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertFalse((self.root / "new.txt").exists())
+                self.assertFalse(self.state_path.exists())
+                self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                                 "main")
+        branch_mismatch = self.make_followup_zip(override={"feature_branch": "feature/other"})
+        failed = self.invoke_zip("opSeq=APL,BRN,APL", valid, "skipApproves=true")
+        self.assertEqual(failed.returncode, 2)
+        self.assertIn("same feature branch", failed.stderr)
+        self.assertFalse((self.root / "new.txt").exists())
+        self.assertFalse(self.state_path.exists())
+
+    def test_multi_zip_check_failure_stops_before_commit_and_keeps_second_cache(self):
+        first = self.make_self_contained_zip()
+        second = self.make_followup_zip(extra_files={"run_checks.sh": "#!/bin/sh\nexit 1\n"})
+        result = self.invoke_zip("opSeq=APL,BRN,APL,CHK,CMT",
+                                 f"handoffSeq={first},{second.stem}", "skipApproves=true")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("SEQUENCE STOP: 4 [CHK]", result.stdout)
+        self.assertNotIn("SEQUENCE ACTION 5 [CMT]", result.stdout)
+        self.assertEqual((self.root / "second.txt").read_text(), "second patch\n")
+        self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(), self.head)
+        self.assertEqual(json.loads((self.root / ".apatch" / "params.json").read_text())["patch_file"],
+                         second.name)
 
     def test_self_contained_zip_invalid_metadata_does_not_extract_or_cache(self):
         for variant in ({"repository": "elsewhere"}, {"patch_sha256": "0" * 64},

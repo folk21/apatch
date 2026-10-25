@@ -100,7 +100,18 @@ class LooseActions:
         before = status_paths(w.root)
         zip_first = archive.embedded_handoff is not None and branch == w.config.base
         if archive.embedded_handoff is not None and branch != w.config.base and w.phase == "new":
-            raise Abort("A new self-contained ZIP must be applied to the base branch before BRN")
+            predecessors = (record for record in w.state["workflows"].values()
+                            if isinstance(record, dict)
+                            and record.get("repository") == str(w.root.resolve())
+                            and record.get("branch") == w.handoff.branch
+                            and record.get("applied_branch") == branch
+                            and record.get("phase") in {"patch_applied", "verified"}
+                            and record.get("before_patch_head") == head(w.root)
+                            and record.get("remote_url") == output(
+                                ["git", "remote", "get-url", w.config.remote], w.root))
+            if not (w.allow_followup_zip and branch == w.handoff.branch and any(predecessors)):
+                raise Abort("A new self-contained ZIP must start on the base branch; "
+                            "a follow-up on the feature branch requires an explicit multi-ZIP sequence")
         if zip_first and before:
             raise Abort("A new self-contained ZIP must start on a clean base branch")
         if zip_first:

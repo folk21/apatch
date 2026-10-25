@@ -73,10 +73,43 @@ The output identifies the last completed operation and actions
 not executed, so inspect `op=STS` and resume explicitly with `op=` or a
 shorter `opSeq`. Never automatically rerun an uncertain remote mutation.
 
-`op` and `opSeq` are mutually exclusive. Reject empty/unknown operations,
-`EXT` in a sequence, or more than one apply action (`APL`/legacy `BAP`) with
-the same handoff. Different ZIPs in one sequence are not yet supported.
-Legacy JSON-based sessions retain the old branch-first recovery path.
+`op` and `opSeq` are mutually exclusive. Empty/unknown operations, `EXT` in a
+sequence, and repeated `APL` without distinct explicit ZIP selections are
+rejected. Legacy JSON-based sessions retain the old branch-first recovery path.
+
+### Several ZIPs before one commit (`handoffSeq`)
+
+In **LOOSE** mode, pair each `APL` with a distinct self-contained ZIP using
+`handoffSeq`. The first ZIP is applied on the clean base branch, `BRN` moves
+its uncommitted changes onto the feature branch, and subsequent ZIPs accumulate
+there before one set of checks and one combined commit:
+
+```bash
+/path/to/apatch/apatch.sh opSeq=APL,BRN,APL,CHK,CMT,PSH,STS \
+  handoffSeq=first-patch.zip,second-patch.zip skipApproves=true
+```
+
+An optional positional ZIP stem/basename must match the first `handoffSeq`
+entry. ZIP stems, basenames, and paths resolving **inside** the configured
+`downloads_dir` are accepted; archives outside that directory are rejected.
+All ZIPs must exist, contain valid embedded handoff metadata, target this
+repository, and specify the **same feature branch**. The number and order of
+ZIPs must match the `APL` actions exactly. `apatch` validates all selected
+archives before starting any action. `BRN` is required immediately after the
+first `APL` and must occur exactly once; commit, push, PR, merge, and sync
+cannot precede the final `APL`. Multi-ZIP sequences are not supported in
+STRICT or FORCE modes. Single-ZIP sequences and individual actions remain
+unchanged.
+
+Overlapping changes require confirmation and are backed up under
+`.apatch/backups/` before replacement. `skipApproves=true` permits that
+replacement without a prompt, so review the ZIP contents before execution.
+Earlier applied-patch history and checkpoints are preserved; the project-local
+`.apatch/params.json` cache points to the **last successfully applied ZIP**.
+The final ZIP supplies the combined commit message; ensure that it describes
+all changes. A failed step stops the sequence without rolling back earlier
+applications. Resume only after checking Git state and the relevant ZIP
+checkpoint. Without `handoffSeq`, repeated `APL` is rejected at preflight.
 
 Outcome lines use `SUCCESS` for an observed state transition,
 `ALREADY_SATISFIED` for a positively reverified `SYN`, `NO_OP` for other
@@ -174,7 +207,7 @@ LOOSE is active automatically and is useful when several patches should accumula
 
 LOOSE keeps the Git and ZIP integrity guards but treats workflow drift as a warning. It permits a checked-out branch other than the handoff's suggested branch, an existing dirty worktree, changed files after verification, and a stale handoff `base_commit`. Such mismatches are displayed before the relevant action; commits require explicit confirmation unless `skipApproves=true`. LOOSE never uses `git push --force`.
 
-To combine later patches, apply the first ZIP on the base branch, run `BRN`, and leave the changes uncommitted. Legacy JSON handoffs can still be applied on an existing feature branch using action 3. A new self-contained ZIP must start with `APL` on the base; switching between different embedded handoffs after the initial branch transfer is reserved for the future multi-handoff stage. Existing unrelated edits remain untouched in legacy LOOSE flows. If a legacy archive overlaps with uncommitted changes, `apatch` requests approval and backs up the replaced contents under `.apatch/backups/`.
+To combine later patches, use `handoffSeq` as described above: apply the first ZIP on the base branch, run `BRN`, and apply the remaining ZIPs on that feature branch before committing. Legacy JSON handoffs can still be applied on an existing feature branch using action 3. An individual, newly selected self-contained ZIP must start with `APL` on the base; follow-up self-contained ZIPs on the feature branch are allowed only in the explicit, verified multi-ZIP sequence. Existing unrelated edits remain untouched in legacy LOOSE flows. If an archive overlaps with uncommitted changes, `apatch` requests approval and backs up the replaced contents under `.apatch/backups/`.
 
 After the final patch, action 4 runs the project's canonical checks. Git whitespace warnings are reported but do not prevent those checks from running. Action 5 reviews and commits **all** currently changed and staged paths using the active handoff's `commit_message`, without pushing. Check that the message describes the combined change. Action 6 pushes the current branch separately, either now or in a later invocation. Pushes must be fast-forward operations and can only publish committed Git history; any remaining dirty files stay local.
 

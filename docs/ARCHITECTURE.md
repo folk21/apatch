@@ -35,6 +35,19 @@ does not roll back completed Git side effects. A singleton `opSeq=STS` uses the
 same early read-only path as direct `STS`. Canonical action identities are
 defined in `apatch_lib/workflow.py`.
 
+An explicit `handoffSeq` maps one distinct, verified self-contained ZIP to each
+`APL` in an `opSeq`. All selected ZIPs are validated before the writable state
+lock is acquired, including repository identity and the shared feature branch.
+For multi-ZIP sequences, LOOSE alone permits `APL,BRN,APL,...` on the same
+feature branch. The second and later ZIPs require a prior pending, recorded
+patch on that branch at the current HEAD; BRN cannot be repeated and publishing
+cannot start before the last APL. Each APL owns a separate workflow checkpoint
+and applied-patch history entry. Previously applied changes and backups remain
+in place; one deferred CMT can record the same commit SHA against all pending
+patch checkpoints. The cache is updated only after each successful APL, so
+`STS` and later invocations use the latest successfully applied handoff. A
+failed action stops the sequence without undoing earlier effects.
+
 `RemoteOutcomeUnknown` identifies GitHub PR create/merge transport failures and
 unverifiable post-mutation responses without conflating them with known
 failures. The workflow displays `UNKNOWN_REMOTE_RESULT`, preserves the
@@ -72,7 +85,7 @@ Keep safety validation close to its owning domain. Avoid distributing the same c
 
 ## Modes and operation semantics
 
-`LOOSE` is the default. It tolerates a branch different from the planned feature branch, intentional manual edits, successive patch handoffs, and deferred commit/push. In LOOSE, action `CMT` creates a commit without pushing, while `PSH` publishes existing commits later.
+`LOOSE` is the default. It tolerates a branch different from the planned feature branch, intentional manual edits, explicit sequenced follow-up ZIP handoffs, and deferred commit/push. In LOOSE, action `CMT` creates a commit without pushing, while `PSH` publishes existing commits later.
 
 `STRICT` enforces the expected branch, clean-tree state, and phase transitions. `FORCE` explicitly reconciles manual operations, but it does not bypass unsafe archive, Git remote, or GitHub policy checks. In STRICT and FORCE, the `CMT` action uses their combined commit/push workflow. The detailed action matrix is maintained in [Usage](USAGE.md#workflow).
 

@@ -42,7 +42,7 @@ def action_number(value):
 
 class Workflow:
     def __init__(self, root: Path, config, handoff, state, *, force=False, loose=False,
-                 skip_previous_cycles=False, zip_selected=False):
+                 skip_previous_cycles=False, zip_selected=False, allow_followup_zip=False):
         self.root = root
         self.config = config
         self.handoff = handoff
@@ -50,6 +50,7 @@ class Workflow:
         self.force = force
         self.loose = loose
         self.zip_selected = zip_selected
+        self.allow_followup_zip = allow_followup_zip
         key_data = f"{root.resolve()}\0{handoff.branch}\0{handoff.patch}"
         self.key = hashlib.sha256(key_data.encode()).hexdigest()
         self.record = state["workflows"].get(self.key, {})
