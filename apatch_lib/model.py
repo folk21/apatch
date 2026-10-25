@@ -201,12 +201,20 @@ def load_handoff(path: Path) -> Handoff:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise Abort(f"Cannot read handoff JSON: {exc}") from exc
+
+    return parse_handoff_payload(payload)
+
+
+def parse_handoff_payload(payload, *, embedded=False) -> Handoff:
+    """Validate identical handoff fields from external JSON or reserved ZIP metadata."""
     if not isinstance(payload, dict) or payload.get("schema_version") != 1:
         raise Abort("Unsupported handoff schema_version")
     expected = {"schema_version", "repository", "feature_branch", "patch_file", "commit_message",
                 "base_commit", "patch_sha256", "delete_paths"}
     if set(payload) - expected:
         raise Abort(f"Unknown handoff keys: {sorted(set(payload) - expected)}")
+    if embedded and "patch_sha256" in payload:
+        raise Abort("Embedded ZIP parameters must not contain the ZIP's own patch_sha256")
     repo, branch = payload.get("repository"), payload.get("feature_branch")
     patch, msg = payload.get("patch_file"), payload.get("commit_message")
     if not isinstance(repo, str) or not re.fullmatch(r"[A-Za-z0-9._-]+", repo):

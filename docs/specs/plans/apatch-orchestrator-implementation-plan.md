@@ -411,6 +411,8 @@ def receive_reserved_registry_member(existing, incoming):
 
 ### P0.3c — File-level implementation: ZIP-only handoff and apply-first branching
 
+**Implementation checkpoint (2026-10-25):** The source now supports ZIP-embedded handoff schema validation, a verified local `params.json` cache, `APL` on the base followed by `BRN`, no-positional continuation, `opSeq=APL,BRN,...`, and explicit matching-ZIP recovery when cache persistence was interrupted. Black-box tests cover LOOSE/STRICT/FORCE and legacy JSON compatibility. The non-breaking migration retains numeric `2 [BAP]` for explicit legacy JSON handoffs only; strict AC-54 retirement remains pending an intentional breaking-compatibility decision. User-installed tool versions remain independent of this source checkpoint.
+
 **Objective:** Remove the recurring JSON download and positional JSON requirement while preserving the exact current patch identity across independent invocations. Start a new workflow with `APL`, then create the feature branch with `BRN`; never commit on the base branch. **Prerequisites:** P0.3a/b registry metadata handling, unfinished-feature-branch preflight, validated ZIP bytes, legacy handoff state and mode tests. This is a deliberately distinct implementation/review checkpoint before `opSeq` and the console-style changes of P0.4a.
 
 **Non-goals:** Automatic Git commits on `main`, arbitrary ZIP discovery by modification time, invisible branch creation inside `APL`, automatic reapplication on retry, renumbering existing operations, weakening STRICT/FORCE identity checks, and changing the configured GitHub approval/CI policies. The first upgrade still needs a legacy ZIP+JSON bootstrap handoff; ZIP-only responses begin with the *next* patch after the new runtime is installed.

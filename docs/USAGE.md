@@ -10,23 +10,23 @@ Start `apatch` **from the root of the project repository** whose development wor
 /path/to/apatch/apatch.sh apatch-PATCH-2026-10-24-00-42-example
 ```
 
-The **required** positional handoff identifier is the JSON stem or explicit JSON path. For example, `apatch.sh apatch-PATCH-2026-10-24-00-42-example` reads `<downloads_dir>/apatch-PATCH-2026-10-24-00-42-example.json`. An unqualified filename already ending in `.json` is also read from `downloads_dir`; `./relative/path.json`, `../relative/path.json`, and absolute paths select that explicit file. For a path lacking the extension, `.json` is appended. There is **no default handoff** inferred from the project directory. Missing names fail before Git operations. Use `--help` without a handoff to inspect CLI options.
+For a new self-contained patch, the positional identifier is a ZIP stem or basename under `downloads_dir` (`~/Downloads` by default). The ZIP must embed one regular `<repository>/.apatch/params.json` member with the schema-v1 repository name, feature branch, ZIP filename, commit message, and optional base commit or deletions; it must omit its own SHA-256 field. `apatch` verifies the final ZIP hash and saves the validated handoff under the target repository's Git-ignored `.apatch/params.json`. Subsequent invocations can omit the identifier and load this cache. An absent, malformed, unsafe, or wrong-project cache is an error; the tool never guesses the most recent download.
 
-Each patch ZIP has its own JSON with the **same basename and a `.json` extension**, so multiple handoffs can coexist without overwriting one another. The JSON `patch_file` field still names its `.zip` partner.
+For compatibility, explicit legacy JSON handoffs still work: an unqualified `.json` filename or stem resolves under `downloads_dir` when a matching legacy file exists, and an absolute or relative JSON path is accepted. A ZIP filename ending in `.zip` unambiguously selects embedded ZIP parameters. The P0.3c upgrade itself uses the old ZIP-plus-JSON bootstrap; future handoffs need only the ZIP.
 
-The argument is a JSON file describing the intended change. Global configuration is read from `apatch.conf` next to `apatch.py`; project verification commands and optional log directory overrides are read from the target repository's `.apatch/config.yaml`. The tool presents the actions currently available, validates the repository state before each operation, and records progress so the workflow can resume on a later invocation.
+Global configuration is read from `apatch.conf` next to `apatch.py`; project verification commands and optional log directory overrides are read from the target repository's `.apatch/config.yaml`. The tool presents the actions currently available, validates the repository state before each operation, and records progress so the workflow can resume on a later invocation.
 
 **LOOSE is the default execution mode.** Modes can be selected on the command line:
 
 | Mode | Invocation | Behavior |
 | --- | --- | --- |
-| **LOOSE (default)** | `apatch.sh <stem>` or `apatch.sh <stem> loose` | Allows manual edits, different branches, several patches per commit, and deferred push. |
-| **STRICT** | `apatch.sh <stem> strict` or `apatch.sh --strict <stem>` | Enforces the expected workflow phase, branch, and verification requirements. |
-| **FORCE** | `apatch.sh <stem> force` or `apatch.sh --force <stem>` | Reconciles externally performed Git operations, retaining integrity checks. |
+| **LOOSE (default)** | `apatch.sh <zip-stem>` or `apatch.sh` | Allows manual edits, different branches, several patches per commit, and deferred push. |
+| **STRICT** | `apatch.sh <zip-stem> strict` or `apatch.sh --strict` | Enforces the expected workflow phase, branch, and verification requirements. |
+| **FORCE** | `apatch.sh <zip-stem> force` or `apatch.sh --force` | Reconciles externally performed Git operations, retaining integrity checks. |
 
 ### One unfinished feature branch at a time
 
-Before creating any **new** `feature/...` branch with `BRN` or `BAP`, `apatch` verifies that no other feature branch is left unfinished. This gate runs in **all three modes**, including FORCE, and **cannot be disabled** through configuration or `skipApproves=true`.
+Before creating any **new** `feature/...` branch with `BRN` (or deprecated legacy `BAP`), `apatch` verifies that no other feature branch is left unfinished. This gate runs in **all three modes**, including FORCE, and **cannot be disabled** through configuration or `skipApproves=true`.
 
 - An open GitHub PR or a remote feature branch that cannot be confirmed merged into the remote base blocks creation with `сначала смерджи fb: <branch>` and identifying details.
 - A local-only feature branch with commits not in the local base blocks creation with `Unfinished local feature branch <branch> ...`. Uncommitted changes on the currently checked-out feature branch also block starting a new one.
@@ -36,17 +36,17 @@ Before creating any **new** `feature/...` branch with `BRN` or `BAP`, `apatch` v
 
 The guard runs before the new Git ref and associated patch changes are created. It checks live Git/PR evidence rather than assuming that a previous apatch checkpoint proves a merge. Ordinary `APL` on an already selected branch does not start a new feature branch and is unaffected.
 
-Use `apatch.sh --help` to see the modes, direct-action selection, and automation parameters. The interactive menu also displays the active mode and the other available modes. Replace `<stem>` in examples with your actual JSON filename without `.json`.
+Use `apatch.sh --help` to see the modes, direct-action selection, and automation parameters. The interactive menu also displays the active mode and the other available modes. Replace `<zip-stem>` in examples with your ZIP filename without `.zip`.
 
 ### Several operations in one invocation (`opSeq`)
 
 `opSeq` runs its comma-separated actions in order using the same checks and
 guards as individual `op` calls. Numbers and codes can be mixed. In the
-current JSON-handoff runtime, use the existing branch-first order:
+new self-contained ZIP workflow, apply first and create the branch second:
 
 ```bash
-/path/to/apatch/apatch.sh <stem> opSeq=BRN,APL,CHK,CMT,PSH skipApproves=true
-/path/to/apatch/apatch.sh <stem> opSeq=1,3,4,5,6 skipApproves=true
+/path/to/apatch/apatch.sh <zip-stem> opSeq=APL,BRN,CHK,CMT,PSH skipApproves=true
+/path/to/apatch/apatch.sh <zip-stem> opSeq=3,1,4,5,6 skipApproves=true
 ```
 
 `skipApproves=true` suppresses confirmation prompts in **every** step, but does
@@ -58,10 +58,9 @@ not executed, so inspect `op=STS` and resume explicitly with `op=` or a
 shorter `opSeq`. Never automatically rerun an uncertain remote mutation.
 
 `op` and `opSeq` are mutually exclusive. Reject empty/unknown operations,
-`EXT`/`STS` in a sequence, or more than one apply action (`APL`/`BAP`) with
+`EXT`/`STS` in a sequence, or more than one apply action (`APL`/legacy `BAP`) with
 the same handoff. Different ZIPs in one sequence are not yet supported.
-The future ZIP-only runtime will support `APL,BRN,...` instead of the current
-branch-first examples; do not use that order with STRICT before migration.
+Legacy JSON-based sessions retain the old branch-first recovery path.
 
 Outcome lines use `SUCCESS` for an observed state transition, `NO_OP` for an
 unchanged action, `CANCELLED` for a declined confirmation, and `ERROR` for a
@@ -82,29 +81,32 @@ Every menu action can be invoked directly by number or by its mnemonic code (2-4
 # Equivalent mnemonic form (case-insensitive; displayed as APL).
 /path/to/apatch/apatch.sh <stem> op=APL skipApproves=true
 
-# Verify, then commit without pushing, then push in separate invocations.
-/path/to/apatch/apatch.sh <stem> op=4 skipApproves=true
-/path/to/apatch/apatch.sh <stem> op=5 skipApproves=true
-/path/to/apatch/apatch.sh <stem> op=6 skipApproves=true
+# Move newly applied ZIP changes to the feature branch before verification.
+/path/to/apatch/apatch.sh op=BRN skipApproves=true
+
+# Verify, then commit without pushing, then push in separate LOOSE invocations.
+/path/to/apatch/apatch.sh op=4 skipApproves=true
+/path/to/apatch/apatch.sh op=5 skipApproves=true
+/path/to/apatch/apatch.sh op=6 skipApproves=true
 
 # The same sequence using action mnemonics.
-/path/to/apatch/apatch.sh <stem> op=CHK skipApproves=true
-/path/to/apatch/apatch.sh <stem> op=CMT skipApproves=true
-/path/to/apatch/apatch.sh <stem> op=PSH skipApproves=true
+/path/to/apatch/apatch.sh op=CHK skipApproves=true
+/path/to/apatch/apatch.sh op=CMT skipApproves=true
+/path/to/apatch/apatch.sh op=PSH skipApproves=true
 
 # Choose STRICT or FORCE explicitly when necessary.
-/path/to/apatch/apatch.sh <stem> strict op=4
-/path/to/apatch/apatch.sh <stem> force op=5 skipApproves=true
+/path/to/apatch/apatch.sh strict op=4
+/path/to/apatch/apatch.sh force op=5 skipApproves=true
 
 # Use an explicit handoff path with automation parameters.
 /path/to/apatch/apatch.sh /path/to/change_params.json strict op=4 skipApproves=false
 
 # Inspect the current patch without modifying Git, checkpoints, or history.
-/path/to/apatch/apatch.sh <stem> op=STS
-/path/to/apatch/apatch.sh <stem> strict op=10
+/path/to/apatch/apatch.sh op=STS
+/path/to/apatch/apatch.sh strict op=10
 
-# Filter stored status by ZIP basename while still selecting a handoff.
-/path/to/apatch/apatch.sh <stem> op=STS patch=example-PATCH-01.zip
+# Filter stored status by ZIP basename while still selecting the cached handoff.
+/path/to/apatch/apatch.sh op=STS patch=example-PATCH-01.zip
 ```
 
 `op=0` or `op=EXT` exits. Numbers `1`-`9` retain their original operations; `10`/`STS` is the read-only status command. Without `op`, the menu stays interactive and accepts either numbers or codes (for example `APL`). The Python entry point also accepts `--op=3`, `--op=APL`, `--op=STS`, `--skip-approves=true`, `--strict`, `--loose`, and `--force`.
@@ -122,7 +124,7 @@ Each status fact carries an evidence label:
 | `UNKNOWN` | Insufficient trustworthy evidence (including missing fields in older states). |
 | `CONFLICT` | Available local Git facts contradict the saved checkpoint. |
 
-Status does not contact GitHub or the Git remote by default. A recorded PR number or pushed SHA is not proof of its current remote state. It does not require the original ZIP and does not write to the worktree, Git refs, state file, history, or logs. An explicit handoff JSON **is required**, including for `STS`. When multiple stored workflows match, `patch=NAME.zip` can narrow the query, but cannot substitute for the handoff argument. Status cannot infer operations performed manually but never checkpointed.
+Status does not contact GitHub or the Git remote by default. A recorded PR number or pushed SHA is not proof of its current remote state. It does not require the original ZIP and does not write to the worktree, Git refs, state file, history, or logs. It reads the cached handoff or an explicit legacy JSON; a missing cache requires an explicit selection. When multiple stored workflows match, `patch=NAME.zip` can narrow the query, but cannot substitute for the handoff selection. Status cannot infer operations performed manually but never checkpointed.
 
 After a successful, state-changing action, the result footer includes a potential next operation. A cancelled or unchanged action reports that no success-path recommendation can be assumed. A failed action stops with a nonzero exit code.
 
@@ -146,7 +148,7 @@ LOOSE is active automatically and is useful when several patches should accumula
 
 LOOSE keeps the Git and ZIP integrity guards but treats workflow drift as a warning. It permits a checked-out branch other than the handoff's suggested branch, an existing dirty worktree, changed files after verification, and a stale handoff `base_commit`. Such mismatches are displayed before the relevant action; commits require explicit confirmation unless `skipApproves=true`. LOOSE never uses `git push --force`.
 
-To combine patches, apply the first ZIP using action 3 and leave the changes uncommitted. Run `apatch.sh <next-patch-stem> loose` with the **next patch's separate JSON**, from the same branch, and select action 3 again. Existing unrelated edits remain untouched. If the new archive contains a path with uncommitted changes, `apatch` lists those paths, requires approval, and backs up their previous contents under `.apatch/backups/` before replacing them. These backups are Git-ignored and are not deleted automatically. The archive still contains whole replacement files, not line-based merges: inspect overlapping edits before approving replacement.
+To combine later patches, apply the first ZIP on the base branch, run `BRN`, and leave the changes uncommitted. Legacy JSON handoffs can still be applied on an existing feature branch using action 3. A new self-contained ZIP must start with `APL` on the base; switching between different embedded handoffs after the initial branch transfer is reserved for the future multi-handoff stage. Existing unrelated edits remain untouched in legacy LOOSE flows. If a legacy archive overlaps with uncommitted changes, `apatch` requests approval and backs up the replaced contents under `.apatch/backups/`.
 
 After the final patch, action 4 runs the project's canonical checks. Git whitespace warnings are reported but do not prevent those checks from running. Action 5 reviews and commits **all** currently changed and staged paths using the active handoff's `commit_message`, without pushing. Check that the message describes the combined change. Action 6 pushes the current branch separately, either now or in a later invocation. Pushes must be fast-forward operations and can only publish committed Git history; any remaining dirty files stay local.
 
@@ -173,7 +175,7 @@ FORCE is **not** a Git `--force` push. It never rewrites remote history, overwri
 
 ## Change description
 
-The JSON file identifies the target repository, feature branch, archive containing project changes, and commit message. For example:
+The embedded ZIP metadata (or explicit legacy JSON handoff) identifies the target repository, feature branch, archive containing project changes, and commit message. For example:
 
 ```json
 {
@@ -200,7 +202,7 @@ Optional fields:
 | Field | Meaning |
 | --- | --- |
 | `base_commit` | Expected Git commit before changes are applied. |
-| `patch_sha256` | SHA-256 digest of the archive for integrity verification. |
+| `patch_sha256` | SHA-256 digest of the archive for integrity verification; permitted in external legacy JSON and the verified local cache, **forbidden inside the ZIP itself**. |
 | `delete_paths` | Repository-relative paths of tracked files to remove. |
 
 The archive is located using `downloads_dir` from `apatch.conf`. Its entries must be regular files inside one top-level directory whose name matches `repository`. Git metadata, unsafe paths, and unexpected entries are rejected. Keep `base_commit` and `patch_sha256` whenever these values are known.
@@ -212,9 +214,9 @@ The action numbers are consistent across modes, although their behavior and phas
 | `op` | Code | Default LOOSE behavior | STRICT / FORCE behavior |
 | --- | --- | --- | --- |
 | `0` | `EXT` | Exit | Exit |
-| `1` | `BRN` | Create or adopt the planned feature branch. | Create a new branch (STRICT); create/adopt (FORCE). |
-| `2` | `BAP` | Create/adopt the branch and apply the patch. | Create and apply (STRICT); create/adopt and apply/adopt (FORCE). |
-| `3` | `APL` | Apply another patch to the **current named branch**, retaining unrelated edits. | Apply to the current branch (STRICT); apply/adopt (FORCE). |
+| `1` | `BRN` | Move new ZIP changes from the base to the planned feature branch. | Same guarded move; legacy JSON workflows retain branch preparation. |
+| `2` | `BAP` | **Deprecated** for self-contained ZIPs; retained only for legacy JSON compatibility. | Same restriction. |
+| `3` | `APL` | Start a self-contained ZIP on a clean base branch; legacy JSON flows can apply on other named branches. | STRICT and FORCE apply-first flows validate the base branch; legacy adoption remains supported. |
 | `4` | `CHK` | Run/re-run configured checks, allowing manual edits. | Run/re-run configured checks, subject to STRICT phase rules. |
 | `5` | `CMT` | **Commit accumulated changes without pushing.** | Commit **and push** (STRICT and FORCE). |
 | `6` | `PSH` | **Push** committed history on the current branch. | Retry/reconcile a previous push. |

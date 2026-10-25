@@ -98,6 +98,15 @@ class LooseActions:
         branch = self.branch()
         archive = inspect(w.config, w.handoff, w.root)
         before = status_paths(w.root)
+        zip_first = archive.embedded_handoff is not None and branch == w.config.base
+        if archive.embedded_handoff is not None and branch != w.config.base and w.phase == "new":
+            raise Abort("A new self-contained ZIP must be applied to the base branch before BRN")
+        if zip_first and before:
+            raise Abort("A new self-contained ZIP must start on a clean base branch")
+        if zip_first:
+            w.assert_base()
+            if remote_head(w.root, w.config, w.config.base) != head(w.root):
+                raise Abort("Base branch differs from remote; cannot start an apply-first ZIP workflow")
         overlap = set(before) & (set(archive.changed) | set(w.handoff.delete_paths))
         if w.handoff.base_commit and head(w.root) != w.handoff.base_commit:
             print("WARNING: Current HEAD differs from the handoff base_commit. "
@@ -128,6 +137,7 @@ class LooseActions:
                 before_patch_head=head(w.root), archive_sha256=archive.sha256,
                 remote_url=output(["git", "remote", "get-url", w.config.remote], w.root),
                 loose_backup=backup,
+                zip_first=zip_first,
             )
             w.record.setdefault("branch_origin", "REUSED")
             for field in ("verified_fingerprint", "verified_head", "verified_branch",
