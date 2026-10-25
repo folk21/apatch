@@ -236,6 +236,28 @@ ChatGPT must not invent missing historical lines. If the latest created registry
 
 ## 5. Operation sequences (P0-4)
 
+**Priority override (P0.4a0):** Deliver single-handoff `opSeq` and explicit
+`skipApproves=true` support ahead of the P0.3c ZIP-only migration. On the
+pre-P0.3c runtime, callers MUST still supply the existing JSON handoff and use
+the currently supported branch-first sequence (`BRN,APL,...` or `BAP,...`) when
+needed. Execute each action using the normal mode-specific handler and its
+current guards. Reject ambiguous repeated application of the same ZIP, `EXT` or
+`STS` within a sequence, and invalid/conflicting CLI choices before any action.
+The future `APL,BRN,...` examples below apply only after P0.3c is installed.
+P0.4b multi-handoff sequences remain separate; no automatic handoff switching
+is implied by this priority change.
+
+Current single-handoff examples for P0.4a0:
+
+```bash
+apatch.sh <json-stem> opSeq=BRN,APL,CHK,CMT,PSH skipApproves=true
+apatch.sh <json-stem> opSeq=1,3,4,5,6 skipApproves=true
+```
+
+Omitting `skipApproves=true` retains normal step-level confirmations. An
+unattended sequence MUST stop if confirmation is unavailable; approval bypass
+never bypasses Git/ZIP/CI/review safeguards.
+
 ### 5.1 CLI
 
 Add direct execution of comma-separated operation numbers or acronyms:

@@ -38,6 +38,36 @@ The guard runs before the new Git ref and associated patch changes are created. 
 
 Use `apatch.sh --help` to see the modes, direct-action selection, and automation parameters. The interactive menu also displays the active mode and the other available modes. Replace `<stem>` in examples with your actual JSON filename without `.json`.
 
+### Several operations in one invocation (`opSeq`)
+
+`opSeq` runs its comma-separated actions in order using the same checks and
+guards as individual `op` calls. Numbers and codes can be mixed. In the
+current JSON-handoff runtime, use the existing branch-first order:
+
+```bash
+/path/to/apatch/apatch.sh <stem> opSeq=BRN,APL,CHK,CMT,PSH skipApproves=true
+/path/to/apatch/apatch.sh <stem> opSeq=1,3,4,5,6 skipApproves=true
+```
+
+`skipApproves=true` suppresses confirmation prompts in **every** step, but does
+not bypass branch checks, unsafe ZIP checks, CI policies, or GitHub review.
+Without the flag, normal confirmations remain required. A failed, interrupted,
+or unchanged/cancelled step stops the sequence; earlier successful steps are
+not rolled back. The output identifies the last completed step and actions
+not executed, so inspect `op=STS` and resume explicitly with `op=` or a
+shorter `opSeq`. Never automatically rerun an uncertain remote mutation.
+
+`op` and `opSeq` are mutually exclusive. Reject empty/unknown operations,
+`EXT`/`STS` in a sequence, or more than one apply action (`APL`/`BAP`) with
+the same handoff. Different ZIPs in one sequence are not yet supported.
+The future ZIP-only runtime will support `APL,BRN,...` instead of the current
+branch-first examples; do not use that order with STRICT before migration.
+
+Outcome lines use `SUCCESS` for an observed state transition, `NO_OP` for an
+unchanged action, `CANCELLED` for a declined confirmation, and `ERROR` for a
+known operation failure. Supported terminals
+show semantic colors; output redirected to a file remains plain text.
+
 ### Direct actions and unattended automation
 
 Every menu action can be invoked directly by number or by its mnemonic code (2-4 letters, shown beside the action number in the menu):

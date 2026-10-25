@@ -475,6 +475,20 @@ def branch_second(workflow):
 
 ### P0.4a/b — File-level implementation: sequential operations and multiple handoffs
 
+**Expedited P0.4a0 implementation order:** The developer requested immediate
+single-handoff operation sequences before P0.3c. First implement `opSeq`
+parsing, sequential reuse of the current action dispatch, `skipApproves=true`
+propagation, ordered progress, fail-stop reporting, and deterministic handling
+of unchanged actions against the existing explicit-JSON runtime. Use the
+current `BRN,APL,...` or `BAP,...` order. Test parsing and shell aliases,
+successful LOOSE operation chains, STRICT guard enforcement, intermediate
+failure, approval-required cancellation, and invalid preflight. Keep numeric
+aliases stable. The subsequent P0.3c migration will change the handoff source
+and recommended action order without introducing a second sequence engine.
+Finish the broader P0.4a console outcome/cancellation/unknown-remote contract
+independently if any of its acceptance tests remain unverified; defer
+`handoffSeq` and multiple different ZIPs to P0.4b.
+
 | File | Exact planned change |
 | --- | --- |
 | `apatch_lib/sequence.py` (**new**) | Define `OperationSequence`, parsed operation tokens, progress/error DTOs, preflight, single-threaded execution, and deterministic stop/recovery reporting. Reuse existing operation handlers instead of duplicating Git logic. |

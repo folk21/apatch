@@ -17,6 +17,7 @@ from .model import Abort
 
 LOGGER = logging.getLogger("apatch.commands")
 _SKIP_APPROVALS = ContextVar("apatch_skip_approvals", default=False)
+_CONFIRMATION_DECLINED = ContextVar("apatch_confirmation_declined", default=False)
 REDACT_FLAGS = {"--body", "--token", "--password", "--secret", "--api-key", "--authorization"}
 FAILURE_TAIL_LINES = 20
 FAILURE_TAIL_LINE_CHARS = 500
@@ -233,6 +234,18 @@ def confirm(question):
         LOGGER.warning("confirmation auto-approved question=%s", question)
         return True
     try:
-        return input(f"{question} Type YES to continue: ").strip() == "YES"
+        approved = input(f"{question} Type YES to continue: ").strip() == "YES"
+        if not approved:
+            _CONFIRMATION_DECLINED.set(True)
+        return approved
     except EOFError as exc:
+        _CONFIRMATION_DECLINED.set(True)
         raise Abort("Interactive confirmation required; use skipApproves=true to automate approvals") from exc
+
+
+def clear_confirmation_declined():
+    _CONFIRMATION_DECLINED.set(False)
+
+
+def confirmation_was_declined():
+    return _CONFIRMATION_DECLINED.get()

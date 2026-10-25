@@ -12,6 +12,7 @@ from apatch_lib.local_ignore import ensure_runtime_ignored
 from apatch_lib.logging_setup import LOG_FILENAME, configure, set_context
 from apatch_lib.migration import migrate_legacy_artifacts
 from apatch_lib.model import Abort, BASENAME_PATTERN, load_config, load_handoff, load_project_config
+from apatch_lib.sequence import OperationSequence, execute_sequence
 from apatch_lib.state import locked_state, read_state_snapshot
 from apatch_lib.status import display_status, inspect_patch, select_record
 from apatch_lib.workflow import ACTION_CODES, Workflow, action_number
@@ -30,6 +31,8 @@ def normalize_arguments(arguments):
     for argument in arguments:
         if argument.startswith("op="):
             normalized.append("--op=" + argument[len("op="):])
+        elif argument.startswith("opSeq="):
+            normalized.append("--op-seq=" + argument[len("opSeq="):])
         elif argument.startswith("patch="):
             normalized.append("--patch=" + argument[len("patch="):])
         elif argument.startswith("skipApproves="):
@@ -45,6 +48,13 @@ def parse_operation(value):
     except ValueError as exc:
         raise argparse.ArgumentTypeError(str(exc)) from exc
     return value.upper()
+
+
+def parse_operation_sequence(value):
+    try:
+        return OperationSequence.parse(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def resolve_handoff_path(identifier: str, downloads_dir: Path) -> Path:
@@ -70,13 +80,14 @@ def main():
         epilog=("Examples:\n"
                 "  apatch.sh apatch-PATCH-2026-10-24-00-42-example op=3 skipApproves=true\n"
                 "  apatch.sh apatch-PATCH-2026-10-24-00-42-example op=APL\n"
+                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example opSeq=BRN,APL,CHK,CMT,PSH skipApproves=true\n"
                 "  apatch.sh apatch-PATCH-2026-10-24-00-42-example op=STS\n"
                 "  apatch.sh apatch-PATCH-2026-10-24-00-42-example strict op=CHK\n"
                 "  apatch.sh apatch-PATCH-2026-10-24-00-42-example force op=CMT\n"
                 "Action codes: " + ", ".join(f"{i}={code}" for i, code in enumerate(ACTION_CODES)) + "\n"
                 "A handoff JSON stem or explicit JSON path is required for every invocation. "
                 "Bare stems resolve to <downloads_dir>/<stem>.json. "
-                "Without op=NUMBER or op=CODE, the numbered action menu is displayed. "
+                "Without op=NUMBER, op=CODE, or opSeq=CODE,CODE, the action menu is displayed. "
                 "skipApproves defaults to false and only skips confirmation prompts; "
                 "Git/archive safety checks remain active."),
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -90,8 +101,12 @@ def main():
     modes.add_argument("--force", action="store_const", const="force", dest="mode",
                        help="FORCE: reconcile manual Git operations without skipping safety checks")
     parser.set_defaults(mode="loose")
-    parser.add_argument("--op", type=parse_operation, metavar="NUMBER|CODE",
-                        help="Run an action directly by number (0-10) or uppercase code (e.g. APL, CHK, STS)")
+    operation_selection = parser.add_mutually_exclusive_group()
+    operation_selection.add_argument("--op", type=parse_operation, metavar="NUMBER|CODE",
+                                     help="Run one action by number (0-10) or code (e.g. APL, CHK, STS)")
+    operation_selection.add_argument("--op-seq", "--opSeq", type=parse_operation_sequence,
+                                     metavar="CODE,CODE,...",
+                                     help="Run sequential actions; stop after any error or no-op; pair with skipApproves=true for unattended use")
     parser.add_argument("--patch", metavar="NAME.zip",
                         help="Filter read-only STS by ZIP basename; a handoff is still required")
     parser.add_argument("--skip-approves", "--skipApproves", type=parse_boolean,
@@ -104,7 +119,7 @@ def main():
         handoff_path = resolve_handoff_path(args.handoff, config.downloads)
         if args.patch is not None and not BASENAME_PATTERN.fullmatch(args.patch):
             raise Abort("--patch must be an ASCII-safe ZIP basename")
-        if args.patch is not None and args.op not in {"STS", "10"}:
+        if args.patch is not None and (args.op_seq is not None or args.op not in {"STS", "10"}):
             raise Abort("--patch is only supported for op=STS")
         status_only = args.op in {"STS", "10"}
         handoff = load_handoff(handoff_path)
@@ -119,7 +134,7 @@ def main():
             record, patch, planned = select_record(root, state, handoff, patch=args.patch)
             display_status(inspect_patch(root, config, record, patch, planned, args.mode))
             return 0
-        menu_shown = args.op is None
+        menu_shown = args.op is None and args.op_seq is None
         if menu_shown:
             state = read_state_snapshot(config.state_path)
             preview = Workflow(root, config, handoff, state,
@@ -141,16 +156,21 @@ def main():
         log_path = configure(config.log_directory)
         logger = logging.getLogger("apatch")
         logger.info("invocation handoff=%s working_directory=%s mode=%s op=%s skip_approves=%s",
-                    handoff_path.expanduser(), root, args.mode, args.op, args.skip_approves)
+                    handoff_path.expanduser(), root, args.mode,
+                    args.op if args.op_seq is None else ",".join(ACTION_CODES[i] for i in args.op_seq.actions),
+                    args.skip_approves)
         logger.info("repository=%s feature=%s patch=%s", root, handoff.branch, handoff.patch)
         print(f"Log: {log_path}")
         token = set_skip_approvals(args.skip_approves)
         try:
             with locked_state(config.state_path) as state:
                 migrate_legacy_artifacts(root, script_dir, config, state)
-                Workflow(root, config, handoff, state,
-                         force=args.mode == "force", loose=args.mode == "loose").interactive(
-                             args.op, show_header=not menu_shown)
+                workflow = Workflow(root, config, handoff, state,
+                                    force=args.mode == "force", loose=args.mode == "loose")
+                if args.op_seq is not None:
+                    execute_sequence(workflow, args.op_seq)
+                else:
+                    workflow.interactive(args.op, show_header=not menu_shown)
         finally:
             reset_skip_approvals(token)
     except (Abort, KeyboardInterrupt, BlockingIOError) as exc:

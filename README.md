@@ -31,10 +31,11 @@ Examples of direct actions:
 /path/to/apatch/apatch.sh apatch-PATCH-2026-10-24-00-42-example op=APL
 /path/to/apatch/apatch.sh apatch-PATCH-2026-10-24-00-42-example op=CHK
 /path/to/apatch/apatch.sh apatch-PATCH-2026-10-24-00-42-example op=CMT skipApproves=true
+/path/to/apatch/apatch.sh apatch-PATCH-2026-10-24-00-42-example opSeq=BRN,APL,CHK,CMT,PSH skipApproves=true
 ```
 
 Review unattended operations carefully: `skipApproves=true` suppresses interactive confirmations but does not bypass Git or archive safety checks. See [Usage](docs/USAGE.md) for the full behavior and precautions.
 
 ## Development status
 
-The implementation and regression tests are available in this repository. The [orchestrator specification](docs/specs/active/spec-apatch-orchestrator.md), its [first-priority sub-specification](docs/specs/active/subspecs/subspec-01-workflow-control.md), and [implementation plan](docs/specs/plans/apatch-orchestrator-implementation-plan.md) remain **DRAFT** documents. The created-patch ordering guard and safe ZIP metadata transport (P0.3a/b) are implemented; operation sequences and later orchestration features remain planned. Inspect the source and tests rather than assuming every drafted feature is available.
+The implementation and regression tests are available in this repository. The [orchestrator specification](docs/specs/active/spec-apatch-orchestrator.md), its [first-priority sub-specification](docs/specs/active/subspecs/subspec-01-workflow-control.md), and [implementation plan](docs/specs/plans/apatch-orchestrator-implementation-plan.md) remain **DRAFT** documents. The created-patch ordering guard and safe ZIP metadata transport (P0.3a/b), plus expedited single-handoff operation sequences (P0.4a0), are implemented. Self-contained ZIP handoffs and multi-handoff sequences remain planned. Inspect the source and tests rather than assuming every drafted feature is available.
