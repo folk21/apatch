@@ -23,12 +23,13 @@ Complete small independently tested increments. Preserve existing CLI, handoff J
 | **P0.2f — GitHub read resilience and invocation-scoped identity** | Retry transient read-only GitHub failures once, never replay uncertain create/merge commands, and reuse an already verified repository identity through one merge/reconciliation operation while rechecking local origin. | AC-35–38; bounded retry, mutation no-retry, identity drift, mode/merge integration tests. |
 | **P0.3a — Registry validation and ordering** | New small `apatch_lib/created_patches.py` or another single owner; compare optional local registry to legacy-compatible `AppliedPatchHistory`. Guard `BAP`/`APL` in all modes *before* side effects. | AC-05/06/08, invalid lines/duplicates/symlinks, history migration tests. |
 | **P0.3b — Registry metadata transport** | Extend archive inspection/application to recognize a reserved `.apatch/created_patches.txt` member, validate append-only prefix, and store atomically as non-Git metadata. | AC-07, repeated ZIP, failed extraction/retry, ignored-file handling, no worktree false positives. Activate new ChatGPT packaging directive only once this is stable. |
+| **P0.3c — Self-contained ZIP and apply-first lifecycle (urgent)** | Embed handoff metadata in ZIP, cache verified parameters at `<target>/.apatch/params.json`, allow no-handoff continuation, retire `BAP`, and transfer uncommitted patch changes from base to feature branch through `APL` then `BRN`. | AC-49–55; legacy bootstrap, cache integrity/races, all execution modes, pending-change migration and recoverability. |
 | **P0.4a — `opSeq` core and console outcome clarity** | `apatch.py`, `apatch.sh`, `apatch_lib/workflow.py`, `apatch_lib/status.py`: parse existing operation IDs, dispatch sequentially, refresh state between steps, and present accurate, prominent result and next-step labels for standalone and sequenced actions. | AC-09/11/12/13/14/46–48, `skipApproves` true/false, parser parity, timeouts, terminal-color and no-op/error reporting. |
-| **P0.4b — Multiple handoffs** | Add explicit optional `handoffSeq` mapping for `BAP`/`APL`, retaining prior cycle state; verify preflight against duplicate or missing inputs. | AC-10/11, successive patches on one branch, combined commit/deferred push, STRICT rejection. |
+| **P0.4b — Multiple handoffs** | Add explicit optional `handoffSeq` mapping for `APL` ZIP selections, retaining prior cycle state; verify preflight against duplicate or missing inputs. | AC-10/11, successive patches on one feature branch, combined commit/deferred push, STRICT rejection. |
 | **P0.5a — Tool-wide progress event storage** | Append redacted structured events to `.apatch/progress/progress.json` under one interprocess lock; regenerate collision-safe per-project JSON views; handle partial updates and unavailable storage. | AC-39/42–45; concurrent local processes, crash recovery, storage permission and identity tests. |
 | **P0.5b — Progress query and configurable summaries** | Add read-only `info=PROGRESS` without handoff or target repository, global `progress_global_limit=8` and `progress_project_limit=3`, and project/global console summaries. | AC-40/41/43; CLI parser, non-Git invocation, display limits and no-side-effects tests. |
 
-Stages P0.3b, P0.4b and the final progress storage location depend on developer acceptance of [open decisions](../active/subspecs/subspec-01-workflow-control.md#8-open-decisions). The user-facing P0 features remain in the **first sub-spec** even when delivered over multiple safe increments.
+Stages P0.4b and the final progress storage location depend on developer acceptance of [open decisions](../active/subspecs/subspec-01-workflow-control.md#8-open-decisions). P0.3c additionally needs the stable-numbering migration decision recorded there before its irreversible CLI contract is finalized. The user-facing P0 features remain in the **first sub-spec** even when delivered over multiple safe increments.
 
 ### P0.1 — File-level implementation: current status and suggestions
 
@@ -408,6 +409,70 @@ def receive_reserved_registry_member(existing, incoming):
 
 **Acceptance checkpoint:** SUB-001 AC-05/06/07/08 and negative archive-path tests, including failure between source extraction and registry persistence without partial ledger truncation.
 
+### P0.3c — File-level implementation: ZIP-only handoff and apply-first branching
+
+**Objective:** Remove the recurring JSON download and positional JSON requirement while preserving the exact current patch identity across independent invocations. Start a new workflow with `APL`, then create the feature branch with `BRN`; never commit on the base branch. **Prerequisites:** P0.3a/b registry metadata handling, unfinished-feature-branch preflight, validated ZIP bytes, legacy handoff state and mode tests. This is a deliberately distinct implementation/review checkpoint before `opSeq` and the console-style changes of P0.4a.
+
+**Non-goals:** Automatic Git commits on `main`, arbitrary ZIP discovery by modification time, invisible branch creation inside `APL`, automatic reapplication on retry, renumbering existing operations, weakening STRICT/FORCE identity checks, and changing the configured GitHub approval/CI policies. The first upgrade still needs a legacy ZIP+JSON bootstrap handoff; ZIP-only responses begin with the *next* patch after the new runtime is installed.
+
+| File | Exact planned change |
+| --- | --- |
+| `apatch_lib/model.py` | Extract reusable schema-v1 handoff payload parsing from `load_handoff`; provide a strict parser for embedded ZIP metadata and reject any embedded `patch_sha256`. Preserve external JSON parsing, including its optional digest, for migration. |
+| `apatch_lib/patch.py` | Reserve `<repository>/.apatch/params.json` alongside the existing created registry. Reject duplicate, symlink, nonregular, corrupt, wrong-root or wrong-name members; exclude both metadata entries from extraction/deletion, changed paths, file fingerprints and Git staging. Verify archive bytes and derive final SHA-256 before snapshot persistence. |
+| `apatch_lib/params_cache.py` (**new**) | Read/write `<target>/.apatch/params.json` safely using a stable `params.json.lock`, no-follow/regular-file validation, restrictive permissions, fsync and atomic replacement. Validate project identity and cached ZIP digest. Keep the previous cache on a failed write or invalid new selection; detect conflicts with unfinished patch cycles. |
+| `apatch_lib/local_ignore.py` | Protect/cache-ignore both `params.json` and its lock through Git-local exclusion without changing tracked `.apatch/config.yaml`. Reject either path if tracked or unsafe. |
+| `apatch.py` | Make the handoff positional optional; parse an explicit `.json` path first (legacy), an explicit new ZIP stem/basename for initial `APL`, or current-project `.apatch/params.json` when omitted. Establish the target repository safely before cache resolution; `--help` and future `info=PROGRESS` must remain independent of a handoff. Save a validated selected ZIP snapshot only at a safe workflow boundary, with re-invocation/recovery compatibility. |
+| `apatch.sh` | Preserve `op=...`, shell-safe mode aliases, explicit JSON paths and ZIP-stem forms; correctly forward no-positional-argument invocations on macOS/Linux without interpreting `op=...` as a filename. |
+| `apatch_lib/workflow.py` | Keep existing numeric IDs of retained actions, reserve numeric `2` as deprecated, and remove `BAP` from the menu/dispatch. For a new cycle allow `APL` on the base branch followed by `BRN`, then recommend `CHK`; retain the former order only when resuming previously saved branch-first workflows. Ensure menu and direct operation selection agree. |
+| `apatch_lib/branch_patch.py` | Add a guarded `prepare_branch_after_apply` operation. Require the recorded patch SHA, base HEAD, expected changed paths, correct target branch identity, cleanly verified switch feasibility, remote-base agreement and unfinished-feature gate. Use `git switch -c` without auto-commit; only after confirming the branch and carried changes reconcile the saved applied branch/branch origin. Keep older `new_branch` recovery available for historic checkpoints without exposing `BAP`. |
+| `apatch_lib/loose.py` | Preserve dirty-worktree backup/consent behavior during initial `APL`. On post-apply `BRN`, carry the existing uncommitted changes safely, update the patch association, and avoid treating the original base branch as the destination of later commits. Reject unsupported branch switch conflicts without discarding files. |
+| `apatch_lib/force.py` | Recover an already extracted ZIP, an existing feature branch, an interrupted cache write or manual switch by verifying matching bytes/HEAD, not silently replaying extraction. Retain strong archive/order/feature-guard validation even when prompts are skipped. |
+| `apatch_lib/status.py` | Distinguish `patch_applied` on base awaiting `BRN` from `patch_applied` on feature awaiting `CHK`; preserve legacy `STS` and `RECORDED`/`VERIFIED` semantics. |
+| `tests/test_apatch.py` | Add end-to-end ZIP-only `APL` → no-handoff `BRN` → `CHK` → `CMT` in all modes; local bare remotes and GitHub mocks only. Verify implicit cache, explicit JSON precedence, invalid metadata, no source Git contamination, 2/BAP deprecation, old state compatibility, permission errors, concurrent writes, and crash/resume. |
+| `docs/USAGE.md`, `docs/ARCHITECTURE.md`, `README.md` | Document one-file handoffs, implicit cached continuation, legacy bootstrap, the new lifecycle, cache trust and recovery boundaries; do not mark behavior available until full tests pass. |
+
+**Ordered implementation sequence:**
+
+1. Introduce the shared handoff parser and safe ZIP metadata classification **without** changing CLI behavior. Add negative archive tests, including misleading filenames and attempted symlink/deletion of the reserved parameter member.
+2. Add the locked atomic cache owner and local Git exclusion. Test concurrent updates, corrupt pre-existing JSON, symlink replacement, interrupted writes, and verified SHA round-trips. The cache is authoritative for **selection** only; it does not supersede the applied-patch journal or Git facts.
+3. Implement ZIP-stem input resolution and no-handoff cache fallback in `apatch.py` and the shell launcher. Preserve explicit JSON for upgrading and old workflows; prevent cache updates when selection validation fails. Require explicit ZIP selection to start a different patch cycle. A failed/cancelled `APL` may leave an identified pending selection only with an accurate incomplete checkpoint; the previous cache must remain recoverable.
+4. Implement new-cycle `APL` on base with no commit, plus `BRN` after apply. Check phase, current branch, base/remote SHA, original patch SHA, expected dirty-path fingerprint, absence of unsafe overlaps and all-feature unfinished work **before** switching. After the switch recheck branch and changed bytes; preserve extraction provenance, reconcile the applied-patch association, and keep phase `patch_applied` so `CHK` follows normally. Treat a failure after switch but before checkpoint as recoverable by observing current Git facts; never delete the feature branch or reset dirty paths.
+5. Retire `BAP` from the active UI and dispatch with a specific error for code/number 2; retain the legacy numeric values of every other code. Route previously persisted branch-first checkpoints to the compatible recovery path without silently changing old status or applied-history records.
+6. Run focused tests and the full suite. Review the change against old handoffs, history/checkpoint schema, sequence preflight, and explicit FORCE adoption. After acceptance, switch ChatGPT patch-producer instructions and examples to one self-contained ZIP; deliver **this** migration with the old two-file handoff format.
+
+**Control-flow sketch:**
+
+```python
+def resolve_handoff(argv, root, config):
+    if argv.explicit_json:
+        return validate_legacy_json(argv.explicit_json)
+    if argv.explicit_zip_stem:
+        return validate_embedded_handoff_and_final_zip_sha(
+            select_exact_zip(config.downloads, argv.explicit_zip_stem), root
+        )
+    return load_validated_local_params(root / ".apatch/params.json")
+
+def apply_first(handoff, workflow):
+    assert_selected_base_branch_with_expected_head()
+    assert_patch_order_and_zip_safety(handoff)
+    snapshot_verified_selected_params_atomically(handoff)
+    apply_zip_without_committing_on_base()
+    record_applied_bytes_and_base_head()
+
+def branch_second(workflow):
+    assert_phase_and_verified_uncommitted_patch_on_base()
+    assert_unfinished_feature_branches_absent()
+    assert_remote_base_and_local_head_unchanged()
+    git_switch_create_feature_without_committing()
+    assert_same_dirty_paths_and_patch_bytes()
+    reconcile_checkpoint_branch_and_applied_journal()
+    return suggest_next("4 [CHK]")
+```
+
+**Failure and compatibility:** The source ZIP may be removed after the original apply, so non-extraction actions SHALL work from saved state/cache without insisting on rereading an absent download; a later `APL` always needs actual ZIP bytes. Never accept a different patch with the same filename but changed digest. Do not update cache/history before sufficient evidence exists to recover interrupted steps. Ensure `params.json` cannot conflict with the tracked `.apatch/config.yaml` and cannot be mistaken for a user source file. The initial simple `BRN` transition shall be forbidden if base has uncommitted unrelated changes whose movement cannot be proven safe; LOOSE may ask consent for explicitly identified additional paths and preserve backups, but may not silently include them. For STRICT, phase/verification constraints must be adjusted deliberately, without reducing checkout/archive checks. An ambiguous partial Git switch requires factual inspection, not rollback by force.
+
+**Acceptance checkpoint:** SUB-001 AC-49–55, all existing branch/registry safety tests, the complete `sh ./run_tests.sh`, ZIP structure/hash validation and the old two-file bootstrap handoff. Before runtime implementation, confirm the numeric-ID migration decision in SUB-001 §8.
+
 ### P0.4a/b — File-level implementation: sequential operations and multiple handoffs
 
 | File | Exact planned change |
@@ -418,7 +483,7 @@ def receive_reserved_registry_member(existing, incoming):
 | `apatch_lib/console.py` (**new, only if shared formatting warrants it**) | Centralize small ANSI/color and result-line formatting helpers. Color green `SUCCESS`, red `ERROR`, and bold cyan the next-action label only for supported interactive terminals; respect `NO_COLOR`, `TERM=dumb`, and non-TTY streams. Do not introduce dependencies or put escape sequences in logs. If a new module would only wrap trivial formatting, keep helpers in existing owners. |
 | `apatch.py` | Add mutually exclusive `opSeq` argument; reject malformed/empty/unknown/duplicate-sensitive sequence forms before side effects; pass `skipApproves` and mode unchanged. Ensure exception handling emits one accurate attempted-operation error result with action number/code, elapsed time, and recovery context; do not double-report an error from both workflow and top-level CLI. |
 | `apatch.sh` | Normalize shell `opSeq=...` and proposed `handoffSeq=...`; preserve spaces/argument boundaries and existing CLI aliases across macOS/Linux shells. |
-| `apatch_lib/model.py` | Validate optional handoff sequence input, exact mapping of `BAP`/`APL` to selected handoffs, and patch identity changes. |
+| `apatch_lib/model.py` | Validate optional handoff sequence input, exact mapping of ZIP-selecting `APL` steps to handoffs, and patch identity changes. |
 | `apatch_lib/loose.py`, `apatch_lib/force.py` | Check that shared branch and manual-operation semantics remain unchanged when an action is sequence-driven; avoid alternative special-case state machines. |
 | `tests/test_apatch.py` | Parser parity, op-order, no-interaction, non-TTY, intermediate Git failure, network timeout, sequence stop, and two ZIPs/one deferred commit cases. Assert `SUCCESS`/`ERROR` for proven outcomes; separate `CANCELLED`, `NO_OP`, and `UNKNOWN_REMOTE_RESULT`. Test green/red/bold-cyan ANSI with a simulated TTY, absence of ANSI for redirected output, `NO_COLOR` and `TERM=dumb`, and visibly distinct suggested versus scheduled next steps. |
 | `docs/USAGE.md` | Show both acronym/number forms, handoff selection, colored/monochrome result examples, prominent next-action number/code, error summary, and explicit manual resume procedure. |
@@ -431,6 +496,7 @@ def prepare_sequence(op_seq, handoff_seq, context):
     reject_empty_or_unknown_elements(actions)
     handoffs = resolve_explicit_handoff_mapping(actions, handoff_seq)
     reject_ambiguous_repeated_apply_of_same_patch(actions, handoffs)
+    require_apl_then_brn_for_first_new_patch_cycle(actions, context)
     preflight_required_inputs_without_mutating_repository()
     return OperationSequence(new_id(), actions, handoffs)
 
@@ -477,7 +543,7 @@ The actual implementation MUST reliably restore ANSI styles, keep redirected out
 
 At every failure, print step `i/N`, number/code, selected patch, branch, phase, last completed action, observed versus uncertain effects, remaining actions, exit status, and safe reconciliation instructions. No automatic rollback, replay of an uncertain mutating command, or continued execution after cancellation; the bounded P0.2f retry for read-only GitHub lookups remains permitted. `skipApproves=true` may suppress confirmations but MUST NOT skip safety gates. P0.5 will add bounded cross-project action summaries; P1.1 will add richer per-target evidence records without changing sequence behavior.
 
-**Acceptance checkpoint:** SUB-001 AC-09–14 and AC-46–48; test failed step 1 versus failed step N, missing/invalid handoff, duplicate `BAP,APL` without distinct handoffs, CI rejection, timed-out GitHub operations, and standalone/menu/sequence result rendering under TTY/non-TTY conditions.
+**Acceptance checkpoint:** SUB-001 AC-09–14 and AC-46–48; test failed step 1 versus failed step N, missing/invalid self-contained ZIP, duplicate `APL` without distinct handoffs, CI rejection, timed-out GitHub operations, and standalone/menu/sequence result rendering under TTY/non-TTY conditions.
 
 ### P0.5a — File-level implementation: persistent multi-project progress
 
