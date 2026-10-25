@@ -23,7 +23,7 @@ Complete small independently tested increments. Preserve existing CLI, handoff J
 | **P0.2f — GitHub read resilience and invocation-scoped identity** | Retry transient read-only GitHub failures once, never replay uncertain create/merge commands, and reuse an already verified repository identity through one merge/reconciliation operation while rechecking local origin. | AC-35–38; bounded retry, mutation no-retry, identity drift, mode/merge integration tests. |
 | **P0.3a — Registry validation and ordering** | New small `apatch_lib/created_patches.py` or another single owner; compare optional local registry to legacy-compatible `AppliedPatchHistory`. Guard `BAP`/`APL` in all modes *before* side effects. | AC-05/06/08, invalid lines/duplicates/symlinks, history migration tests. |
 | **P0.3b — Registry metadata transport** | Extend archive inspection/application to recognize a reserved `.apatch/created_patches.txt` member, validate append-only prefix, and store atomically as non-Git metadata. | AC-07, repeated ZIP, failed extraction/retry, ignored-file handling, no worktree false positives. Activate new ChatGPT packaging directive only once this is stable. |
-| **P0.4a — `opSeq` core** | `apatch.py`, `apatch.sh`, `apatch_lib/workflow.py`: parse a list of existing operation IDs, dispatch sequentially, refresh state between steps, stop on failure and report the complete step context. | AC-09/11/12/13/14, `skipApproves` true/false, shell/Python parser parity, timeout recovery. |
+| **P0.4a — `opSeq` core and console outcome clarity** | `apatch.py`, `apatch.sh`, `apatch_lib/workflow.py`, `apatch_lib/status.py`: parse existing operation IDs, dispatch sequentially, refresh state between steps, and present accurate, prominent result and next-step labels for standalone and sequenced actions. | AC-09/11/12/13/14/46–48, `skipApproves` true/false, parser parity, timeouts, terminal-color and no-op/error reporting. |
 | **P0.4b — Multiple handoffs** | Add explicit optional `handoffSeq` mapping for `BAP`/`APL`, retaining prior cycle state; verify preflight against duplicate or missing inputs. | AC-10/11, successive patches on one branch, combined commit/deferred push, STRICT rejection. |
 | **P0.5a — Tool-wide progress event storage** | Append redacted structured events to `.apatch/progress/progress.json` under one interprocess lock; regenerate collision-safe per-project JSON views; handle partial updates and unavailable storage. | AC-39/42–45; concurrent local processes, crash recovery, storage permission and identity tests. |
 | **P0.5b — Progress query and configurable summaries** | Add read-only `info=PROGRESS` without handoff or target repository, global `progress_global_limit=8` and `progress_project_limit=3`, and project/global console summaries. | AC-40/41/43; CLI parser, non-Git invocation, display limits and no-side-effects tests. |
@@ -413,13 +413,15 @@ def receive_reserved_registry_member(existing, incoming):
 | File | Exact planned change |
 | --- | --- |
 | `apatch_lib/sequence.py` (**new**) | Define `OperationSequence`, parsed operation tokens, progress/error DTOs, preflight, single-threaded execution, and deterministic stop/recovery reporting. Reuse existing operation handlers instead of duplicating Git logic. |
-| `apatch_lib/workflow.py` | Provide a single operation-dispatch method callable from interactive, `op=`, or sequence contexts; produce accurate per-step results and refresh state between actions. |
-| `apatch.py` | Add mutually exclusive `opSeq` argument; reject malformed/empty/unknown/duplicate-sensitive sequence forms before side effects; pass `skipApproves` and mode unchanged. |
+| `apatch_lib/workflow.py` | Provide a single operation-dispatch method callable from interactive, `op=`, or sequence contexts; produce accurate per-step results and refresh state between actions. Replace `Finished without an error` with `SUCCESS` only after verified completion; render a terminal `ERROR` banner on known action failure and preserve distinct no-op/cancelled/uncertain results. |
+| `apatch_lib/status.py` | Keep the existing evidence-based recommendation calculation; render the primary `Next suggested: <number> [<CODE>]` on its own visually prominent line with subordinate alternatives. Reuse the same renderer in `STS`, standalone actions, and sequences without recomputing a fake next step on failure. |
+| `apatch_lib/console.py` (**new, only if shared formatting warrants it**) | Centralize small ANSI/color and result-line formatting helpers. Color green `SUCCESS`, red `ERROR`, and bold cyan the next-action label only for supported interactive terminals; respect `NO_COLOR`, `TERM=dumb`, and non-TTY streams. Do not introduce dependencies or put escape sequences in logs. If a new module would only wrap trivial formatting, keep helpers in existing owners. |
+| `apatch.py` | Add mutually exclusive `opSeq` argument; reject malformed/empty/unknown/duplicate-sensitive sequence forms before side effects; pass `skipApproves` and mode unchanged. Ensure exception handling emits one accurate attempted-operation error result with action number/code, elapsed time, and recovery context; do not double-report an error from both workflow and top-level CLI. |
 | `apatch.sh` | Normalize shell `opSeq=...` and proposed `handoffSeq=...`; preserve spaces/argument boundaries and existing CLI aliases across macOS/Linux shells. |
 | `apatch_lib/model.py` | Validate optional handoff sequence input, exact mapping of `BAP`/`APL` to selected handoffs, and patch identity changes. |
 | `apatch_lib/loose.py`, `apatch_lib/force.py` | Check that shared branch and manual-operation semantics remain unchanged when an action is sequence-driven; avoid alternative special-case state machines. |
-| `tests/test_apatch.py` | Parser parity, op-order, no-interaction, non-TTY, intermediate Git failure, network timeout, sequence stop, and two ZIPs/one deferred commit cases. |
-| `docs/USAGE.md` | Show both acronym/number forms, handoff selection, progress, error summary, and explicit manual resume procedure. |
+| `tests/test_apatch.py` | Parser parity, op-order, no-interaction, non-TTY, intermediate Git failure, network timeout, sequence stop, and two ZIPs/one deferred commit cases. Assert `SUCCESS`/`ERROR` for proven outcomes; separate `CANCELLED`, `NO_OP`, and `UNKNOWN_REMOTE_RESULT`. Test green/red/bold-cyan ANSI with a simulated TTY, absence of ANSI for redirected output, `NO_COLOR` and `TERM=dumb`, and visibly distinct suggested versus scheduled next steps. |
+| `docs/USAGE.md` | Show both acronym/number forms, handoff selection, colored/monochrome result examples, prominent next-action number/code, error summary, and explicit manual resume procedure. |
 
 ```python
 def prepare_sequence(op_seq, handoff_seq, context):
@@ -450,9 +452,32 @@ def execute_sequence(sequence, context):
     return print_sequence_success_summary()
 ```
 
+**Console outcome and emphasis contract (SUB-001 §2.1, AC-46–48):** Implement this as part of P0.4a for **both** existing standalone `op=`/menu execution and new `opSeq`; it is not a sequence-only presentation change. First inspect `Workflow.interactive`, `status.display_recommendation`, and the outer exception handler in `apatch.py`. Separate the operation's actual outcome from its formatter, so the following flow does not equate a lack of exceptions with success:
+
+```python
+def present_operation_result(action, observed, started_at, output_stream):
+    outcome = classify_actual_outcome(observed)  # SUCCESS, ERROR, NO_OP, CANCELLED, UNKNOWN_REMOTE_RESULT.
+    print_result_banner(action.number, action.code, outcome,
+                        elapsed_since(started_at), color_if_tty(output_stream, outcome))
+    if outcome == "SUCCESS":
+        print_prominent_recommendation(recommend_from_verified_or_recorded_state())
+    elif outcome in {"ERROR", "UNKNOWN_REMOTE_RESULT"}:
+        print_diagnostics_and_safe_reconciliation_without_advancing_workflow(observed)
+    else:
+        print_noop_or_cancellation_guidance(observed)
+    return outcome
+
+def color_if_tty(stream, outcome):
+    if not stream.isatty() or "NO_COLOR" in environ or environ.get("TERM") == "dumb":
+        return None
+    return semantic_style_for_outcome(outcome)
+```
+
+The actual implementation MUST reliably restore ANSI styles, keep redirected output/logs escape-free, and render the same plain-text labels when colors are unavailable. `==> Next suggested: 4 [CHK]` remains the primary standalone recommendation line and includes the numeric ID and acronym; a sequence's `Next scheduled` label refers only to remaining explicitly selected steps. A failed operation MUST retain its nonzero exit status even if the new formatter executes successfully. An uncertain remote outcome MUST NOT be styled or recorded as a proven success or failure. Update existing text-assertion fixtures to accommodate a clearer banner without weakening assertions on phase, HEAD, next-action identity, or failure details.
+
 At every failure, print step `i/N`, number/code, selected patch, branch, phase, last completed action, observed versus uncertain effects, remaining actions, exit status, and safe reconciliation instructions. No automatic rollback, replay of an uncertain mutating command, or continued execution after cancellation; the bounded P0.2f retry for read-only GitHub lookups remains permitted. `skipApproves=true` may suppress confirmations but MUST NOT skip safety gates. P0.5 will add bounded cross-project action summaries; P1.1 will add richer per-target evidence records without changing sequence behavior.
 
-**Acceptance checkpoint:** SUB-001 AC-09–14, test failed step 1 versus failed step N, missing/invalid handoff, duplicate `BAP,APL` without distinct handoffs, CI rejection, and timed-out GitHub operations.
+**Acceptance checkpoint:** SUB-001 AC-09–14 and AC-46–48; test failed step 1 versus failed step N, missing/invalid handoff, duplicate `BAP,APL` without distinct handoffs, CI rejection, timed-out GitHub operations, and standalone/menu/sequence result rendering under TTY/non-TTY conditions.
 
 ### P0.5a — File-level implementation: persistent multi-project progress
 
