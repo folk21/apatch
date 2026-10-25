@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from .model import Abort
+from .model import Abort, RemoteOutcomeUnknown
 from .workflow import ACTION_CODES, action_number
 
 
@@ -48,10 +48,15 @@ def execute_sequence(workflow, sequence: OperationSequence, *, on_completed=None
                 on_completed(action)
         except (Abort, KeyboardInterrupt) as exc:
             remaining = ", ".join(map(describe, sequence.actions[index:])) or "NONE"
-            print(f"==> SEQUENCE STOP: {describe(action)} | last confirmed: {last_completed}")
+            outcome = "UNKNOWN_REMOTE_RESULT" if isinstance(exc, RemoteOutcomeUnknown) else "ERROR"
+            print(f"==> SEQUENCE STOP: {describe(action)} | last confirmed: {last_completed} | outcome={outcome}")
             print(f"    Remaining (not executed): {remaining}")
-            print("    Recovery: inspect 10 [STS] and Git state; explicitly resume from the failed step.")
-            raise Abort(f"Sequence operation {describe(action)} stopped: {exc}") from exc
+            if isinstance(exc, RemoteOutcomeUnknown):
+                print("    Recovery: inspect 10 [STS] and live GitHub PR status; do not replay the remote mutation blindly.")
+            else:
+                print("    Recovery: inspect 10 [STS] and Git state; explicitly resume from the failed step.")
+            failure_type = RemoteOutcomeUnknown if isinstance(exc, RemoteOutcomeUnknown) else Abort
+            raise failure_type(f"Sequence operation {describe(action)} stopped: {exc}") from exc
         if action == 10 and result == "NO_OP":
             print("==> SEQUENCE REPORT 10 [STS]: DISPLAYED (read-only)")
         elif result == "ALREADY_SATISFIED" and action == 9:

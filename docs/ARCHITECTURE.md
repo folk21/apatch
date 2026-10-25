@@ -27,7 +27,7 @@ Inputs include an untrusted ZIP with embedded handoff metadata (or a legacy exte
 The CLI can be invoked interactively, by a direct operation number/mnemonic,
 or with a validated comma-separated `opSeq`. A sequence reuses the same action
 dispatch, refreshes branch/phase checks before each operation, and halts on an
-error, cancellation, or unverified state-changing no-op. Read-only `STS` may be
+error, cancellation, uncertain remote mutation, or unverified state-changing no-op. Read-only `STS` may be
 included anywhere, and a `SYN` that positively reverifies a synchronized base
 and matching merged PR is treated as already satisfied. Progress output uses
 canonical operation numbers rather than batch-relative ordinals. The sequence
@@ -35,12 +35,21 @@ does not roll back completed Git side effects. A singleton `opSeq=STS` uses the
 same early read-only path as direct `STS`. Canonical action identities are
 defined in `apatch_lib/workflow.py`.
 
+`RemoteOutcomeUnknown` identifies GitHub PR create/merge transport failures and
+unverifiable post-mutation responses without conflating them with known
+failures. The workflow displays `UNKNOWN_REMOTE_RESULT`, preserves the
+underlying nonzero exit status, and requires explicit live PR reconciliation.
+`apatch_lib/console.py` centralizes TTY-aware styling for outcome labels and
+the primary numbered next-action recommendation; non-TTY and `NO_COLOR` output
+remain machine-readable.
+
 ## Module ownership
 
 | Module | Responsibility |
 | --- | --- |
 | `apatch.py`, `apatch.sh` | CLI parsing, handoff discovery, mode selection, top-level error handling |
 | `apatch_lib/workflow.py` | Action dispatch, phase coordination, menu and progress summaries |
+| `apatch_lib/console.py` | Shared terminal-only result colors and next-operation emphasis |
 | `apatch_lib/sequence.py` | Sequence syntax validation, ordered dispatch, and fail-stop diagnostics |
 | `apatch_lib/loose.py` | Incremental patch cycles, manual edits, accumulated commits, deferred push |
 | `apatch_lib/force.py` | Explicit recovery of externally performed branch, patch, and Git operations |
