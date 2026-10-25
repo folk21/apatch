@@ -62,10 +62,25 @@ Actual branch/phase and live guards take precedence over this table. A no-op/can
 Example:
 
 ```text
-==> END 3 [APL] | SUCCESS | phase=patch_applied
-Next suggested: 4 [CHK] — Run canonical checks
-Alternative: 3 [APL] — Apply a new handoff
+==> RESULT 3 [APL]: SUCCESS (3.71s)
+    Phase: new -> patch_applied
+
+==> Next suggested: 4 [CHK] — Run canonical checks
+    Alternative: 3 [APL] — Apply a new handoff
 ```
+
+### 2.1 Console result and next-step emphasis (P0.4a)
+
+The standalone, interactive, direct `op=`, and future `opSeq` paths SHALL share an unambiguous console outcome contract. Replace the existing `Finished without an error` result phrase with an explicit outcome keyword; merely returning without an exception MUST NOT be sufficient to report success:
+
+- Show `==> RESULT <number> [<CODE>]: SUCCESS (<elapsed>s)` only when the requested action actually succeeded. Render the `SUCCESS` keyword **green** on a color-capable terminal.
+- On a failed operation, show `==> RESULT <number> [<CODE>]: ERROR (<elapsed>s)` with `ERROR` **red**, followed by the underlying diagnostic and safe next/recovery action. Emit this result even if the operation raises before its ordinary completion summary. Preserve a nonzero exit status and the distinction between a proven failure and an uncertain external side effect.
+- Explicit cancellation, no-op/already-satisfied actions, and indeterminate remote outcomes SHALL use distinct plain-text keywords (`CANCELLED`, `NO_OP`, and `UNKNOWN_REMOTE_RESULT`, respectively), never `SUCCESS` or an unjustified `ERROR`. These outcomes MUST preserve the actual phase and available evidence; the durable progress event schema may continue using its own specified result values (such as `FAILED`).
+- Print the primary recommendation in a **separate, visually prominent line** with its number, mnemonic, and short explanation: `==> Next suggested: 4 [CHK] — Run canonical checks`. Highlight `Next suggested: 4 [CHK]` using bold cyan or a similarly distinct terminal style where supported. Keep alternatives visually subordinate. If no safe next operation is established, explicitly show `Next suggested: NONE` with an explanation, not a speculative success-path recommendation.
+- When using `opSeq`, distinguish the **next scheduled** sequence step from the **next suggested** lifecycle action; do not allow the latter to imply that a sequence will continue after a failure or cancellation.
+- ANSI escape sequences SHALL be enabled only for an appropriate interactive terminal. Honor `NO_COLOR` and `TERM=dumb`; keep redirected output, logs, CI output without a TTY, and unsupported terminals free of escape sequences. Text labels, number/code, exit status, and diagnostics MUST remain comprehensible without color. No new mandatory third-party dependency is required.
+
+The outcome and next-step emphasis SHALL work consistently in LOOSE, STRICT, and FORCE without changing action numbers, safety guards, state transitions, or Git/GitHub side effects. Terminal-color behavior SHALL be covered by positive and negative regression tests, including captured non-TTY output, a color-capable TTY, cancelled/no-op operations, thrown errors, and uncertain remote results.
 
 ## 3. Project-level review approval (P0-2)
 
@@ -231,7 +246,7 @@ Without `handoffSeq`, actions use the existing single handoff. A duplicate `BAP,
 
 ### 5.3 Console progress and failure contract
 
-Before each action print `step i/N`, operation number/code, mode, handoff ZIP, branch, and phase. Show the actual command invocation with sensitive values redacted. After each step print outcome (`SUCCESS`, `NO_OP`, `CANCELLED`, `FAILED`, or `UNKNOWN_REMOTE_RESULT`), elapsed time, resulting HEAD/phase if known, and the next scheduled action.
+Before each action print `step i/N`, operation number/code, mode, handoff ZIP, branch, and phase. Show the actual command invocation with sensitive values redacted. After each step print the user-facing outcome (`SUCCESS`, `NO_OP`, `CANCELLED`, `ERROR`, or `UNKNOWN_REMOTE_RESULT`), elapsed time, resulting HEAD/phase if known, and the next scheduled action. Use the result and next-step emphasis from §2.1; `ERROR` is the console label for a known failure, while persistent event records continue to use `FAILED` where defined.
 
 On failure, cancellation, timeout, or uncertain external effect, execution MUST stop without running subsequent steps. A failure MUST produce a nonzero exit status and report the exact failing step, underlying error, last completed step, known/uncertain repository state, remaining steps, and safe retry/reconciliation guidance. Cancellation MUST have a distinct reported outcome and MUST NOT be mistaken for success. No automatic rollback of a completed commit, push, or GitHub action is permitted.
 
@@ -348,6 +363,9 @@ There is no automatic knowledge of target projects used **before** this feature 
 | AC-43 | Two project directories share a basename | Preserve separate stable project IDs and collision-free per-project history files |
 | AC-44 | Operation fails after an ambiguous PR/push timeout or is cancelled | Record `FAILED`/`UNKNOWN_REMOTE_RESULT`/`CANCELLED` accurately and include short recovery context, not a false success |
 | AC-45 | A project was used before the progress feature, or the tool installation is read-only | Do not invent past events; show partial history or `PROGRESS_UNAVAILABLE` without corrupting target workflows |
+| AC-46 | Successful `APL` in an ANSI-capable terminal | Show green `SUCCESS` in the result banner and a prominent, separately labeled `Next suggested: 4 [CHK]` with number/code; the result must be readable without interpreting colors |
+| AC-47 | Operation throws an error, is cancelled, is already satisfied, or has an uncertain remote outcome | Show red `ERROR` only for a proven failure; distinguish `CANCELLED`, `NO_OP`, and `UNKNOWN_REMOTE_RESULT`, and provide a safe next/recovery step without claiming false success |
+| AC-48 | Output is redirected, `NO_COLOR` is set, or `TERM=dumb` | Never emit ANSI escapes; preserve exact readable outcome labels and next-action number/code in all modes and in `opSeq` |
 
 ## 8. Open decisions
 
