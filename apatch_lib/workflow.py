@@ -28,7 +28,8 @@ PHASES = PHASE_VALUES
 
 class Workflow(OperationPresentation):
     def __init__(self, root: Path, config, handoff, state, *, force=False, loose=False,
-                 skip_previous_cycles=False, zip_selected=False, allow_followup_zip=False):
+                 skip_previous_cycles=False, zip_selected=False, allow_followup_zip=False,
+                 progress_recorder=None):
         self.root = root
         self.config = config
         self.handoff = handoff
@@ -37,6 +38,8 @@ class Workflow(OperationPresentation):
         self.loose = loose
         self.zip_selected = zip_selected
         self.allow_followup_zip = allow_followup_zip
+        self.progress_recorder = progress_recorder
+        self.progress_sequence = None
         key_data = f"{root.resolve()}\0{handoff.branch}\0{handoff.patch}"
         self.key = hashlib.sha256(key_data.encode()).hexdigest()
         self.record = state["workflows"].get(self.key, {})

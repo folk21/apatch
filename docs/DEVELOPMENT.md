@@ -20,9 +20,11 @@ To run the tests directly with the project virtual environment:
 .venv/bin/python -B -m unittest discover -s tests -v
 ```
 
-`quick` runs nine high-priority Git/ZIP/CLI safety smoke tests (approximately three seconds on the reference Linux environment). `full` is the default and runs every test (approximately one minute). Run `quick` after each implementation increment; run `full` before a patch handoff or merge. Tests are grouped in `tests/test_handoffs.py`, `test_safety.py`, `test_sequences.py`, `test_history.py`, `test_branches.py`, `test_modes.py`, `test_status.py`, `test_config_cli.py`, `test_github.py`, and `test_validation.py`. Shared fixtures live in `tests/_support.py`.
+`quick` runs twelve high-priority Git/ZIP/CLI/progress safety smoke tests (approximately four seconds on the reference Linux environment). `full` is the default and runs every test (approximately one minute). Run `quick` after each implementation increment; run `full` before a patch handoff or merge. Tests are grouped in `tests/test_handoffs.py`, `test_safety.py`, `test_sequences.py`, `test_history.py`, `test_branches.py`, `test_modes.py`, `test_status.py`, `test_config_cli.py`, `test_github.py`, `test_progress.py`, and `test_validation.py`. Shared fixtures live in `tests/_support.py`.
 
 `-B` prevents bytecode cache files. Tests use temporary Git repositories and mocked GitHub commands. No developer project repository is modified. Python, PyYAML, and Git are required; the GitHub CLI is not required for tests. Linux results alone do not guarantee macOS behavior.
+
+Global progress tests live in `tests/test_progress.py`; they use temporary tool installations and project roots, verify cross-process locking, collision-safe histories, symlink protection, idempotent replay, redaction, sequence events, and CLI isolation.
 
 ## Local verification
 

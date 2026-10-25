@@ -38,3 +38,5 @@ Examples of direct actions:
 ## Development status
 
 The implementation and regression tests are available in this repository. The [orchestrator specification](docs/specs/active/spec-apatch-orchestrator.md), its [first-priority sub-specification](docs/specs/active/subspecs/subspec-01-workflow-control.md), and [implementation plan](docs/specs/plans/apatch-orchestrator-implementation-plan.md) remain **DRAFT** documents. Created-patch ordering and ZIP metadata transport (P0.3a/b), self-contained ZIPs with cached handoffs and an apply-first path (P0.3c), sequenced operations with console outcomes (P0.4a), and explicit multi-ZIP LOOSE sequences (P0.4b) are implemented. Numeric `2 [BAP]` is deprecated for self-contained workflows but remains available for explicit legacy JSON handoffs until their migration is complete.
+
+P0.5a records cross-project operation summaries in the installed tool's private `.apatch/progress/` directory. Its global read-only overview (`info=PROGRESS`) is planned for P0.5b; recorded progress is not a substitute for project-local checkpoints or live GitHub status.
