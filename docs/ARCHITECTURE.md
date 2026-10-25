@@ -13,6 +13,7 @@ Inputs include an untrusted ZIP with embedded handoff metadata (or a legacy exte
 - A handoff describes intended operations; neither it nor persisted workflow state proves that Git or GitHub operations occurred.
 - GitHub status, approvals, and remote refs are external facts and may change between calls.
 - Runtime diagnostics may reveal source text or credentials, so logging has bounded and redacted content.
+- Embedded ZIP metadata does not authorize changes to project policy or `.apatch` runtime files.
 
 ## Execution flow
 
@@ -63,6 +64,10 @@ remain machine-readable.
 | `apatch.py`, `apatch.sh` | CLI parsing, handoff discovery, mode selection, top-level error handling |
 | `apatch_lib/workflow.py` | Action dispatch, phase coordination, menu and progress summaries |
 | `apatch_lib/console.py` | Shared terminal-only result colors and next-operation emphasis |
+| `apatch_lib/presentation/` | Action menu, console progress, and operation outcome classification |
+| `apatch_lib/core/actions.py`, `core/enums.py` | Stable operation IDs and typed lifecycle/outcome values |
+| `apatch_lib/core/paths.py` | Protected `.apatch` paths and generated runtime ignore patterns |
+| `apatch_lib/storage/locking.py` | Shared no-follow, stable-inode advisory locking for persisted artifacts |
 | `apatch_lib/sequence.py` | Sequence syntax validation, ordered dispatch, and fail-stop diagnostics |
 | `apatch_lib/loose.py` | Incremental patch cycles, manual edits, accumulated commits, deferred push |
 | `apatch_lib/force.py` | Explicit recovery of externally performed branch, patch, and Git operations |
@@ -119,7 +124,8 @@ New branch actions record `branch_origin` as `CREATED` or `REUSED` once the deci
 
 ## Safety and recoverability
 
-- Archive extraction validates the handoff and ZIP before applying file changes. Unexpected overlapping dirty files require consent and a backup; ZIP replacement is not a semantic merge.
+- ZIP inspection rejects path traversal, file/directory ancestor collisions, and ordinary ZIP edits or deletions under `.apatch/`. Only the two reserved metadata members (`params.json`, `created_patches.txt`) are allowed, and they are processed separately from source extraction. All output files are staged before replacing destinations, but a process crash during replacement is not a full filesystem transaction; inspect the `applying` checkpoint and Git changes before recovery.
+- Unexpected overlapping dirty files require consent and a backup; ZIP replacement is not a semantic merge.
 - `<repository>/.apatch/params.json` inside a ZIP is a reserved regular metadata member, not an extracted source file. It cannot contain the archive's own SHA-256; the final digest is computed from validated archive bytes and cached under the target repository's Git-ignored `.apatch/params.json` using no-follow checks, a dedicated lock, restrictive permissions, fsync, and atomic replacement.
 - A failed cache write after `APL` does not imply failed extraction. A matching explicit ZIP selection can retry `BRN` from the recorded `patch_applied` checkpoint without extracting a second time, and restore the verified cache. If the ZIP has since been removed, an already valid cache permits normal continuation; no implicit ZIP guessing occurs.
 - Git preconditions are checked against the actual repository state. Push must be fast-forward and never uses `--force`.

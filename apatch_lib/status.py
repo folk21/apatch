@@ -7,11 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .console import next_action_label
+from .core.enums import WorkflowPhase
 from .model import Abort, BRANCH_PATTERN
 
 
-PHASE_ORDER = ("new", "branch_created", "applying", "patch_applied", "verified",
-               "committed", "pushed", "pr_created", "merged", "synced")
+PHASE_ORDER = tuple(phase.value for phase in WorkflowPhase)
 ACTION_NAMES = {
     1: ("BRN", "Prepare the feature branch"),
     3: ("APL", "Apply the patch"),
@@ -120,17 +120,17 @@ def recommend_next_action(phase: str, mode: str, branch: str, planned_branch: st
         return None, None, "Inspect or reconcile the conflicting/interrupted workflow before continuing."
     if phase == "synced":
         return None, None, "Workflow completed; no further lifecycle operation is needed."
-    if phase == "new":
+    if phase == WorkflowPhase.NEW:
         if mode == "strict" and branch == planned_branch:
             return 3, None, "Verify live guards before applying."
         if mode == "strict" and (branch != base or dirty):
             return None, None, "STRICT branch creation requires a clean worktree on the base branch."
         return 1, 3 if mode != "strict" else None, "Select the intended branch before applying."
-    if phase == "branch_created":
+    if phase == WorkflowPhase.BRANCH_CREATED:
         if mode == "strict" and (branch != planned_branch or dirty):
             return None, None, "STRICT patch application requires the prepared branch and clean worktree."
         return 3, None, "Check the selected ZIP and target branch before applying."
-    if phase == "patch_applied":
+    if phase == WorkflowPhase.PATCH_APPLIED:
         if zip_pending_branch:
             return 1, None, "Move the uncommitted ZIP changes from the base branch to the planned feature branch."
         return 4, 3 if mode == "loose" else None, "Verify the current changed bytes before commit."
@@ -153,7 +153,7 @@ def inspect_patch(root: Path, config, record: dict, patch: str, planned_branch: 
     """Compare stored claims with local facts; never query GitHub or change state."""
     if not isinstance(record, dict):
         raise Abort("Invalid stored workflow record")
-    phase = record.get("phase", "new")
+    phase = record.get("phase", WorkflowPhase.NEW.value)
     if phase not in PHASE_ORDER:
         raise Abort(f"Unknown stored workflow phase: {phase}")
     current = local_branch(root)
@@ -204,7 +204,8 @@ def inspect_patch(root: Path, config, record: dict, patch: str, planned_branch: 
     facts["Merged"] = _fact(pending(8), "RECORDED" if record else "UNKNOWN", "GitHub not queried")
     facts["Local base synchronized"] = _fact(pending(9), "RECORDED" if record else "UNKNOWN")
     conflict = any(fact.evidence == "CONFLICT" for fact in facts.values())
-    if phase in {"applying", "patch_applied", "verified"} and record.get("before_patch_head"):
+    if phase in {WorkflowPhase.APPLYING, WorkflowPhase.PATCH_APPLIED,
+                 WorkflowPhase.VERIFIED} and record.get("before_patch_head"):
         if current == actual and current_head != record["before_patch_head"]:
             facts["Working HEAD"] = _fact(current_head[:12], "CONFLICT", "changed since patch application")
             conflict = True

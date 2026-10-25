@@ -200,11 +200,15 @@ def main():
                 raise Abort("All handoffSeq ZIPs must target the same feature branch")
             handoff, source_label, zip_selected = (selected_handoffs[0],
                                                   str(config.downloads / names[0]), True)
+        elif status_only and args.handoff is None and args.handoff_seq is None and not (
+                (root / ".apatch" / "params.json").exists()
+                or (root / ".apatch" / "params.json").is_symlink()):
+            handoff, source_label, zip_selected = None, "stored workflow", False
         else:
             if args.op_seq is not None and sum(action in {2, 3} for action in args.op_seq.actions) > 1:
                 raise Abort("Multiple APL actions require explicit handoffSeq ZIP selections")
             handoff, source_label, zip_selected = resolve_selected_handoff(args.handoff, config, root)
-        if handoff.repository != root.name:
+        if handoff is not None and handoff.repository != root.name:
             raise Abort("Handoff parameters belong to a different repository")
         if status_only:
             state = read_state_snapshot(config.state_path)

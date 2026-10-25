@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 
+from .core.paths import runtime_ignore_patterns
 from .gitutil import output, run
 from .model import Abort
 
@@ -18,11 +19,7 @@ def ensure_runtime_ignored(root: Path, log_directory: Path, log_filename: str,
     relative_log_dir = log_directory.relative_to(root).as_posix()
     patterns = {
         (log_directory / log_filename).relative_to(root).as_posix(): f"/{relative_log_dir}/",
-        ".apatch/backups": "/.apatch/backups",
-        ".apatch/created_patches.txt": "/.apatch/created_patches.txt",
-        ".apatch/created_patches.txt.lock": "/.apatch/created_patches.txt.lock",
-        ".apatch/params.json": "/.apatch/params.json",
-        ".apatch/params.json.lock": "/.apatch/params.json.lock",
+        **runtime_ignore_patterns(),
         state_path.relative_to(root).as_posix(): f"/{state_path.relative_to(root).as_posix()}",
         lock_path.relative_to(root).as_posix(): f"/{lock_path.relative_to(root).as_posix()}",
         history_path.relative_to(root).as_posix(): f"/{history_path.relative_to(root).as_posix()}",

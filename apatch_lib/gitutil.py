@@ -7,8 +7,10 @@ import json
 import logging
 import os
 import shlex
+import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -81,13 +83,36 @@ def run(argv, cwd: Path, *, input_text=None, check=True, text=True, log_commit_m
             failure_tail = deque(maxlen=FAILURE_TAIL_LINES)
             with subprocess.Popen(argv, cwd=cwd, stdout=subprocess.PIPE,
                                   stderr=subprocess.STDOUT, text=True, errors="replace",
-                                  bufsize=1) as process:
-                assert process.stdout is not None
-                for line in process.stdout:
-                    sys.stdout.write(line)
-                    sys.stdout.flush()
-                    failure_tail.append(line.rstrip("\r\n")[-FAILURE_TAIL_LINE_CHARS:])
-                returncode = process.wait()
+                                  bufsize=1, start_new_session=True) as process:
+                timed_out = threading.Event()
+
+                def cancel_process_group():
+                    if process.poll() is None:
+                        timed_out.set()
+                        try:
+                            os.killpg(process.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+
+                timer = threading.Timer(timeout, cancel_process_group) if timeout else None
+                if timer is not None:
+                    timer.daemon = True
+                    timer.start()
+                try:
+                    assert process.stdout is not None
+                    for line in process.stdout:
+                        sys.stdout.write(line)
+                        sys.stdout.flush()
+                        failure_tail.append(line.rstrip("\r\n")[-FAILURE_TAIL_LINE_CHARS:])
+                    returncode = process.wait()
+                finally:
+                    if timer is not None:
+                        timer.cancel()
+                if timed_out.is_set():
+                    LOGGER.error("canonical check timed out duration_s=%.3f limit_s=%s argv=%s recent_output=%s",
+                                 time.monotonic() - start, timeout, command,
+                                 json.dumps("\n".join(failure_tail), ensure_ascii=False))
+                    raise Abort(f"Canonical check timed out after {timeout:g}s: {command}")
             result = subprocess.CompletedProcess(argv, returncode, "", "")
         else:
             result = subprocess.run(argv, cwd=cwd, text=text, input=input_text,
@@ -196,16 +221,21 @@ def status_paths(root):
 
 
 def worktree_fingerprint(root):
-    """Capture all changed/untracked bytes, including symlink targets and deletions."""
+    """Capture changed bytes, executable bits, and staged Git objects and modes."""
     paths = status_paths(root)
     digest = hashlib.sha256()
+    if paths:
+        index = run(["git", "ls-files", "--stage", "-z", "--", *sorted(paths)],
+                    root, text=False).stdout
+        digest.update(b"INDEX\x00" + index + b"\x00")
     for name, code in sorted(paths.items()):
         path = root / name
         digest.update(name.encode("utf-8", "surrogateescape") + b"\x00" + code.encode() + b"\x00")
         if path.is_symlink():
             digest.update(b"L" + os.readlink(path).encode("utf-8", "surrogateescape"))
         elif path.is_file():
-            digest.update(b"F")
+            executable = bool(path.stat().st_mode & 0o111)
+            digest.update(b"F\x01" if executable else b"F\x00")
             with path.open("rb") as stream:
                 for part in iter(lambda: stream.read(1024 * 1024), b""):
                     digest.update(part)

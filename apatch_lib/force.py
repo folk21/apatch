@@ -265,7 +265,8 @@ class ForceActions:
         if not w.config.checks:
             raise Abort("No project verification commands configured")
         for command in w.config.checks:
-            run(list(command), w.root, stream_output=True)
+            run(list(command), w.root, stream_output=True,
+                timeout=w.config.check_timeout_seconds)
         if head(w.root) != expected_head:
             raise Abort("HEAD changed while running project verification")
         if dirty is not None:
@@ -278,6 +279,7 @@ class ForceActions:
             require_clean(w.root)
             self.checkpoint(phase, "post-commit checks passed", verified_commit=expected_head)
         print("Canonical checks passed; FORCE state synchronized with the current Git revision.")
+        return True
 
     def commit_push(self):
         w = self.w
