@@ -185,6 +185,7 @@ class LooseActions:
             history.append(w.handoff.patch, w.handoff.branch, branch)
             w.persist()
         print("Patch applied. Keep editing, apply another ZIP, run checks, or commit when ready.")
+        return True
 
     def verify(self):
         w = self.w

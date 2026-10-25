@@ -199,6 +199,7 @@ class ForceActions:
             archive = self.archive()
             if self._adopt_changes(archive, fingerprint, paths):
                 print("Existing worktree changes recorded. Run canonical checks when ready.")
+                return True
             return
         archive = self.archive(before_apply=True)
         zip_first = archive.embedded_handoff is not None and branch == w.config.base
@@ -212,6 +213,7 @@ class ForceActions:
                                                     set(w.handoff.delete_paths)) & self._commit_paths():
             if self._adopt_commit(require_archive_match=True):
                 print("The patch is already committed; no files were overwritten.")
+                return True
             return
         with locked_history(w.config.applied_patches_path) as history:
             w.branch_patch.assert_patch_order(history, archive)
@@ -235,6 +237,7 @@ class ForceActions:
             history.append(w.handoff.patch, w.handoff.branch, branch)
             self.checkpoint("patch_applied", "apply completed")
             print("Patch applied in FORCE mode. Run checks before publishing if possible.")
+            return True
 
     def _ensure_dirty_snapshot(self):
         w = self.w

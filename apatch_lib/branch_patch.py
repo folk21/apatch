@@ -147,13 +147,15 @@ class BranchPatchActions:
         LOGGER.warning("previously applied patch selected for reapplication name=%s", w.handoff.patch)
         print(f"WARNING: Patch {w.handoff.patch} is already in the applied-patch history.")
         if skip_approvals_enabled():
-            print("Duplicate patch reapplication [auto-approved: skipApproves=true]")
-            LOGGER.warning("duplicate patch reapplication auto-approved")
-            return True
+            raise Abort("Patch already applied; do not replay APL with skipApproves=true. "
+                        "Resume the cached workflow with opSeq=CHK,STS without the ZIP "
+                        "or followup=true. To intentionally reapply, run APL interactively "
+                        "with skipApproves=false and confirm the duplicate.")
         try:
             response = input("Apply this patch again? [yes/no]: ").strip().lower()
         except EOFError as exc:
-            raise Abort("Interactive confirmation required; use skipApproves=true to automate approvals") from exc
+            raise Abort("Duplicate ZIP replay requires interactive confirmation; "
+                        "skipApproves=true cannot authorize it") from exc
         if response not in {"yes", "no"}:
             raise Abort("Expected yes or no; patch was not applied")
         if response == "no":
@@ -161,6 +163,13 @@ class BranchPatchActions:
             return False
         LOGGER.warning("developer approved previously applied patch reapplication")
         return True
+
+    def block_unattended_duplicate(self):
+        """Reject replay before previous-cycle updates or overlap confirmation."""
+        if not skip_approvals_enabled():
+            return
+        with locked_history(self.workflow.config.applied_patches_path) as history:
+            self.warn_if_previously_applied(history)
 
     def unpack(self, archive=None, *, history=None, history_confirmed=False):
         w = self.workflow
@@ -215,3 +224,4 @@ class BranchPatchActions:
         w.record["phase"] = "patch_applied"
         w.persist()
         print("Patch applied. Run verification before committing.")
+        return True

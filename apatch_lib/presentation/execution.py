@@ -119,6 +119,7 @@ class OperationPresentation:
                 raise Abort(f"Action unavailable: {reason}")
             if number in {2, 3}:
                 self.branch_patch.assert_patch_order()
+                self.branch_patch.block_unattended_duplicate()
             if number == 3 and self.loose:
                 self.loose_actions.assert_followup_selection()
             if not self.skip_previous_cycles:
@@ -150,9 +151,11 @@ class OperationPresentation:
         verified_existing_sync = (number == 9 and unchanged and before_phase == "synced"
                                   and operation_evidence is True)
         repeated_verified_check = (number == 4 and unchanged and operation_evidence is True)
+        confirmed_application = (number == 3 and operation_evidence is True)
         result = (OperationOutcome.CANCELLED if confirmation_was_declined() else
                   OperationOutcome.ALREADY_SATISFIED if verified_existing_sync else
-                  OperationOutcome.SUCCESS if number == 4 and operation_evidence is True else
+                  OperationOutcome.SUCCESS if (confirmed_application or
+                                               (number == 4 and operation_evidence is True)) else
                   OperationOutcome.NO_OP if unchanged else OperationOutcome.SUCCESS)
         print(f"\n==> RESULT {number} [{ACTION_CODES[number]}]: {outcome_label(result.value)} ({elapsed:.2f}s)")
         print(f"    Phase: {before_phase} -> {self.phase}")
@@ -165,6 +168,9 @@ class OperationPresentation:
             print("    Already synchronized; local base and matching merged PR were reverified.")
         elif repeated_verified_check:
             print("    Canonical checks passed again against the current repository snapshot.")
+        elif confirmed_application and unchanged:
+            print("    Patch application/adoption completed and was checkpointed; "
+                  "the changed-path list is unchanged.")
         elif unchanged:
             print("    No tracked workflow or Git-state transition detected; the action may have been "
                   "cancelled or already satisfied.")

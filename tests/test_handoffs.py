@@ -141,6 +141,63 @@ class HandoffsTests(LocalGitFixture):
         self.assertFalse((self.root / "second.txt").exists())
         self.assertEqual(json.loads(self.state_path.read_text())["workflows"], {})
 
+    def test_repeated_followup_is_rejected_before_overwriting_manual_repairs(self):
+        first = self.make_self_contained_zip()
+        initial = self.invoke_zip("opSeq=APL,BRN", "skipApproves=true", selection=first)
+        self.assertEqual(initial.returncode, 0, initial.stderr + initial.stdout)
+        repair = self.make_followup_zip()
+        applied = self.invoke_zip("followup=true", "op=APL", "skipApproves=true",
+                                  selection=repair.stem)
+        self.assertEqual(applied.returncode, 0, applied.stderr + applied.stdout)
+        records = json.loads(self.state_path.read_text())["workflows"].values()
+        self.assertEqual(next(record["phase"] for record in records
+                              if record["patch_file"] == repair.name), "patch_applied")
+
+        checks = self.root / "run_checks.sh"
+        checks.write_text("#!/bin/sh\nexit 1\n")
+        failed = self.invoke_zip("op=CHK", "skipApproves=true")
+        self.assertEqual(failed.returncode, 2, failed.stderr + failed.stdout)
+        checks.write_text("#!/bin/sh\nset -eu\ntest -f new.txt\n")
+        (self.root / "existing.txt").write_text("manually formatted repair\n")
+        (self.root / "second.txt").write_text("further manual repair\n")
+        saved_workflows = json.loads(self.state_path.read_text())["workflows"]
+        saved_history = self.history_path.read_bytes()
+        saved_files = {name: (self.root / name).read_bytes()
+                       for name in ("existing.txt", "second.txt")}
+        backups = list((self.root / ".apatch" / "backups").glob("overlap-*"))
+
+        duplicate = self.invoke_zip("followup=true", "opSeq=APL,CHK,STS",
+                                    "skipApproves=true", selection=repair.stem)
+        self.assertEqual(duplicate.returncode, 2, duplicate.stdout + duplicate.stderr)
+        self.assertIn("Patch already applied", duplicate.stderr)
+        self.assertNotIn("Backed up", duplicate.stdout)
+        self.assertNotIn("SEQUENCE ACTION 4 [CHK]", duplicate.stdout)
+        self.assertEqual(json.loads(self.state_path.read_text())["workflows"], saved_workflows)
+        self.assertEqual(self.history_path.read_bytes(), saved_history)
+        self.assertEqual(list((self.root / ".apatch" / "backups").glob("overlap-*")), backups)
+        for name, original in saved_files.items():
+            self.assertEqual((self.root / name).read_bytes(), original)
+
+        resumed = self.invoke_zip("opSeq=CHK,STS", "skipApproves=true")
+        self.assertEqual(resumed.returncode, 0, resumed.stdout + resumed.stderr)
+        self.assertIn("SEQUENCE RESULT: SUCCESS", resumed.stdout)
+        self.assertIn("PATCH STATUS 10 [STS]", resumed.stdout)
+
+    def test_explicit_interactive_reapplication_with_same_path_set_reports_success(self):
+        stem = self.make_self_contained_zip()
+        self.assertEqual(self.invoke_zip("opSeq=APL,BRN", "skipApproves=true",
+                                         selection=stem).returncode, 0)
+        (self.root / "existing.txt").write_text("manual revision\n")
+        before = command("git", "status", "--porcelain", cwd=self.root).stdout
+        repeated = self.invoke_zip("opSeq=APL,STS", selection=stem,
+                                   text="YES\nyes\nYES\n")
+        self.assertEqual(repeated.returncode, 0, repeated.stdout + repeated.stderr)
+        self.assertEqual(before, command("git", "status", "--porcelain", cwd=self.root).stdout)
+        self.assertEqual((self.root / "existing.txt").read_text(), "updated\n")
+        self.assertIn("RESULT 3 [APL]: SUCCESS", repeated.stdout)
+        self.assertIn("Patch application/adoption completed and was checkpointed", repeated.stdout)
+        self.assertIn("SEQUENCE RESULT: SUCCESS", repeated.stdout)
+
     def test_multi_zip_shell_launcher_accepts_download_paths_and_pushes_combined_commit(self):
         first = self.make_self_contained_zip()
         second = self.make_followup_zip()
