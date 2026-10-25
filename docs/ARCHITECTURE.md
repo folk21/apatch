@@ -21,8 +21,8 @@ Inputs include an untrusted ZIP with embedded handoff metadata (or a legacy exte
 2. `apatch.py` parses CLI options, identifies the actual target Git repository, and loads configuration. For a new cycle it verifies an explicitly selected ZIP and embedded handoff; for continuation it loads `.apatch/params.json`. Explicit legacy JSON selection remains supported.
 3. Project runtime artifacts are excluded locally from Git, log context is established, and the state file is opened under a lock. Legacy runtime data is migrated when appropriate.
 4. `Workflow` chooses the relevant action under LOOSE, STRICT, or FORCE, reports the current branch/phase, and coordinates the owning helpers.
-5. Helpers inspect the actual filesystem/Git/GitHub state before side effects, update the workflow checkpoint/history, and emit console and audit events. After a successful initial `APL`, the validated handoff and archive digest are atomically cached locally.
-6. Each attempted operation produces a bounded tool-global progress event. Events are buffered while the target checkpoint lock is held and persisted only after releasing it; progress failures cannot undo or change the reported Git/GitHub outcome.
+5. For lifecycle actions 1–9, a project-local `STARTED` run is atomically recorded before the helper acts. Helpers inspect actual filesystem/Git/GitHub state, update workflow checkpoints, then atomically record a terminal run outcome and bounded evidence. After a successful initial `APL`, the validated handoff and archive digest are cached locally.
+6. Each attempted action also produces a bounded tool-global progress event. Events are buffered while the target checkpoint lock is held and persisted only after releasing it; progress failures cannot undo or change the reported Git/GitHub outcome. The global event ID matches the project run ID for actions 1–9.
 
 `STS` takes an earlier, separate read-only path: it validates the repository and configuration, loads a snapshot without creating a state lock, and inspects local Git evidence. Interactive menu selection is also performed before opening the writable workflow state; choosing `STS` never enters the mutation path.
 
@@ -77,7 +77,7 @@ remain machine-readable.
 | `apatch_lib/patch.py` | ZIP validation, safe member inspection, archive application |
 | `apatch_lib/params_cache.py` | Restricted, locked, atomic persistence of a verified project-local handoff |
 | `apatch_lib/model.py` | Handoff and configuration schema, path validation, shared records |
-| `apatch_lib/state.py` | Locked state persistence and atomic checkpoint updates |
+| `apatch_lib/state.py`, `apatch_lib/operation_events.py` | Locked schema-v2 checkpoint persistence, version migration, and durable operation-run evidence |
 | `apatch_lib/progress.py` | Tool-global event summaries, cross-project identity, concurrency, privacy, and derived project histories |
 | `apatch_lib/status.py` | Read-only current patch evidence, cautious next-action suggestions, and report formatting |
 | `apatch_lib/patch_history.py` | Per-patch application journal and duplicate detection |
@@ -142,6 +142,12 @@ New branch actions record `branch_origin` as `CREATED` or `REUSED` once the deci
 - Multi-patch LOOSE workflows retain earlier checkpoints even when a new handoff ZIP is selected. A commit may include several applied patches.
 
 ## Output and observability
+
+### Project-local execution journal (P1.1)
+
+`<repository>/.apatch/apply_patch.state.json` combines existing `workflows` checkpoints with an append-only `operation_runs` list (schema version 2). Old schema-v1 files are read without disk modification and migrated on the first write, retaining unknown top-level fields and existing workflows. Each run records the action number/code, mode, repository, patch, UTC times, optional sequence identity, observed phase/branch/HEAD, and one of `STARTED`, `SUCCEEDED`, `NO_OP`, `CANCELLED`, `FAILED`, `INTERRUPTED`, or `INDETERMINATE`. Failed runs have short, fixed-category diagnostics, not raw command output. Verified effects are stored only where the corresponding workflow checkpoint supplies evidence; a successful record alone is not proof of current GitHub state.
+
+An interrupted process can leave a `STARTED` entry. Later `STS` invocations warn without rewriting it or inventing a result; an explicit retry creates a new run after the normal live-state guards. `STS` does not create a project journal entry. The existing coarse-grained project state lock is held through lifecycle execution, with separate fsynced atomic `STARTED` and terminal file replacements under that lock. Releasing the lock across long-running operations is a separate concurrency improvement, not part of this behavior-preserving increment. At 100,000 runs or 32 MiB, writes stop for explicit archival rather than silently deleting history.
 
 The console reports operation identity, branch, phase, HEAD and working-tree transitions, Git operation outcomes, and canonical-check output. The project log records invocation and command metadata plus bounded failure diagnostics. **Canonical-check stdout/stderr is not copied wholesale into the log.**
 

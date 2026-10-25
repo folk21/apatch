@@ -38,11 +38,17 @@ def migrate_legacy_artifacts(root: Path, tool_directory: Path, config, state: di
                     key: record for key, record in previous["workflows"].items()
                     if isinstance(record, dict) and record.get("repository") == str(root.resolve())
                 }
-            if matching:
+                old_runs = [run for run in previous.get("operation_runs", [])
+                            if run.get("repository") == str(root.resolve())]
+            if matching or old_runs:
                 state["workflows"].update(matching)
+                existing_ids = {run["run_id"] for run in state.get("operation_runs", [])}
+                state.setdefault("operation_runs", []).extend(
+                    run for run in old_runs if run["run_id"] not in existing_ids)
                 save(config.state_path, state)
                 LOGGER.info("imported %d checkpoint(s) from %s", len(matching), source)
-                print(f"Imported {len(matching)} workflow checkpoint(s) from legacy state; old file retained.")
+                print(f"Imported {len(matching)} workflow checkpoint(s) and {len(old_runs)} run(s) "
+                      "from legacy state; old file retained.")
                 break
 
     if config.applied_patches_path.exists():

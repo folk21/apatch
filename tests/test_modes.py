@@ -519,7 +519,13 @@ class ModesTests(LocalGitFixture):
         unavailable = self.invoke_cli("--strict", "op=3")
         self.assertEqual(unavailable.returncode, 2)
         self.assertIn("Action unavailable:", unavailable.stderr)
-        self.assertEqual(json.loads(self.state_path.read_text()), original)
+        after = json.loads(self.state_path.read_text())
+        self.assertEqual(after["workflows"], original["workflows"])
+        self.assertEqual(after["operation_runs"][:len(original["operation_runs"])],
+                         original["operation_runs"])
+        self.assertEqual(len(after["operation_runs"]), len(original["operation_runs"]) + 1)
+        self.assertEqual(after["operation_runs"][-1]["outcome"], "FAILED")
+        self.assertEqual(after["operation_runs"][-1]["operation"]["code"], "APL")
 
     def test_apply_patch_to_main_and_verify_without_creating_feature_branch(self):
         menu = self.invoke("0\n")

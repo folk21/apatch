@@ -15,10 +15,13 @@ from .loose import LooseActions
 from .gitutil import (confirm, current_branch, head, is_clean, output, remote_head,
                       require_branch, require_clean, run, worktree_fingerprint)
 from .model import Abort
+from .model import RemoteOutcomeUnknown
+from .operation_events import OperationRun, RunOutcome
 from .patch import inspect
 from .patch_history import locked_history
 from .presentation.execution import OperationPresentation
-from .state import save
+from .state import finish_run, save, start_run
+from .gitutil import clear_confirmation_declined, confirmation_was_declined
 
 
 LOGGER = logging.getLogger("apatch.workflow")
@@ -40,6 +43,9 @@ class Workflow(OperationPresentation):
         self.allow_followup_zip = allow_followup_zip
         self.progress_recorder = progress_recorder
         self.progress_sequence = None
+        self.operation_run_id = None
+        self.operation_run_before = None
+        self.operation_run_after = None
         key_data = f"{root.resolve()}\0{handoff.branch}\0{handoff.patch}"
         self.key = hashlib.sha256(key_data.encode()).hexdigest()
         self.record = state["workflows"].get(self.key, {})
@@ -116,6 +122,76 @@ class Workflow(OperationPresentation):
         self.state["workflows"][self.key] = self.record
         save(self.config.state_path, self.state)
         LOGGER.info("checkpoint saved feature=%s phase=%s", self.handoff.branch, self.phase)
+
+    def _verified_run_facts(self, number, outcome):
+        """Keep only action-specific facts observed in the resulting checkpoint."""
+        if outcome != RunOutcome.SUCCEEDED.value:
+            return {}
+        record = self.record
+        facts = {}
+        relevant = {
+            1: ("applied_branch", "branch_origin"),
+            2: ("archive_sha256", "applied_branch"),
+            3: ("archive_sha256", "applied_branch"),
+            4: ("verified_fingerprint", "verified_head", "verified_commit"),
+            5: ("commit_sha", "pushed_sha"),
+            6: ("pushed_sha",),
+            7: ("pr_number",),
+            8: ("pr_number", "merge_commit_sha"),
+            9: ("pr_number",),
+        }
+        for key in relevant[number]:
+            value = record.get(key)
+            if isinstance(value, (str, int)) and not isinstance(value, bool):
+                facts[key] = value
+        if number == 9 and self.phase == "synced":
+            facts["base_synchronized"] = True
+        return facts
+
+    def interactive(self, selected_op=None, *, show_header=True):
+        """Persist a run around each action without introducing a nested state lock."""
+        if selected_op is None:
+            selected_op = self.menu_choice()
+            show_header = False
+        try:
+            number = action_number(selected_op)
+        except ValueError as exc:
+            raise Abort(str(exc)) from exc
+        if number in {0, 10}:
+            return super().interactive(selected_op, show_header=show_header)
+        run = OperationRun.start(
+            number=number, mode="FORCE" if self.force else "LOOSE" if self.loose else "STRICT",
+            root=self.root, workflow_key=self.key, patch=self.handoff.patch,
+            phase=self.phase, sequence=self.progress_sequence)
+        start_run(self.config.state_path, self.state, run)
+        self.operation_run_id = run.data["run_id"]
+        self.operation_run_before = {"phase": self.phase}
+        self.operation_run_after = None
+        clear_confirmation_declined()
+        try:
+            result = super().interactive(selected_op, show_header=show_header)
+        except (Exception, KeyboardInterrupt) as exc:
+            outcome = (RunOutcome.INDETERMINATE.value if isinstance(exc, RemoteOutcomeUnknown)
+                       else RunOutcome.CANCELLED.value if confirmation_was_declined()
+                       else RunOutcome.INTERRUPTED.value if isinstance(exc, KeyboardInterrupt)
+                       else RunOutcome.FAILED.value)
+            finish_run(self.config.state_path, self.state, run.data["run_id"],
+                       outcome=outcome, before=self.operation_run_before,
+                       after=self.operation_run_after or {"phase": self.phase})
+            raise
+        else:
+            outcome = (RunOutcome.CANCELLED.value if result == "CANCELLED" else
+                       RunOutcome.NO_OP.value if result in {"NO_OP", "ALREADY_SATISFIED"} else
+                       RunOutcome.SUCCEEDED.value)
+            finish_run(self.config.state_path, self.state, run.data["run_id"],
+                       outcome=outcome, before=self.operation_run_before,
+                       after=self.operation_run_after or {"phase": self.phase},
+                       verified_facts=self._verified_run_facts(number, outcome))
+            return result
+        finally:
+            self.operation_run_id = None
+            self.operation_run_before = None
+            self.operation_run_after = None
 
     def record_committed_branch(self):
         """Keep the applied-patch journal aligned with the current Git commit branch."""

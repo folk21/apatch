@@ -29,7 +29,8 @@ class OperationPresentation:
                 result=result, phase_before=before_phase, phase_after=self.phase,
                 branch_before=before_branch, branch_after=after_branch,
                 record=self.record, started_at_utc=started_at, duration_seconds=elapsed,
-                error=error, sequence=self.progress_sequence))
+                error=error, sequence=self.progress_sequence,
+                event_id=getattr(self, "operation_run_id", None)))
         except Exception as exc:
             print(f"WARNING: PROGRESS_UNAVAILABLE ({type(exc).__name__}); "
                   "operation outcome is unchanged.", flush=True)
@@ -103,6 +104,9 @@ class OperationPresentation:
         before_head = head(self.root)
         before_phase = self.phase
         before_paths = status_paths(self.root)
+        if getattr(self, "operation_run_id", None) is not None:
+            self.operation_run_before = {"phase": before_phase, "branch": before_branch,
+                                         "head": before_head}
         started_at = utc_now()
         print(f"\n==> START {number} [{ACTION_CODES[number]}]: {label}")
         print(f"    Branch: {before_branch or 'detached HEAD'} | Phase: {before_phase}")
@@ -135,6 +139,9 @@ class OperationPresentation:
         after_branch = current_branch(self.root)
         after_head = head(self.root)
         after_paths = status_paths(self.root)
+        if getattr(self, "operation_run_id", None) is not None:
+            self.operation_run_after = {"phase": self.phase, "branch": after_branch,
+                                        "head": after_head}
         elapsed = time.monotonic() - started
         unchanged = (before_branch == after_branch and before_head == after_head
                      and before_phase == self.phase and before_paths == after_paths)

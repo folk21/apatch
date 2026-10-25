@@ -24,11 +24,13 @@ To run the tests directly with the project virtual environment:
 
 `run_rare_checks.sh` runs **all** tests, including the regular suite, to preserve complete regression coverage with no omitted or duplicated test-selection lists. `run_tests.sh full` remains an equivalent compatibility command. Run the regular suite after each implementation increment and the extended suite locally before handoff, release, or merge. GitHub Actions has a manual `workflow_dispatch` trigger only; it does **not** run on push or pull request. The optional manual workflow still runs the extended suite across the configured Python/macOS/Linux matrix. A successful local `CHK` does not imply that extended tests have run. Verify that GitHub branch protection/rulesets do not require automatic checks before disabling them.
 
-Test durations depend heavily on the platform: the extended suite runs many subprocess-based temporary-Git integration tests and can take substantially longer on macOS. The regular suite avoids most of those invocations. Tests are grouped in `tests/test_handoffs.py`, `test_safety.py`, `test_sequences.py`, `test_history.py`, `test_branches.py`, `test_modes.py`, `test_status.py`, `test_config_cli.py`, `test_github.py`, `test_progress.py`, `test_validation.py`, and `test_runner_scripts.py`. Shared fixtures live in `tests/_support.py`.
+Test durations depend heavily on the platform: the extended suite runs many subprocess-based temporary-Git integration tests and can take substantially longer on macOS. The regular suite avoids most of those invocations. Tests are grouped in `tests/test_handoffs.py`, `test_safety.py`, `test_sequences.py`, `test_history.py`, `test_branches.py`, `test_modes.py`, `test_status.py`, `test_config_cli.py`, `test_github.py`, `test_progress.py`, `test_operation_journal.py`, `test_validation.py`, and `test_runner_scripts.py`. Shared fixtures live in `tests/_support.py`.
 
 `-B` prevents bytecode cache files. Tests use temporary Git repositories and mocked GitHub commands. No developer project repository is modified. Python, PyYAML, and Git are required; the GitHub CLI is not required for tests. Linux results alone do not guarantee macOS behavior.
 
 Global progress tests live in `tests/test_progress.py`; they use temporary tool installations and project roots, verify cross-process locking, collision-safe histories, symlink protection, idempotent replay, redaction, sequence events, CLI isolation, read-only overview, configuration limits, and malformed index handling.
+
+Project-local run tests live in `tests/test_operation_journal.py`; they cover schema-v1 migration, journal validation, separate process writers, STARTED/retry semantics, action outcomes, `opSeq` correlation, and read-only status. Preserve the distinction between per-target operation evidence and installed-tool progress summaries when changing either format.
 
 ## Local verification
 
