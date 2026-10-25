@@ -28,7 +28,7 @@ Test durations depend heavily on the platform: the extended suite runs many subp
 
 `-B` prevents bytecode cache files. Tests use temporary Git repositories and mocked GitHub commands. No developer project repository is modified. Python, PyYAML, and Git are required; the GitHub CLI is not required for tests. Linux results alone do not guarantee macOS behavior.
 
-Global progress tests live in `tests/test_progress.py`; they use temporary tool installations and project roots, verify cross-process locking, collision-safe histories, symlink protection, idempotent replay, redaction, sequence events, and CLI isolation.
+Global progress tests live in `tests/test_progress.py`; they use temporary tool installations and project roots, verify cross-process locking, collision-safe histories, symlink protection, idempotent replay, redaction, sequence events, CLI isolation, read-only overview, configuration limits, and malformed index handling.
 
 ## Local verification
 

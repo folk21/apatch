@@ -145,11 +145,11 @@ New branch actions record `branch_origin` as `CREATED` or `REUSED` once the deci
 
 The console reports operation identity, branch, phase, HEAD and working-tree transitions, Git operation outcomes, and canonical-check output. The project log records invocation and command metadata plus bounded failure diagnostics. **Canonical-check stdout/stderr is not copied wholesale into the log.**
 
-### Tool-global progress storage (P0.5a)
+### Tool-global progress storage and read-only overview (P0.5a–P0.5b)
 
 The installed tool stores private runtime activity at `<apatch_installation>/.apatch/progress/`, not in the target project. `progress.json` is the authoritative, append-only event index; `<project>_progress.json` files are derived views, with stable suffixes when project names collide. Events use canonical root-based project IDs, UTC timestamps, action IDs, outcome categories, checkpoint-derived context, and a shared `sequence_id` for batched operations. These fields are **recorded evidence**, not live GitHub verification. Events before installation of this feature are not synthesized or backfilled.
 
-A separate global lock protects read-modify-write; fsynced atomic file replacement protects the master and views. On interruption between file replacements, the next writer reconstructs all project views from the master. A corrupt master or unsafe symlink fails closed without deleting previous events. An unwritable installation produces a `PROGRESS_UNAVAILABLE` warning but does not turn a successful repository operation into a failure. Read-only global `info=PROGRESS` reporting belongs to the next stage (P0.5b).
+A separate global lock protects read-modify-write; fsynced atomic file replacement protects the master and views. On interruption between file replacements, the next writer reconstructs all project views from the master. A corrupt master or unsafe symlink fails closed without deleting previous events. An unwritable installation produces a `PROGRESS_UNAVAILABLE` warning but does not turn a successful repository operation into a failure. Read-only `info=PROGRESS` uses the authoritative master only, with stable newest-first sorting and configurable limits; it never opens target repositories, acquires a write lock, or contacts GitHub. The CLI dispatch precedes target-root discovery and checkpoint migration.
 
 Error text is actionable, but a successful CLI return does not imply that the repository changed: an action can be cancelled or already satisfied. See [Usage](USAGE.md#console-progress-and-results) and [Usage](USAGE.md#logging) for operational behavior.
 

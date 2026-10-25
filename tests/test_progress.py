@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -150,6 +151,163 @@ class ProgressStorageTests(unittest.TestCase):
             stdout, stderr = process.communicate(timeout=20)
             self.assertEqual(process.returncode, 0, (stdout, stderr))
         self.assertEqual(len(self.store.read_snapshot()["events"]), 4)
+
+
+class ProgressOverviewTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.base = Path(self.temporary.name)
+        self.tool = self.base / "apatch installation with spaces"
+        self.tool.mkdir()
+        shutil.copytree(TOOL / "apatch_lib", self.tool / "apatch_lib",
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copy2(TOOL / "apatch.py", self.tool / "apatch.py")
+        shutil.copy2(TOOL / "apatch.sh", self.tool / "apatch.sh")
+        shutil.copy2(TOOL / "apatch.conf", self.tool / "apatch.conf")
+        self.other_directory = self.base / "outside git"
+        self.other_directory.mkdir()
+        self.first = self.base / "team-one" / "same-name"
+        self.second = self.base / "team-two" / "same-name"
+        self.first.mkdir(parents=True)
+        self.second.mkdir(parents=True)
+        self.store = ProgressStore(self.tool)
+
+    def invoke_info(self, *arguments):
+        return subprocess.run([sys.executable, "-B", str(self.tool / "apatch.py"),
+                               *arguments], cwd=self.other_directory,
+                              text=True, capture_output=True, check=False)
+
+    def record(self, root, *, result="SUCCESS", operation=4, moment=None):
+        event = event_for(root, result=result, operation=operation)
+        if moment is not None:
+            event.data["finished_at_utc"] = moment
+        self.store.append_event(event)
+        return event
+
+    def test_no_git_no_handoff_no_history_does_not_create_files(self):
+        before = sorted(str(path) for path in self.tool.rglob("*"))
+        result = self.invoke_info("info=PROGRESS")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("APATCH GLOBAL PROGRESS [RECORDED]", result.stdout)
+        self.assertIn("No recorded operations yet", result.stdout)
+        self.assertNotIn("git", result.stderr.lower())
+        self.assertEqual(sorted(str(path) for path in self.tool.rglob("*")), before)
+        self.assertFalse((self.tool / ".apatch").exists())
+
+    def test_shell_launcher_from_unrelated_directory_and_path_with_spaces(self):
+        interpreter = self.tool / ".venv" / "bin" / "python"
+        interpreter.parent.mkdir(parents=True)
+        interpreter.symlink_to(sys.executable)
+        result = subprocess.run(["sh", str(self.tool / "apatch.sh"), "info=PROGRESS"],
+                                cwd=self.other_directory, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("APATCH GLOBAL PROGRESS [RECORDED]", result.stdout)
+
+    def test_read_only_query_obeys_independent_limits_and_project_identities(self):
+        marker = "2026-10-25T10:30:00.000Z"
+        for root in (self.first, self.second):
+            for _ in range(3):
+                self.record(root, moment=marker)
+        config_path = self.tool / "apatch.conf"
+        config_path.write_text(config_path.read_text().replace(
+            "progress_global_limit = 8", "progress_global_limit = 2").replace(
+            "progress_project_limit = 3", "progress_project_limit = 1"))
+        before = {str(path): path.read_bytes() for path in self.tool.rglob("*") if path.is_file()}
+        result = self.invoke_info("--info=PROGRESS")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Recent global operations (latest 2)", result.stdout)
+        self.assertIn("Projects (2)", result.stdout)
+        self.assertEqual(result.stdout.count("Recent project operations (latest 1)"), 2)
+        self.assertIn(str(self.first), result.stdout)
+        self.assertIn(str(self.second), result.stdout)
+        self.assertIn("UNFINISHED", result.stdout)
+        self.assertEqual(result.stdout.count(marker), 6)
+        self.assertEqual({str(path): path.read_bytes() for path in self.tool.rglob("*")
+                          if path.is_file()}, before)
+        self.assertEqual(len(self.store.read_snapshot()["events"]), 6)
+
+    def test_sorting_uses_timestamp_then_stable_event_id(self):
+        first = self.record(self.first, operation=4, moment="2026-10-25T12:00:00.000Z")
+        second = self.record(self.second, operation=7, moment="2026-10-25T12:00:00.000Z")
+        payload = self.store.read_snapshot()
+        order = sorted((first.data["event_id"], second.data["event_id"]), reverse=True)
+        from apatch_lib.progress import render_progress
+        output = render_progress(payload, global_limit=2, project_limit=1)
+        expected_codes = [next(entry["operation_code"] for entry in payload["events"]
+                               if entry["event_id"] == identity) for identity in order]
+        global_section = output.split("Projects (2):", 1)[0]
+        self.assertEqual([line.split("[", 1)[1].split("]", 1)[0]
+                          for line in global_section.splitlines() if "[CHK]" in line or "[PR]" in line],
+                         expected_codes)
+
+    def test_unknown_remote_and_cancelled_are_identified_as_unconfirmed(self):
+        self.record(self.first, result="UNKNOWN_REMOTE_RESULT", operation=7)
+        self.record(self.second, result="CANCELLED", operation=4)
+        result = self.invoke_info("info=PROGRESS")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Remote outcome unknown; verify GitHub", result.stdout)
+        self.assertIn("Last attempt did not complete", result.stdout)
+        self.assertIn("not live Git/GitHub verification", result.stdout)
+
+    def test_invalid_limits_fail_without_mutating_history(self):
+        self.record(self.first)
+        config_path = self.tool / "apatch.conf"
+        original = config_path.read_text()
+        history = self.store.master_path.read_bytes()
+        for name, value in (("progress_global_limit", "0"),
+                            ("progress_global_limit", "101"),
+                            ("progress_global_limit", "false"),
+                            ("progress_project_limit", "-1"),
+                            ("progress_project_limit", "51"),
+                            ("progress_project_limit", "3.4")):
+            with self.subTest(name=name, value=value):
+                config_path.write_text(original.replace(f"{name} = " +
+                                                        ("8" if name.endswith("global_limit") else "3"),
+                                                        f"{name} = {value}"))
+                result = self.invoke_info("info=PROGRESS")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn(name, result.stderr)
+                self.assertEqual(self.store.master_path.read_bytes(), history)
+
+    def test_conflicts_fail_before_any_local_side_effect(self):
+        cases = (("info=PROGRESS", "op=STS"),
+                 ("info=PROGRESS", "opSeq=STS"),
+                 ("info=PROGRESS", "patch=another.zip"),
+                 ("info=PROGRESS", "handoffSeq=a.zip"),
+                 ("info=PROGRESS", "--strict"),
+                 ("info=PROGRESS", "skipApproves=false"),
+                 ("another.zip", "info=PROGRESS"))
+        for args in cases:
+            with self.subTest(args=args):
+                result = self.invoke_info(*args)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse((self.tool / ".apatch").exists())
+
+    def test_master_and_parent_directory_symlinks_fail_closed(self):
+        outside = self.base / "outside-data"
+        outside.mkdir()
+        (self.tool / ".apatch").symlink_to(outside, target_is_directory=True)
+        result = self.invoke_info("info=PROGRESS")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Unsafe global progress directory", result.stderr)
+        self.assertEqual(list(outside.iterdir()), [])
+
+    def test_malformed_timestamp_fails_without_rewriting_master(self):
+        self.record(self.first)
+        payload = self.store.read_snapshot()
+        payload["events"][0]["finished_at_utc"] = "invalid"
+        self.store.master_path.write_text(json.dumps(payload))
+        before = self.store.master_path.read_bytes()
+        result = self.invoke_info("info=PROGRESS")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Invalid global progress event timestamp", result.stderr)
+        self.assertEqual(self.store.master_path.read_bytes(), before)
+
+    def test_help_available_without_repository(self):
+        result = self.invoke_info("--help")
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("info=PROGRESS", result.stdout)
 
 
 class ProgressCliTests(LocalGitFixture):

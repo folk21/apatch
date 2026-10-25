@@ -40,6 +40,8 @@ class Config:
     review_approval_source: str = "global"
     required_checks_source: str = "global"
     check_timeout_seconds: int = 900
+    progress_global_limit: int = 8
+    progress_project_limit: int = 3
 
 
 @dataclass(frozen=True)
@@ -92,6 +94,17 @@ def load_config(script_dir: Path) -> Config:
         raise Abort("check_timeout_seconds must be an integer from 1 to 3600") from exc
     if not 1 <= check_timeout_seconds <= 3600:
         raise Abort("check_timeout_seconds must be an integer from 1 to 3600")
+    progress_limits = (("progress_global_limit", 8, 100),
+                       ("progress_project_limit", 3, 50))
+    validated_limits = {}
+    for name, default, maximum in progress_limits:
+        try:
+            value = section.getint(name, default)
+        except ValueError as exc:
+            raise Abort(f"{name} must be an integer from 1 to {maximum}") from exc
+        if not 1 <= value <= maximum:
+            raise Abort(f"{name} must be an integer from 1 to {maximum}")
+        validated_limits[name] = value
     return Config(
         downloads=Path(section.get("downloads_dir", "~/Downloads")).expanduser().resolve(),
         state_path=state,
@@ -107,6 +120,7 @@ def load_config(script_dir: Path) -> Config:
         require_patch_feature_branch=section.getboolean("require_patch_feature_branch", False),
         github_timeout_seconds=github_timeout_seconds,
         check_timeout_seconds=check_timeout_seconds,
+        **validated_limits,
     )
 
 

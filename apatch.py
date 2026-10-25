@@ -16,7 +16,7 @@ from apatch_lib.migration import migrate_legacy_artifacts
 from apatch_lib.model import Abort, BASENAME_PATTERN, load_config, load_handoff, load_project_config
 from apatch_lib.params_cache import load_cached_handoff, save_cached_handoff
 from apatch_lib.patch import handoff_from_zip
-from apatch_lib.progress import ProgressEvent, ProgressRecorder, utc_now
+from apatch_lib.progress import ProgressEvent, ProgressRecorder, ProgressStore, render_progress, utc_now
 from apatch_lib.sequence import (OperationSequence, execute_sequence,
                                  parse_handoff_sequence, validate_multi_handoff_actions)
 from apatch_lib.state import locked_state, read_state_snapshot
@@ -45,6 +45,8 @@ def normalize_arguments(arguments):
             normalized.append("--patch=" + argument[len("patch="):])
         elif argument.startswith("skipApproves="):
             normalized.append("--skip-approves=" + argument[len("skipApproves="):])
+        elif argument.startswith("info="):
+            normalized.append("--info=" + argument[len("info="):])
         else:
             normalized.append(argument)
     return normalized
@@ -165,6 +167,7 @@ def main():
                 "  apatch.sh apatch-PATCH-2026-10-24-00-42-example opSeq=APL,BRN,CHK,CMT,PSH skipApproves=true\n"
                 "  apatch.sh opSeq=APL,BRN,APL,CHK,CMT handoffSeq=first.zip,second.zip skipApproves=true\n"
                 "  apatch.sh op=STS\n"
+                "  apatch.sh info=PROGRESS\n"
                 "  apatch.sh strict op=CHK\n"
                 "  apatch.sh force op=CMT\n"
                 "  apatch.sh /path/legacy.json op=STS\n"
@@ -191,6 +194,8 @@ def main():
     operation_selection.add_argument("--op-seq", "--opSeq", type=parse_operation_sequence,
                                      metavar="CODE,CODE,...",
                                      help="Run sequential actions; stop after any error or no-op; pair with skipApproves=true for unattended use")
+    operation_selection.add_argument("--info", choices=("PROGRESS",), metavar="PROGRESS",
+                                     help="Read-only global progress overview; no handoff or Git repository required")
     parser.add_argument("--handoff-seq", "--handoffSeq", metavar="ZIP1,ZIP2,...",
                         help="Explicit ZIP per APL in opSeq; multi-ZIP accumulation requires LOOSE")
     parser.add_argument("--patch", metavar="NAME.zip",
@@ -198,10 +203,20 @@ def main():
     parser.add_argument("--skip-approves", "--skipApproves", type=parse_boolean,
                         default=False, metavar="{true,false}",
                         help="Skip interactive confirmations (default: false); does not bypass safety checks")
-    args = parser.parse_args(normalize_arguments(sys.argv[1:]))
+    normalized_args = normalize_arguments(sys.argv[1:])
+    args = parser.parse_args(normalized_args)
     script_dir = Path(__file__).resolve().parent
     try:
         config = load_config(script_dir)
+        if args.info is not None:
+            lifecycle_flags = {"--loose", "--strict", "--force", "--skip-approves"}
+            if (args.handoff is not None or args.handoff_seq is not None or args.patch is not None
+                    or any(token.split("=", 1)[0] in lifecycle_flags for token in normalized_args)):
+                raise Abort("info=PROGRESS cannot be combined with a handoff, operation, or lifecycle options")
+            print(render_progress(ProgressStore(script_dir).read_snapshot(),
+                                  global_limit=config.progress_global_limit,
+                                  project_limit=config.progress_project_limit))
+            return 0
         if args.patch is not None and not BASENAME_PATTERN.fullmatch(args.patch):
             raise Abort("--patch must be an ASCII-safe ZIP basename")
         sequence_only_status = args.op_seq is not None and args.op_seq.actions == (10,)
