@@ -5,7 +5,8 @@ import logging
 from .branch_guard import assert_no_unfinished_feature_branches
 from .created_patches import assert_patch_order, persist_registry
 from .gitutil import (branch_exists, confirm, current_branch, head, remote_head,
-                      require_branch, require_clean, run, skip_approvals_enabled)
+                      require_branch, require_clean, run, skip_approvals_enabled,
+                      worktree_fingerprint)
 from .model import Abort
 from .patch import apply, inspect
 from .patch_history import locked_history
@@ -92,6 +93,52 @@ class BranchPatchActions:
                             remote_url=remote_url, branch_origin="CREATED")
             w.persist()
 
+    def prepare_branch_after_apply(self):
+        """Move verified uncommitted patch bytes from base to the planned feature branch."""
+        w = self.workflow
+        if (not w.record.get("zip_first") or w.phase != "patch_applied"
+                or w.record.get("applied_branch") != w.config.base):
+            raise Abort("Apply a self-contained ZIP on the base branch before BRN")
+        self.assert_history_well_formed()
+        expected_head = w.record.get("before_patch_head")
+        if not expected_head or head(w.root) != expected_head:
+            raise Abort("Base HEAD drifted after patch extraction; cannot move pending changes")
+        if w.record.get("archive_sha256") != w.handoff.patch_sha256:
+            raise Abort("Cached patch digest differs from the applied ZIP")
+        w.assert_remote_unchanged()
+        before_fingerprint, paths = w.assert_expected_paths()
+        if not paths:
+            raise Abort("No recorded patch changes to carry into the feature branch")
+        branch = current_branch(w.root)
+        if branch == w.handoff.branch:
+            origin = "CREATED"
+            print("Recovering a previously switched feature branch from live Git state.")
+        else:
+            if branch != w.config.base:
+                raise Abort(f"BRN requires current branch {w.config.base} or {w.handoff.branch}")
+            if remote_head(w.root, w.config, w.config.base) != expected_head:
+                raise Abort("Remote base HEAD changed since patch extraction")
+            self.assert_new_branch_available()
+            if not confirm(f"Move uncommitted patch changes from {branch} to {w.handoff.branch}?"):
+                return
+            self.assert_new_branch_available()
+            assert_no_unfinished_feature_branches(w.root, w.config, w.handoff.branch)
+            if head(w.root) != expected_head or worktree_fingerprint(w.root)[0] != before_fingerprint:
+                raise Abort("Base HEAD or pending files changed before branch creation")
+            if remote_head(w.root, w.config, w.config.base) != expected_head:
+                raise Abort("Remote base moved during branch preflight")
+            run(["git", "switch", "-c", w.handoff.branch], w.root)
+            origin = "CREATED"
+        require_branch(w.root, w.handoff.branch)
+        if head(w.root) != expected_head or worktree_fingerprint(w.root)[0] != before_fingerprint:
+            raise Abort("Pending patch bytes changed during branch transition; inspect before retry")
+        w.record.update(applied_branch=w.handoff.branch, branch_origin=origin,
+                        branch_base=expected_head, extracted_on_branch=w.config.base)
+        w.persist()
+        with locked_history(w.config.applied_patches_path) as history:
+            history.record_commit_branch(w.handoff.patch, w.handoff.branch, w.handoff.branch)
+        print(f"Patch changes now reside on {w.handoff.branch}; run CHK next.")
+
     def warn_if_previously_applied(self, history):
         w = self.workflow
         if not history.contains(w.handoff.patch):
@@ -125,7 +172,9 @@ class BranchPatchActions:
         patch_branch = current_branch(w.root)
         if not patch_branch or patch_branch == "HEAD":
             raise Abort("Check out a named branch before applying a patch")
-        if w.config.require_patch_feature_branch:
+        archive = archive or w.assert_patch_identity()
+        zip_first = archive.embedded_handoff is not None and patch_branch == w.config.base
+        if w.config.require_patch_feature_branch and not zip_first:
             require_branch(w.root, w.handoff.branch)
         require_clean(w.root)
         remote_url = w.assert_remote_unchanged()
@@ -141,7 +190,6 @@ class BranchPatchActions:
             raise Abort("Feature branch unexpectedly appeared on remote after local creation")
         if remote_before_patch is not None and remote_before_patch != head(w.root):
             raise Abort(f"Remote branch {patch_branch} differs from local HEAD")
-        archive = archive or w.assert_patch_identity()
         if not history_confirmed and not self.warn_if_previously_applied(history):
             return
         if not confirm(f"Apply {w.handoff.patch} to {patch_branch}?"):
@@ -152,6 +200,7 @@ class BranchPatchActions:
         w.record.update(
             phase="applying",
             archive_sha256=archive.sha256,
+            zip_first=zip_first,
             remote_before_patch_head=remote_before_patch,
             applied_branch=patch_branch,
             changed_paths=sorted(set(archive.changed) | set(w.handoff.delete_paths)),

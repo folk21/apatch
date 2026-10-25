@@ -31,7 +31,7 @@ class OperationSequence:
         return cls(actions)
 
 
-def execute_sequence(workflow, sequence: OperationSequence):
+def execute_sequence(workflow, sequence: OperationSequence, *, on_completed=None):
     """Stop at the first failure or action without an observed state transition."""
     total = len(sequence.actions)
     print(f"\n==> SEQUENCE START: {total} step(s) | skipApproves applies to each step")
@@ -41,6 +41,8 @@ def execute_sequence(workflow, sequence: OperationSequence):
         print(f"\n==> SEQUENCE STEP {index}/{total}: {action} [{code}]", flush=True)
         try:
             result = workflow.interactive(code, show_header=index == 1)
+            if result == "SUCCESS" and on_completed is not None:
+                on_completed(action)
         except (Abort, KeyboardInterrupt) as exc:
             remaining = ", ".join(ACTION_CODES[item] for item in sequence.actions[index:]) or "NONE"
             print(f"==> SEQUENCE STOP: step {index}/{total} ({action} [{code}]) | last completed: {last_completed}")

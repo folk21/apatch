@@ -11,7 +11,7 @@ from .created_patches import persist_registry
 from .gitutil import (branch_exists, confirm, current_branch, head, output, remote_head,
                       require_clean, run, worktree_fingerprint)
 from .model import Abort
-from .patch import REGISTRY_MEMBER, apply, inspect, patch_file
+from .patch import PARAMS_MEMBER, REGISTRY_MEMBER, apply, inspect, patch_file
 from .patch_history import locked_history
 
 
@@ -116,7 +116,7 @@ class ForceActions:
                     if item.is_dir():
                         continue
                     relative = item.filename.split("/", 1)[1]
-                    if relative == REGISTRY_MEMBER:
+                    if relative in {REGISTRY_MEMBER, PARAMS_MEMBER}:
                         continue
                     if (w.root / relative).read_bytes() != source.read(item):
                         return False
@@ -201,6 +201,13 @@ class ForceActions:
                 print("Existing worktree changes recorded. Run canonical checks when ready.")
             return
         archive = self.archive(before_apply=True)
+        zip_first = archive.embedded_handoff is not None and branch == w.config.base
+        if archive.embedded_handoff is not None and branch != w.config.base and w.phase == "new":
+            raise Abort("A new self-contained ZIP must be applied to the base branch before BRN")
+        if zip_first:
+            w.assert_base()
+            if self.previous_remote_head(w.config.base) != head(w.root):
+                raise Abort("Base branch differs from remote; cannot start an apply-first ZIP workflow")
         if self._matches_archive_files(archive) and (set(archive.changed) |
                                                     set(w.handoff.delete_paths)) & self._commit_paths():
             if self._adopt_commit(require_archive_match=True):
@@ -214,6 +221,7 @@ class ForceActions:
                 return
             self.checkpoint("applying", "apply started", applied_branch=branch,
                             before_patch_head=head(w.root), archive_sha256=archive.sha256,
+                            zip_first=zip_first,
                             changed_paths=sorted(set(archive.changed) | set(w.handoff.delete_paths)),
                             remote_url=self.remote_url(),
                             remote_before_patch_head=self.previous_remote_head(branch),

@@ -113,7 +113,7 @@ def _fact(value, evidence, detail=""):
 
 
 def recommend_next_action(phase: str, mode: str, branch: str, planned_branch: str,
-                          *, conflict=False, dirty=False, base="main"):
+                          *, conflict=False, dirty=False, base="main", zip_pending_branch=False):
     """Provide cautious guidance; this never replaces a command's live guards."""
     if conflict or phase == "applying":
         return None, None, "Inspect or reconcile the conflicting/interrupted workflow before continuing."
@@ -130,6 +130,8 @@ def recommend_next_action(phase: str, mode: str, branch: str, planned_branch: st
             return None, None, "STRICT patch application requires the prepared branch and clean worktree."
         return 3, None, "Check the selected ZIP and target branch before applying."
     if phase == "patch_applied":
+        if zip_pending_branch:
+            return 1, None, "Move the uncommitted ZIP changes from the base branch to the planned feature branch."
         return 4, 3 if mode == "loose" else None, "Verify the current changed bytes before commit."
     if phase == "verified":
         if mode == "strict" and branch != planned_branch:
@@ -206,7 +208,9 @@ def inspect_patch(root: Path, config, record: dict, patch: str, planned_branch: 
             facts["Working HEAD"] = _fact(current_head[:12], "CONFLICT", "changed since patch application")
             conflict = True
     next_action, alternate, guidance = recommend_next_action(
-        phase, mode, current, planned_branch, conflict=conflict, dirty=dirty, base=config.base)
+        phase, mode, current, planned_branch, conflict=conflict, dirty=dirty, base=config.base,
+        zip_pending_branch=(record.get("zip_first") is True
+                            and record.get("applied_branch") == config.base))
     return PatchStatus(patch, planned_branch, phase, current, facts, next_action, alternate, guidance)
 
 

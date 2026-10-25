@@ -6,7 +6,7 @@ This document describes the implemented components and operational boundaries of
 
 `apatch` is an external Python CLI that orchestrates changes in an **existing target Git repository**. The installed `apatch` directory contains code and `apatch.conf`; the current working directory identifies the target Git repository. The two must not be confused.
 
-Inputs include an untrusted handoff JSON, a ZIP patch archive, repository-local `.apatch/config.yaml`, local Git state, and optional GitHub PR state. Relevant boundaries are:
+Inputs include an untrusted ZIP with embedded handoff metadata (or a legacy external JSON), a verified cached handoff, repository-local `.apatch/config.yaml`, local Git state, and optional GitHub PR state. Relevant boundaries are:
 
 - ZIP members, requested deletions, and configured paths must not escape the target repository or modify Git metadata.
 - Manual working-tree changes are user-owned; patch application must avoid silent data loss.
@@ -17,10 +17,10 @@ Inputs include an untrusted handoff JSON, a ZIP patch archive, repository-local 
 ## Execution flow
 
 1. `apatch.sh` normalizes supported shell-friendly mode arguments and invokes the tool interpreter.
-2. `apatch.py` parses CLI options, resolves the handoff, verifies that the current directory belongs to the expected Git repository, and loads global and target-project configuration.
+2. `apatch.py` parses CLI options, identifies the actual target Git repository, and loads configuration. For a new cycle it verifies an explicitly selected ZIP and embedded handoff; for continuation it loads `.apatch/params.json`. Explicit legacy JSON selection remains supported.
 3. Project runtime artifacts are excluded locally from Git, log context is established, and the state file is opened under a lock. Legacy runtime data is migrated when appropriate.
 4. `Workflow` chooses the relevant action under LOOSE, STRICT, or FORCE, reports the current branch/phase, and coordinates the owning helpers.
-5. Helpers inspect the actual filesystem/Git/GitHub state before side effects, update the workflow checkpoint/history, and emit console and audit events.
+5. Helpers inspect the actual filesystem/Git/GitHub state before side effects, update the workflow checkpoint/history, and emit console and audit events. After a successful initial `APL`, the validated handoff and archive digest are atomically cached locally.
 
 `STS` takes an earlier, separate read-only path: it validates the repository and configuration, loads a snapshot without creating a state lock, and inspects local Git evidence. Interactive menu selection is also performed before opening the writable workflow state; choosing `STS` never enters the mutation path.
 
@@ -42,6 +42,7 @@ side effects. Canonical action identities are defined in `apatch_lib/workflow.py
 | `apatch_lib/branch_patch.py` | Preparing branches and coordinating patch application |
 | `apatch_lib/branch_guard.py` | Mandatory cross-mode preflight against unfinished local/remote feature branches and open GitHub feature PRs before creating a new branch |
 | `apatch_lib/patch.py` | ZIP validation, safe member inspection, archive application |
+| `apatch_lib/params_cache.py` | Restricted, locked, atomic persistence of a verified project-local handoff |
 | `apatch_lib/model.py` | Handoff and configuration schema, path validation, shared records |
 | `apatch_lib/state.py` | Locked state persistence and atomic checkpoint updates |
 | `apatch_lib/status.py` | Read-only current patch evidence, cautious next-action suggestions, and report formatting |
@@ -61,6 +62,8 @@ Keep safety validation close to its owning domain. Avoid distributing the same c
 
 `STRICT` enforces the expected branch, clean-tree state, and phase transitions. `FORCE` explicitly reconciles manual operations, but it does not bypass unsafe archive, Git remote, or GitHub policy checks. In STRICT and FORCE, the `CMT` action uses their combined commit/push workflow. The detailed action matrix is maintained in [Usage](USAGE.md#workflow).
 
+New self-contained handoffs start with `APL` on a clean, remote-matched base, remain uncommitted, then use `BRN` to create the planned feature ref without losing changes. While this migration is pending, every other mutating operation is blocked, including FORCE and unattended sequences. The resulting checkpoint still has phase `patch_applied` but its `applied_branch` is the feature branch, allowing `CHK`. Legacy JSON handoffs and their branch-first checkpoints remain compatible; `BAP` is disabled for self-contained ZIP cycles while the legacy alias is retained for old clients.
+
 The `skipApproves` option changes confirmation behavior across standalone and
 sequence operations; it does not disable validation. Declined confirmations
 remain distinct from success even if intermediate Git staging occurred. Because
@@ -77,6 +80,7 @@ affected files deliberately.
 
 - `.apatch/apply_patch.state.json` and its lock;
 - `.apatch/applied_patches.txt` and its lock;
+- `.apatch/params.json` and its lock (verified current patch handoff; never Git-tracked);
 - `.apatch/logs/apatch.log`;
 - `.apatch/backups/` for recoverable overlap backups when created.
 
@@ -89,6 +93,8 @@ New branch actions record `branch_origin` as `CREATED` or `REUSED` once the deci
 ## Safety and recoverability
 
 - Archive extraction validates the handoff and ZIP before applying file changes. Unexpected overlapping dirty files require consent and a backup; ZIP replacement is not a semantic merge.
+- `<repository>/.apatch/params.json` inside a ZIP is a reserved regular metadata member, not an extracted source file. It cannot contain the archive's own SHA-256; the final digest is computed from validated archive bytes and cached under the target repository's Git-ignored `.apatch/params.json` using no-follow checks, a dedicated lock, restrictive permissions, fsync, and atomic replacement.
+- A failed cache write after `APL` does not imply failed extraction. A matching explicit ZIP selection can retry `BRN` from the recorded `patch_applied` checkpoint without extracting a second time, and restore the verified cache. If the ZIP has since been removed, an already valid cache permits normal continuation; no implicit ZIP guessing occurs.
 - Git preconditions are checked against the actual repository state. Push must be fast-forward and never uses `--force`.
 - Creating a new feature branch requires a shared, non-configurable preflight. It rejects unmerged remote feature refs, open GitHub feature PRs, and local feature refs with outstanding commits; it accepts provably merged old refs. Remote verification failures block creation, including in FORCE and with `skipApproves=true`. Reusing an existing target branch is not branch creation.
 - Before BRN/BAP switches to or creates a feature branch, all modes validate the existing applied-patch journal under its advisory lock. Malformed historical entries abort before branch mutation with the offending line and expected field. The journal is never automatically repaired or discarded; correction requires reviewing the original record.

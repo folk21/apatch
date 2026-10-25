@@ -123,6 +123,141 @@ class LocalGitWorkflowTest(unittest.TestCase):
         return subprocess.run([sys.executable, str(self.bin / "apatch.py"), str(self.params), *options],
                               cwd=self.root, input=text, capture_output=True, text=True)
 
+    def make_self_contained_zip(self, *, override=None, include_metadata=True):
+        """Rebuild the test patch with the verified self-contained handoff member."""
+        parameters = {key: value for key, value in self.payload.items() if key != "patch_sha256"}
+        parameters.update(override or {})
+        with zipfile.ZipFile(self.zip, "w") as archive:
+            archive.writestr(f"{self.root.name}/existing.txt", "updated\n")
+            archive.writestr(f"{self.root.name}/new.txt", "new\n")
+            if include_metadata:
+                archive.writestr(f"{self.root.name}/.apatch/params.json", json.dumps(parameters))
+        return self.zip.stem
+
+    def invoke_zip(self, *options, selection=None, text=""):
+        arguments = ([selection] if selection is not None else []) + list(options)
+        return subprocess.run([sys.executable, str(self.bin / "apatch.py"), *arguments],
+                              cwd=self.root, input=text, capture_output=True, text=True)
+
+    def assert_self_contained_lifecycle(self, mode):
+        stem = self.make_self_contained_zip()
+        applied = self.invoke_zip(f"--{mode}", "op=APL", "skipApproves=true", selection=stem)
+        self.assertEqual(applied.returncode, 0, applied.stderr + applied.stdout)
+        self.assertIn("SUCCESS", applied.stdout)
+        self.assertIn("Next suggested: 1 [BRN]", applied.stdout)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(), "main")
+        cached_path = self.root / ".apatch" / "params.json"
+        cached = json.loads(cached_path.read_text())
+        self.assertEqual(cached["patch_sha256"], hashlib.sha256(self.zip.read_bytes()).hexdigest())
+        self.assertEqual(stat.S_IMODE(cached_path.stat().st_mode), 0o600)
+        self.assertIn(".apatch/params.json", (self.root / ".git" / "info" / "exclude").read_text())
+        self.assertNotIn(".apatch/params.json", command("git", "status", "--porcelain", cwd=self.root).stdout)
+        blocked = self.invoke_zip(f"--{mode}", "op=CMT", "skipApproves=true")
+        self.assertEqual(blocked.returncode, 2)
+        self.assertIn("1 [BRN]", blocked.stderr)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(), "main")
+        moved = self.invoke_zip(f"--{mode}", "op=BRN", "skipApproves=true")
+        self.assertEqual(moved.returncode, 0, moved.stderr + moved.stdout)
+        self.assertIn("Next suggested: 4 [CHK]", moved.stdout)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         "feature/test-local-handoff")
+        self.zip.unlink()
+        verified = self.invoke_zip(f"--{mode}", "op=CHK", "skipApproves=true")
+        self.assertEqual(verified.returncode, 0, verified.stderr + verified.stdout)
+
+    def test_self_contained_lifecycle_loose(self):
+        self.assert_self_contained_lifecycle("loose")
+
+    def test_self_contained_lifecycle_strict(self):
+        self.assert_self_contained_lifecycle("strict")
+
+    def test_self_contained_lifecycle_force(self):
+        self.assert_self_contained_lifecycle("force")
+
+    def test_self_contained_zip_sequence_and_deprecated_bap(self):
+        stem = self.make_self_contained_zip()
+        forbidden = self.invoke_zip("op=BAP", "skipApproves=true", selection=stem)
+        self.assertEqual(forbidden.returncode, 2)
+        self.assertIn("deprecated", forbidden.stderr)
+        combined = self.invoke_zip("--strict", "opSeq=APL,BRN,CHK", "skipApproves=true", selection=stem)
+        self.assertEqual(combined.returncode, 0, combined.stderr + combined.stdout)
+        self.assertIn("SEQUENCE", combined.stdout)
+        self.assertIn("Next suggested: 5 [CMT]", combined.stdout)
+        stale_bap = self.invoke_zip("op=2", "skipApproves=true")
+        self.assertEqual(stale_bap.returncode, 2)
+        self.assertIn("deprecated", stale_bap.stderr)
+
+    def test_self_contained_zip_invalid_metadata_does_not_extract_or_cache(self):
+        for variant in ({"repository": "elsewhere"}, {"patch_sha256": "0" * 64},
+                        {"feature_branch": "main"}):
+            with self.subTest(variant=variant):
+                stem = self.make_self_contained_zip(override=variant)
+                result = self.invoke_zip("op=APL", "skipApproves=true", selection=stem)
+                self.assertEqual(result.returncode, 2)
+                self.assertFalse((self.root / "new.txt").exists())
+                self.assertFalse((self.root / ".apatch" / "params.json").exists())
+        stem = self.make_self_contained_zip(include_metadata=False)
+        result = self.invoke_zip("op=APL", "skipApproves=true", selection=stem)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("exactly one", result.stderr)
+
+    def test_cached_self_contained_parameters_reject_corruption_and_symlink(self):
+        stem = self.make_self_contained_zip()
+        result = self.invoke_zip("op=APL", "skipApproves=true", selection=stem)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        cached_path = self.root / ".apatch" / "params.json"
+        cached_path.write_text("{invalid")
+        failed = self.invoke_zip("op=BRN", "skipApproves=true")
+        self.assertEqual(failed.returncode, 2)
+        self.assertIn("Cannot read .apatch/params.json", failed.stderr)
+        cached_path.unlink()
+        cached_path.symlink_to(self.params)
+        failed = self.invoke_zip("op=BRN", "skipApproves=true")
+        self.assertEqual(failed.returncode, 2)
+        self.assertIn("Unsafe cached handoff path", failed.stderr)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(), "main")
+
+    def test_zip_selected_can_recover_missing_cache_after_successful_apl(self):
+        stem = self.make_self_contained_zip()
+        applied = self.invoke_zip("op=APL", "skipApproves=true", selection=stem)
+        self.assertEqual(applied.returncode, 0, applied.stderr + applied.stdout)
+        cache = self.root / ".apatch" / "params.json"
+        cache.unlink()
+        unavailable = self.invoke_zip("op=BRN", "skipApproves=true")
+        self.assertEqual(unavailable.returncode, 2)
+        recovered = self.invoke_zip("op=BRN", "skipApproves=true", selection=stem)
+        self.assertEqual(recovered.returncode, 0, recovered.stderr + recovered.stdout)
+        self.assertTrue(cache.is_file())
+        self.assertEqual(self.invoke_zip("op=CHK").returncode, 0)
+
+    def test_zip_branch_can_recover_a_manually_completed_switch(self):
+        stem = self.make_self_contained_zip()
+        self.assertEqual(self.invoke_zip("op=APL", "skipApproves=true", selection=stem).returncode, 0)
+        command("git", "switch", "-c", "feature/test-local-handoff", cwd=self.root)
+        recovered = self.invoke_zip("op=BRN", "skipApproves=true")
+        self.assertEqual(recovered.returncode, 0, recovered.stderr + recovered.stdout)
+        self.assertIn("Recovering a previously switched feature branch", recovered.stdout)
+        self.assertEqual(self.invoke_zip("op=CHK").returncode, 0)
+
+    def test_embedded_metadata_must_be_unique_regular_and_repository_scoped(self):
+        stem = self.make_self_contained_zip()
+        with zipfile.ZipFile(self.zip, "a") as archive:
+            archive.writestr(f"{self.root.name}/.apatch/params.json", "{}")
+        duplicate = self.invoke_zip("op=APL", "skipApproves=true", selection=stem)
+        self.assertEqual(duplicate.returncode, 2)
+        self.assertIn("exactly one", duplicate.stderr)
+        stem = self.make_self_contained_zip()
+        with zipfile.ZipFile(self.zip, "w") as archive:
+            archive.writestr(f"{self.root.name}/existing.txt", "updated\n")
+            metadata = zipfile.ZipInfo(f"{self.root.name}/.apatch/params.json")
+            metadata.create_system = 3
+            metadata.external_attr = (stat.S_IFLNK | 0o777) << 16
+            archive.writestr(metadata, "dangerous-target")
+        linked = self.invoke_zip("op=APL", "skipApproves=true", selection=stem)
+        self.assertEqual(linked.returncode, 2)
+        self.assertIn("regular JSON", linked.stderr)
+        self.assertFalse((self.root / "new.txt").exists())
+
     def configure_checks(self, yaml_text):
         self.project_config.write_text(yaml_text)
         command("git", "add", "-A", cwd=self.root)
@@ -923,7 +1058,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("Mode: FORCE", result.stdout)
 
-    def test_named_handoff_is_required_instead_of_project_default(self):
+    def test_missing_cached_handoff_requires_explicit_zip_or_json(self):
         self.prepare_test_launcher()
         cases = (
             ["sh", str(self.bin / "apatch.sh")],
@@ -938,7 +1073,7 @@ class LocalGitWorkflowTest(unittest.TestCase):
                 result = subprocess.run(argv, cwd=self.root,
                                         input="0\n", capture_output=True, text=True)
                 self.assertEqual(result.returncode, 2)
-                self.assertIn("HANDOFF_STEM|PATH.json", result.stderr)
+                self.assertIn(".apatch/params.json", result.stderr)
         self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, before)
         self.assertFalse(self.state_path.exists())
 
@@ -1943,12 +2078,12 @@ class LocalGitWorkflowTest(unittest.TestCase):
         self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, before_status)
         self.assertEqual(command("git", "show-ref", cwd=self.root).stdout, before_refs)
 
-    def test_status_requires_handoff_even_if_unique_stored_patch_exists(self):
+    def test_status_requires_cache_or_explicit_handoff_even_if_unique_state_exists(self):
         self.assertEqual(self.invoke_cli("--strict", "op=BAP", "skipApproves=true").returncode, 0)
         result = subprocess.run([sys.executable, str(self.bin / "apatch.py"), "op=STS"],
                                 cwd=self.root, capture_output=True, text=True)
         self.assertEqual(result.returncode, 2)
-        self.assertIn("HANDOFF_STEM|PATH.json", result.stderr)
+        self.assertIn(".apatch/params.json", result.stderr)
 
     def test_status_handoff_selects_exact_patch_despite_other_workflows(self):
         self.assertEqual(self.invoke_cli("--strict", "op=BAP", "skipApproves=true").returncode, 0)

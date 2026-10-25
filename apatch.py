@@ -7,14 +7,17 @@ import re
 import sys
 from pathlib import Path
 
-from apatch_lib.gitutil import repository_root, set_skip_approvals, reset_skip_approvals
+from apatch_lib.gitutil import (output, repository_root, set_skip_approvals,
+                               reset_skip_approvals)
 from apatch_lib.local_ignore import ensure_runtime_ignored
 from apatch_lib.logging_setup import LOG_FILENAME, configure, set_context
 from apatch_lib.migration import migrate_legacy_artifacts
 from apatch_lib.model import Abort, BASENAME_PATTERN, load_config, load_handoff, load_project_config
+from apatch_lib.params_cache import load_cached_handoff, save_cached_handoff
+from apatch_lib.patch import handoff_from_zip
 from apatch_lib.sequence import OperationSequence, execute_sequence
 from apatch_lib.state import locked_state, read_state_snapshot
-from apatch_lib.status import display_status, inspect_patch, select_record
+from apatch_lib.status import display_status, inspect_patch, select_record, workflow_key
 from apatch_lib.workflow import ACTION_CODES, Workflow, action_number
 
 
@@ -73,26 +76,45 @@ def resolve_handoff_path(identifier: str, downloads_dir: Path) -> Path:
     return candidate
 
 
+def resolve_selected_handoff(identifier, config, root):
+    """Resolve a legacy JSON, an explicit ZIP, or verified project-local parameters."""
+    if identifier is None:
+        return load_cached_handoff(root), ".apatch/params.json", False
+    if identifier.endswith(".json") or "/" in identifier or "\\" in identifier:
+        path = resolve_handoff_path(identifier, config.downloads)
+        return load_handoff(path), str(path), False
+    name = identifier if identifier.endswith(".zip") else identifier + ".zip"
+    if not BASENAME_PATTERN.fullmatch(name):
+        raise Abort("Specify an ASCII-safe ZIP stem/basename or an explicit JSON handoff path")
+    legacy = config.downloads / (identifier + ".json")
+    if not identifier.endswith(".zip") and legacy.is_file() and not legacy.is_symlink():
+        return load_handoff(legacy), str(legacy), False
+    return handoff_from_zip(config, root, name), str(config.downloads / name), True
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=("Manage project patches. LOOSE is the default mode; STRICT enforces "
                      "workflow phases; FORCE recovers from manual changes."),
         epilog=("Examples:\n"
-                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example op=3 skipApproves=true\n"
-                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example op=APL\n"
-                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example opSeq=BRN,APL,CHK,CMT,PSH skipApproves=true\n"
-                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example op=STS\n"
-                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example strict op=CHK\n"
-                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example force op=CMT\n"
+                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example op=APL skipApproves=true\n"
+                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example op=3\n"
+                "  apatch.sh op=BRN\n"
+                "  apatch.sh op=CHK\n"
+                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example opSeq=APL,BRN,CHK,CMT,PSH skipApproves=true\n"
+                "  apatch.sh op=STS\n"
+                "  apatch.sh strict op=CHK\n"
+                "  apatch.sh force op=CMT\n"
+                "  apatch.sh /path/legacy.json op=STS\n"
                 "Action codes: " + ", ".join(f"{i}={code}" for i, code in enumerate(ACTION_CODES)) + "\n"
-                "A handoff JSON stem or explicit JSON path is required for every invocation. "
-                "Bare stems resolve to <downloads_dir>/<stem>.json. "
+                "Select an exact ZIP stem for initial APL, or omit it for cached continuation. "
+                "Explicit legacy .json paths remain supported. "
                 "Without op=NUMBER, op=CODE, or opSeq=CODE,CODE, the action menu is displayed. "
                 "skipApproves defaults to false and only skips confirmation prompts; "
                 "Git/archive safety checks remain active."),
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("handoff", metavar="HANDOFF_STEM|PATH.json",
-                        help="Required handoff name without .json (under downloads_dir), or explicit JSON path")
+    parser.add_argument("handoff", nargs="?", metavar="ZIP_STEM|PATH.json",
+                        help="ZIP stem/basename for new APL, legacy JSON, or omit to use .apatch/params.json")
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--loose", action="store_const", const="loose", dest="mode",
                        help="LOOSE (default): manual edits, shared branches, separate commit and push")
@@ -108,7 +130,7 @@ def main():
                                      metavar="CODE,CODE,...",
                                      help="Run sequential actions; stop after any error or no-op; pair with skipApproves=true for unattended use")
     parser.add_argument("--patch", metavar="NAME.zip",
-                        help="Filter read-only STS by ZIP basename; a handoff is still required")
+                        help="Filter read-only STS by ZIP basename")
     parser.add_argument("--skip-approves", "--skipApproves", type=parse_boolean,
                         default=False, metavar="{true,false}",
                         help="Skip interactive confirmations (default: false); does not bypass safety checks")
@@ -116,15 +138,17 @@ def main():
     script_dir = Path(__file__).resolve().parent
     try:
         config = load_config(script_dir)
-        handoff_path = resolve_handoff_path(args.handoff, config.downloads)
         if args.patch is not None and not BASENAME_PATTERN.fullmatch(args.patch):
             raise Abort("--patch must be an ASCII-safe ZIP basename")
         if args.patch is not None and (args.op_seq is not None or args.op not in {"STS", "10"}):
             raise Abort("--patch is only supported for op=STS")
         status_only = args.op in {"STS", "10"}
-        handoff = load_handoff(handoff_path)
-        root = repository_root(Path.cwd(), handoff.repository)
+        root_name = Path(output(["git", "rev-parse", "--show-toplevel"], Path.cwd())).resolve().name
+        root = repository_root(Path.cwd(), root_name)
         config = load_project_config(root, config)
+        handoff, source_label, zip_selected = resolve_selected_handoff(args.handoff, config, root)
+        if handoff.repository != root.name:
+            raise Abort("Handoff parameters belong to a different repository")
         if config.downloads.is_relative_to(root):
             raise Abort("The downloads directory must be outside the Git repository")
         if config.applied_patches_path == config.state_path:
@@ -139,7 +163,7 @@ def main():
             state = read_state_snapshot(config.state_path)
             preview = Workflow(root, config, handoff, state,
                                force=args.mode == "force", loose=args.mode == "loose",
-                               skip_previous_cycles=True)
+                               skip_previous_cycles=True, zip_selected=zip_selected)
             selection = preview.menu_choice()
             try:
                 action = action_number(selection)
@@ -150,13 +174,29 @@ def main():
                                              handoff.branch, args.mode))
                 return 0
             args.op = ACTION_CODES[action]
+        recover_cache = False
+        if zip_selected:
+            if args.op in {"BAP", "2"}:
+                raise Abort("2 [BAP] is deprecated for self-contained ZIPs; start with 3 [APL]")
+            first = args.op_seq.actions[0] if args.op_seq is not None else action_number(args.op)
+            if first != 3:
+                if first == 1:
+                    saved = read_state_snapshot(config.state_path)["workflows"].get(
+                        workflow_key(root, handoff.branch, handoff.patch), {})
+                    recover_cache = (saved.get("zip_first") is True
+                                     and saved.get("phase") == "patch_applied"
+                                     and saved.get("applied_branch") == config.base
+                                     and saved.get("archive_sha256") == handoff.patch_sha256)
+                if not recover_cache:
+                    raise Abort("A newly selected self-contained ZIP must start with op=APL; "
+                                "BRN is only allowed to recover an already applied matching ZIP")
         ensure_runtime_ignored(root, config.log_directory, LOG_FILENAME,
                                config.state_path, config.applied_patches_path)
         set_context(patch=handoff.patch, branch=handoff.branch, repository=handoff.repository)
         log_path = configure(config.log_directory)
         logger = logging.getLogger("apatch")
         logger.info("invocation handoff=%s working_directory=%s mode=%s op=%s skip_approves=%s",
-                    handoff_path.expanduser(), root, args.mode,
+                    source_label, root, args.mode,
                     args.op if args.op_seq is None else ",".join(ACTION_CODES[i] for i in args.op_seq.actions),
                     args.skip_approves)
         logger.info("repository=%s feature=%s patch=%s", root, handoff.branch, handoff.patch)
@@ -166,11 +206,17 @@ def main():
             with locked_state(config.state_path) as state:
                 migrate_legacy_artifacts(root, script_dir, config, state)
                 workflow = Workflow(root, config, handoff, state,
-                                    force=args.mode == "force", loose=args.mode == "loose")
+                                    force=args.mode == "force", loose=args.mode == "loose",
+                                    zip_selected=zip_selected)
                 if args.op_seq is not None:
-                    execute_sequence(workflow, args.op_seq)
+                    execute_sequence(workflow, args.op_seq,
+                                     on_completed=lambda action: save_cached_handoff(root, handoff)
+                                     if zip_selected and (action == 3 or (recover_cache and action == 1)) else None)
                 else:
-                    workflow.interactive(args.op, show_header=not menu_shown)
+                    result = workflow.interactive(args.op, show_header=not menu_shown)
+                    if zip_selected and result == "SUCCESS" and (args.op in {"APL", "3"}
+                                                                   or (recover_cache and args.op in {"BRN", "1"})):
+                        save_cached_handoff(root, handoff)
         finally:
             reset_skip_approvals(token)
     except (Abort, KeyboardInterrupt, BlockingIOError) as exc:

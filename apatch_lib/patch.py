@@ -2,17 +2,18 @@
 
 import hashlib
 import io
+import json
 import logging
 import os
 import stat
 import tempfile
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .created_patches import parse_registry
 from .gitutil import run
-from .model import Abort, safe_relative
+from .model import Abort, BASENAME_PATTERN, parse_handoff_payload, safe_relative
 
 LOGGER = logging.getLogger("apatch.patch")
 
@@ -22,13 +23,48 @@ class Archive:
     sha256: str
     changed: frozenset[str]
     created_registry: tuple[str, ...] | None = None
+    embedded_handoff: object | None = None
 
 
 REGISTRY_MEMBER = ".apatch/created_patches.txt"
+PARAMS_MEMBER = ".apatch/params.json"
 
 
 def patch_file(config, handoff):
     return config.downloads / handoff.patch
+
+
+def handoff_from_zip(config, root: Path, name: str):
+    """Load a self-contained ZIP handoff without trusting extracted file contents."""
+    if not BASENAME_PATTERN.fullmatch(name):
+        raise Abort("ZIP selection must be an ASCII-safe filename")
+    target = config.downloads / name
+    if target.is_symlink() or not target.is_file():
+        raise Abort(f"Selected ZIP is missing or unsafe: {target}")
+    if target.stat().st_size > config.max_bytes:
+        raise Abort("Compressed ZIP exceeds maximum configured size")
+    try:
+        with zipfile.ZipFile(target) as source:
+            matches = [info for info in source.infolist()
+                       if info.filename == f"{root.name}/{PARAMS_MEMBER}"]
+            if len(matches) != 1:
+                raise Abort("Self-contained ZIP must have exactly one reserved .apatch/params.json member")
+            info = matches[0]
+            kind = (info.external_attr >> 16) & 0o170000
+            if info.is_dir() or kind not in (0, stat.S_IFREG) or info.file_size > 65536:
+                raise Abort("Embedded handoff must be a regular JSON file of at most 64 KiB")
+            payload = json.loads(source.read(info).decode("utf-8"))
+    except (OSError, ValueError, UnicodeError, zipfile.BadZipFile) as exc:
+        raise Abort(f"Cannot read embedded handoff parameters: {exc}") from exc
+    handoff = parse_handoff_payload(payload, embedded=True)
+    if handoff.patch != name or handoff.repository != root.name:
+        raise Abort("Embedded handoff identity differs from selected ZIP or repository")
+    digest = hashlib.sha256(target.read_bytes()).hexdigest()
+    verified = replace(handoff, patch_sha256=digest)
+    inspected = inspect(config, verified, root, before_apply=False)
+    if inspected.embedded_handoff is None:
+        raise Abort("Missing verified embedded handoff metadata")
+    return verified
 
 
 def inspect(config, handoff, root, *, before_apply=True):
@@ -42,7 +78,9 @@ def inspect(config, handoff, root, *, before_apply=True):
         raise Abort("Patch SHA-256 does not match the handoff file")
     changed = set()
     incoming_registry = None
+    embedded_handoff = None
     metadata_seen = False
+    params_seen = False
     total = 0
     try:
         with zipfile.ZipFile(target) as archive:
@@ -71,6 +109,24 @@ def inspect(config, handoff, root, *, before_apply=True):
                     incoming_registry = parse_registry(archive.read(info), name)
                     metadata_seen = True
                     continue
+                if relative == PARAMS_MEMBER:
+                    if params_seen or relative in handoff.delete_paths:
+                        raise Abort(f"Duplicate/conflicting handoff parameters metadata: {name}")
+                    if info.file_size > 65536:
+                        raise Abort("Embedded handoff parameters exceed 64 KiB")
+                    try:
+                        payload = json.loads(archive.read(info).decode("utf-8"))
+                    except (ValueError, UnicodeError) as exc:
+                        raise Abort(f"Invalid embedded handoff JSON: {exc}") from exc
+                    embedded_handoff = parse_handoff_payload(payload, embedded=True)
+                    if embedded_handoff.repository != root.name or embedded_handoff.patch != handoff.patch:
+                        raise Abort("Embedded handoff repository or ZIP basename differs from the selected patch")
+                    if embedded_handoff != handoff.__class__(
+                            handoff.repository, handoff.branch, handoff.patch, handoff.message,
+                            handoff.base_commit, None, handoff.delete_paths):
+                        raise Abort("Embedded handoff metadata differs from selected handoff")
+                    params_seen = True
+                    continue
                 if relative in changed or relative in handoff.delete_paths:
                     raise Abort(f"Duplicate/conflicting path: {relative}")
                 changed.add(relative)
@@ -94,7 +150,7 @@ def inspect(config, handoff, root, *, before_apply=True):
         run(["git", "ls-files", "--error-unmatch", "--", relative], root)
     LOGGER.info("patch inspected name=%s sha256=%s files=%d deletions=%d",
                 handoff.patch, digest, len(changed), len(handoff.delete_paths))
-    return Archive(digest, frozenset(changed), incoming_registry)
+    return Archive(digest, frozenset(changed), incoming_registry, embedded_handoff)
 
 
 def apply(config, handoff, root, archive_data):
@@ -107,7 +163,7 @@ def apply(config, handoff, root, archive_data):
             if info.is_dir():
                 continue
             relative = info.filename.split("/", 1)[1]
-            if relative == REGISTRY_MEMBER:
+            if relative in {REGISTRY_MEMBER, PARAMS_MEMBER}:
                 continue
             destination = root / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
