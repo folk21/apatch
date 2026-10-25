@@ -1,6 +1,5 @@
 """Atomic, project-local patch history with a stable advisory lock."""
 
-import fcntl
 import logging
 import os
 import tempfile
@@ -10,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from .model import Abort, BASENAME_PATTERN
+from .storage.locking import exclusive_file_lock
 
 
 LOGGER = logging.getLogger("apatch.patch_history")
@@ -187,16 +187,7 @@ def locked_history(path: Path):
         for target in (path, lock_path):
             if target.is_symlink() or (target.exists() and not target.is_file()):
                 raise Abort(f"History destination must be a regular file: {target}")
-        flags = os.O_RDWR | os.O_CREAT
-        if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
-        descriptor = os.open(lock_path, flags, 0o600)
-        with os.fdopen(descriptor, "r+b") as handle:
-            os.fchmod(handle.fileno(), 0o600)
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            try:
-                yield AppliedPatchHistory(path)
-            finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        with exclusive_file_lock(lock_path, label="applied patch history"):
+            yield AppliedPatchHistory(path)
     except (OSError, UnicodeError, BlockingIOError) as exc:
         raise Abort(f"Cannot access applied patch history {path}: {exc}") from exc

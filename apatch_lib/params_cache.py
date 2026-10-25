@@ -1,6 +1,5 @@
 """Validate and atomically persist the current project handoff parameters."""
 
-import fcntl
 import json
 import os
 import stat
@@ -9,6 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .model import Abort, parse_handoff_payload
+from .storage.locking import exclusive_file_lock
 
 
 MAX_PARAMS_BYTES = 65536
@@ -69,24 +69,8 @@ def _locked_cache(root: Path):
     lock_path = path.with_name(path.name + ".lock")
     _require_regular(path)
     _require_regular(lock_path)
-    fd = None
-    try:
-        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
-        with os.fdopen(fd, "r+b") as handle:
-            fd = None
-            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
-                raise Abort("Cached parameters lock must be regular")
-            os.fchmod(handle.fileno(), 0o600)
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            try:
-                yield path
-            finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-    except (OSError, BlockingIOError) as exc:
-        raise Abort(f"Cannot lock .apatch/params.json: {exc}") from exc
-    finally:
-        if fd is not None:
-            os.close(fd)
+    with exclusive_file_lock(lock_path, label="cached handoff parameters"):
+        yield path
 
 
 def save_cached_handoff(root: Path, handoff):

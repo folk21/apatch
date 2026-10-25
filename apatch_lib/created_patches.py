@@ -2,11 +2,11 @@
 
 import os
 import stat
-import fcntl
 import tempfile
 from pathlib import Path
 
 from .model import Abort, BASENAME_PATTERN
+from .storage.locking import exclusive_file_lock
 
 
 REGISTRY_NAME = "created_patches.txt"
@@ -108,43 +108,34 @@ def persist_registry(root: Path, incoming: tuple[str, ...] | None) -> bool:
     lock = path.with_name(path.name + ".lock")
     if lock.is_symlink() or (lock.exists() and not lock.is_file()):
         raise Abort(f"[PATCH_ORDER] Unsafe created-patch lock: {lock}")
-    flags = os.O_RDWR | os.O_CREAT
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
     try:
-        descriptor = os.open(lock, flags, 0o600)
-        with os.fdopen(descriptor, "r+b") as handle:
-            os.fchmod(handle.fileno(), 0o600)
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with exclusive_file_lock(lock, label="created-patch registry"):
+            existing = read_registry(root)
+            if existing is not None and incoming[:len(existing)] != existing:
+                raise Abort("[PATCH_ORDER] Created-patch registry changed since preflight; "
+                            "existing entries cannot be removed or reordered")
+            if existing == incoming:
+                return False
+            data = "".join(f"{name}\n" for name in incoming).encode("utf-8")
+            if len(data) > MAX_REGISTRY_BYTES:
+                raise Abort("[PATCH_ORDER] Created-patch registry exceeds the size limit")
+            temporary = None
             try:
-                existing = read_registry(root)
-                if existing is not None and incoming[:len(existing)] != existing:
-                    raise Abort("[PATCH_ORDER] Created-patch registry changed since preflight; "
-                                "existing entries cannot be removed or reordered")
-                if existing == incoming:
-                    return False
-                data = "".join(f"{name}\n" for name in incoming).encode("utf-8")
-                if len(data) > MAX_REGISTRY_BYTES:
-                    raise Abort("[PATCH_ORDER] Created-patch registry exceeds the size limit")
-                temporary = None
+                file_descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=".created-patches-")
+                with os.fdopen(file_descriptor, "wb") as out:
+                    os.fchmod(out.fileno(), 0o600)
+                    out.write(data)
+                    out.flush()
+                    os.fsync(out.fileno())
+                os.replace(temporary, path)
+                directory_descriptor = os.open(path.parent, os.O_RDONLY)
                 try:
-                    file_descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=".created-patches-")
-                    with os.fdopen(file_descriptor, "wb") as out:
-                        os.fchmod(out.fileno(), 0o600)
-                        out.write(data)
-                        out.flush()
-                        os.fsync(out.fileno())
-                    os.replace(temporary, path)
-                    directory_descriptor = os.open(path.parent, os.O_RDONLY)
-                    try:
-                        os.fsync(directory_descriptor)
-                    finally:
-                        os.close(directory_descriptor)
+                    os.fsync(directory_descriptor)
                 finally:
-                    if temporary and os.path.exists(temporary):
-                        os.unlink(temporary)
-                return True
+                    os.close(directory_descriptor)
             finally:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                if temporary and os.path.exists(temporary):
+                    os.unlink(temporary)
+            return True
     except OSError as exc:
         raise Abort(f"[PATCH_ORDER] Cannot atomically update {path}: {exc}") from exc

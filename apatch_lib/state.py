@@ -1,6 +1,5 @@
 """Project-local, atomic checkpoint storage; never an authority for Git operations."""
 
-import fcntl
 import json
 import os
 import stat
@@ -9,6 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .model import Abort
+from .storage.locking import exclusive_file_lock
 
 
 def read_state_snapshot(path: Path):
@@ -44,28 +44,9 @@ def locked_state(path: Path):
         raise Abort(f"State destination must be a regular file: {path}")
     if lock_file.is_symlink() or (lock_file.exists() and not lock_file.is_file()):
         raise Abort(f"State lock must be a regular file: {lock_file}")
-    flags = os.O_RDWR | os.O_CREAT
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
     try:
-        descriptor = os.open(lock_file, flags, 0o600)
-        with os.fdopen(descriptor, "r+b") as lock:
-            os.fchmod(lock.fileno(), 0o600)
-            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            try:
-                if path.exists():
-                    try:
-                        data = json.loads(path.read_text(encoding="utf-8"))
-                    except (OSError, ValueError) as exc:
-                        raise Abort(f"Invalid state file; inspect manually: {exc}") from exc
-                    if (not isinstance(data, dict) or data.get("schema_version") != 1
-                            or not isinstance(data.get("workflows"), dict)):
-                        raise Abort("Invalid state file version")
-                else:
-                    data = {"schema_version": 1, "workflows": {}}
-                yield data
-            finally:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        with exclusive_file_lock(lock_file, label="state"):
+            yield read_state_snapshot(path)
     except OSError as exc:
         raise Abort(f"Cannot access state lock {lock_file}: {exc}") from exc
 

@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 from .model import Abort, RemoteOutcomeUnknown
-from .workflow import ACTION_CODES, action_number
+from .core.actions import ACTION_CODES, action_number
 
 
 MAX_SEQUENCE_STEPS = 20

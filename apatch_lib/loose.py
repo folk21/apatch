@@ -6,6 +6,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+from .core.enums import WorkflowPhase
 from .branch_guard import assert_no_unfinished_feature_branches
 from .created_patches import persist_registry
 from .gitutil import (branch_exists, confirm, current_branch, head, output,
@@ -17,7 +18,7 @@ from .state import save
 
 
 LOGGER = logging.getLogger("apatch.loose")
-PENDING_PHASES = {"applying", "patch_applied", "verified"}
+PENDING_PHASES = {WorkflowPhase.APPLYING, WorkflowPhase.PATCH_APPLIED, WorkflowPhase.VERIFIED}
 
 
 class LooseActions:
@@ -61,8 +62,8 @@ class LooseActions:
                 assert_no_unfinished_feature_branches(w.root, w.config, target)
                 run(["git", "switch", "-c", target], w.root)
                 origin = "CREATED"
-        if w.phase in {"new", "branch_created"}:
-            w.record.update(phase="branch_created", branch_base=head(w.root),
+        if w.phase in {WorkflowPhase.NEW, WorkflowPhase.BRANCH_CREATED}:
+            w.record.update(phase=WorkflowPhase.BRANCH_CREATED.value, branch_base=head(w.root),
                             applied_branch=target, branch_origin=w.record.get("branch_origin", origin),
                             remote_url=output(["git", "remote", "get-url", w.config.remote], w.root))
             w.persist()
@@ -99,13 +100,13 @@ class LooseActions:
         archive = inspect(w.config, w.handoff, w.root)
         before = status_paths(w.root)
         zip_first = archive.embedded_handoff is not None and branch == w.config.base
-        if archive.embedded_handoff is not None and branch != w.config.base and w.phase == "new":
+        if archive.embedded_handoff is not None and branch != w.config.base and w.phase == WorkflowPhase.NEW:
             predecessors = (record for record in w.state["workflows"].values()
                             if isinstance(record, dict)
                             and record.get("repository") == str(w.root.resolve())
                             and record.get("branch") == w.handoff.branch
                             and record.get("applied_branch") == branch
-                            and record.get("phase") in {"patch_applied", "verified"}
+                            and record.get("phase") in {WorkflowPhase.PATCH_APPLIED, WorkflowPhase.VERIFIED}
                             and record.get("before_patch_head") == head(w.root)
                             and record.get("remote_url") == output(
                                 ["git", "remote", "get-url", w.config.remote], w.root))
@@ -157,7 +158,7 @@ class LooseActions:
             w.persist()
             apply(w.config, w.handoff, w.root, archive)
             _, paths = worktree_fingerprint(w.root)
-            w.record.update(phase="patch_applied", changed_paths=sorted(paths))
+            w.record.update(phase=WorkflowPhase.PATCH_APPLIED.value, changed_paths=sorted(paths))
             persist_registry(w.root, archive.created_registry)
             history.append(w.handoff.patch, w.handoff.branch, branch)
             w.persist()
@@ -177,13 +178,14 @@ class LooseActions:
                       "the project verification commands will still run.")
                 print((result.stdout + result.stderr).strip())
         for command in w.config.checks:
-            run(list(command), w.root, stream_output=True)
+            run(list(command), w.root, stream_output=True,
+                timeout=w.config.check_timeout_seconds)
         after, _ = worktree_fingerprint(w.root)
         if head(w.root) != (w.record.get("before_patch_head") or head(w.root)):
             print("WARNING: HEAD has changed since patch application.")
         if before != after:
             print("WARNING: Checks modified the worktree. Re-run checks after reviewing the edits.")
-            w.record["phase"] = "patch_applied"
+            w.record["phase"] = WorkflowPhase.PATCH_APPLIED.value
             w.persist()
             return
         if paths:
@@ -193,6 +195,7 @@ class LooseActions:
             w.record["verified_commit"] = head(w.root)
         w.persist()
         print("Canonical checks passed for the current worktree snapshot.")
+        return True
 
     def _pending(self, branch):
         w = self.w

@@ -183,7 +183,7 @@ Each status fact carries an evidence label:
 | `UNKNOWN` | Insufficient trustworthy evidence (including missing fields in older states). |
 | `CONFLICT` | Available local Git facts contradict the saved checkpoint. |
 
-Status does not contact GitHub or the Git remote by default. A recorded PR number or pushed SHA is not proof of its current remote state. It does not require the original ZIP and does not write to the worktree, Git refs, state file, history, or logs. It reads the cached handoff or an explicit legacy JSON; a missing cache requires an explicit selection. When multiple stored workflows match, `patch=NAME.zip` can narrow the query, but cannot substitute for the handoff selection. Status cannot infer operations performed manually but never checkpointed.
+Status does not contact GitHub or the Git remote by default. A recorded PR number or pushed SHA is not proof of its current remote state. It requires neither the original ZIP nor writable state. It reads the cached handoff or an explicit legacy JSON. When the cache is **absent**, it can select an unambiguous stored workflow; use `op=STS patch=NAME.zip` if several are stored. A present but malformed or symlinked cache still fails closed. Status cannot infer operations performed manually but never checkpointed.
 
 After a successful, state-changing action, the result footer includes a potential next operation. A cancelled or unchanged action reports that no success-path recommendation can be assumed. A failed action stops with a nonzero exit code.
 
@@ -349,7 +349,7 @@ checks:
   - ["./gradlew", "check"]
 ```
 
-`log_directory`, `state_file`, `applied_patches_file`, `require_review_approval`, and `require_required_checks` are optional and override their global counterparts. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. Separate lock files named `<state_file>.lock` and `<applied_patches_file>.lock` are created automatically in `.apatch/`. Omit these settings to inherit the global defaults.
+`log_directory`, `state_file`, `applied_patches_file`, `require_review_approval`, `require_required_checks`, and `check_timeout_seconds` are optional and override their global counterparts. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. Separate lock files named `<state_file>.lock` and `<applied_patches_file>.lock` are created automatically in `.apatch/`. Omit these settings to inherit the global defaults.
 
 To allow merging without an approved review **for one repository**, set the following in that repository's `.apatch/config.yaml` alongside the required `schema_version` and `checks` fields:
 
@@ -375,6 +375,8 @@ checks:
 ```
 
 Commands run sequentially from the target repository root; execution stops on the first failure. Standard output and standard error from these project checks are displayed live in the terminal, but successful checks do not write their output to the project log. Each command is executed directly **without a shell**, so pipelines, redirections, environment-variable expansion, and `&&` are not interpreted. Put compound shell logic in a project-owned script and call that script from `checks`.
+
+`check_timeout_seconds` bounds each canonical check (integer 1–3600, default `900`). On timeout, `apatch` terminates the check's process group and stops the sequence before commit or publication. Choose a project-specific value that accommodates the full integration suite.
 
 If the project configuration is missing, malformed, or has no commands, `apatch` stops with an explicit error. Adjust the example commands to match each target repository.
 

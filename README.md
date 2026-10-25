@@ -12,6 +12,7 @@ It supports interactive and direct actions with three execution modes: **LOOSE (
 | [Usage](docs/USAGE.md) | CLI options, action codes, modes, handoff JSON, configuration, logging, and recovery |
 | [Architecture](docs/ARCHITECTURE.md) | Modules, state management, safety boundaries, and external operations |
 | [Development and Testing](docs/DEVELOPMENT.md) | Running tests, contributing, and documentation ownership |
+| [Security and Recovery](docs/SECURITY.md) | ZIP trust boundaries, checks, partial failures, and platform support |
 | [SDD Specification Index](docs/specs/README.md) | Draft orchestrator specification, first-priority sub-specification, plan, and lifecycle |
 | [Agent Guidance](AGENTS.md) | Repository conventions for maintainers and coding agents |
 
@@ -23,20 +24,16 @@ Install the tool and its dependencies as described in [Installation](docs/INSTAL
 /path/to/apatch/apatch.sh apatch-PATCH-2026-10-24-00-42-example
 ```
 
-New ZIPs carry their own parameters as a reserved `<repository>/.apatch/params.json` member; a separate JSON download is unnecessary once this version is installed. Select the ZIP by stem for its first `APL` (from `main`), then omit the name for `BRN`, checks, and later actions. The verified handoff is cached under the target repository's Git-ignored `.apatch/params.json`. Explicit legacy `.json` handoffs remain supported.
+New ZIPs embed `<repository>/.apatch/params.json`; no separate JSON download is needed. The first action is `APL`, followed by `BRN`; subsequent commands use the verified project-local cache. Legacy `.json` handoffs remain supported.
 
 Examples of direct actions:
 
 ```bash
-/path/to/apatch/apatch.sh apatch-PATCH-2026-10-24-00-42-example op=APL
-/path/to/apatch/apatch.sh op=BRN
-/path/to/apatch/apatch.sh op=CHK
-/path/to/apatch/apatch.sh op=CMT skipApproves=true
-/path/to/apatch/apatch.sh apatch-PATCH-2026-10-24-00-42-example opSeq=APL,BRN,CHK,CMT,PSH skipApproves=true
+/path/to/apatch/apatch.sh apatch-PATCH-2026-10-24-00-42-example opSeq=APL,BRN,CHK,CMT,PSH,STS skipApproves=true
 /path/to/apatch/apatch.sh opSeq=APL,BRN,APL,CHK,CMT,PSH,STS handoffSeq=first.zip,second.zip skipApproves=true
 ```
 
-Review unattended operations carefully: `skipApproves=true` suppresses interactive confirmations but does not bypass Git or archive safety checks. See [Usage](docs/USAGE.md) for the full behavior and precautions.
+`skipApproves=true` suppresses confirmation, **not** safety checks; canonical project checks execute code with your normal user permissions. Review ZIPs before unattended publication. See [Usage](docs/USAGE.md) and [Security](docs/SECURITY.md).
 
 ## Development status
 

@@ -7,6 +7,7 @@ from .created_patches import assert_patch_order, persist_registry
 from .gitutil import (branch_exists, confirm, current_branch, head, remote_head,
                       require_branch, require_clean, run, skip_approvals_enabled,
                       worktree_fingerprint)
+from .core.enums import WorkflowPhase
 from .model import Abort
 from .patch import apply, inspect
 from .patch_history import locked_history
@@ -167,7 +168,7 @@ class BranchPatchActions:
             with locked_history(w.config.applied_patches_path) as locked:
                 return self.unpack(archive, history=locked)
         self.assert_patch_order(history, archive)
-        if w.phase not in {"new", "branch_created"}:
+        if w.phase not in {WorkflowPhase.NEW, WorkflowPhase.BRANCH_CREATED}:
             raise Abort("Patch has already been applied or advanced")
         patch_branch = current_branch(w.root)
         if not patch_branch or patch_branch == "HEAD":

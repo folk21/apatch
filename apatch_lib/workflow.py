@@ -3,44 +3,30 @@
 import hashlib
 import json
 import logging
-import time
 from pathlib import Path
 
 from . import github
 from .branch_patch import BranchPatchActions
 from .console import outcome_label
+from .core.actions import ACTION_CODES, action_number
+from .core.enums import PHASE_VALUES, WorkflowPhase
 from .force import ForceActions
 from .loose import LooseActions
-from .gitutil import (clear_confirmation_declined, confirmation_was_declined,
-                      confirm, current_branch, head, is_clean, output, remote_head,
-                      require_branch, require_clean, run, status_paths, worktree_fingerprint)
-from .model import Abort, RemoteOutcomeUnknown
+from .gitutil import (confirm, current_branch, head, is_clean, output, remote_head,
+                      require_branch, require_clean, run, worktree_fingerprint)
+from .model import Abort
 from .patch import inspect
 from .patch_history import locked_history
+from .presentation.execution import OperationPresentation
 from .state import save
-from .status import display_recommendation, inspect_patch
 
 
 LOGGER = logging.getLogger("apatch.workflow")
 
-PHASES = {"new", "branch_created", "applying", "patch_applied", "verified",
-          "committed", "pushed", "pr_created", "merged", "synced"}
-
-ACTION_CODES = ("EXT", "BRN", "BAP", "APL", "CHK", "CMT", "PSH", "PR", "MRG", "SYN", "STS")
+PHASES = PHASE_VALUES
 
 
-def action_number(value):
-    """Resolve an operation number or mnemonic to its canonical menu index."""
-    key = str(value).strip().upper()
-    if key.isdecimal() and 0 <= int(key) < len(ACTION_CODES):
-        return int(key)
-    try:
-        return ACTION_CODES.index(key)
-    except ValueError as exc:
-        raise ValueError("Invalid action: use 0-10 or one of " + ", ".join(ACTION_CODES)) from exc
-
-
-class Workflow:
+class Workflow(OperationPresentation):
     def __init__(self, root: Path, config, handoff, state, *, force=False, loose=False,
                  skip_previous_cycles=False, zip_selected=False, allow_followup_zip=False):
         self.root = root
@@ -139,13 +125,13 @@ class Workflow:
             raise Abort(f"Base HEAD mismatch: expected {self.handoff.base_commit}, got {head(self.root)}")
 
     def assert_patch_identity(self):
-        if (self.phase not in {"new", "branch_created", "applying"}
+        if (self.phase not in {WorkflowPhase.NEW, WorkflowPhase.BRANCH_CREATED, WorkflowPhase.APPLYING}
                 and self.record.get("zip_first") and self.handoff.patch_sha256
                 and self.record.get("archive_sha256") == self.handoff.patch_sha256
                 and not (self.config.downloads / self.handoff.patch).exists()):
             return None
         archive = inspect(self.config, self.handoff, self.root,
-                          before_apply=self.phase in {"new", "branch_created"})
+                          before_apply=self.phase in {WorkflowPhase.NEW, WorkflowPhase.BRANCH_CREATED})
         saved = self.record.get("archive_sha256")
         if saved and saved != archive.sha256:
             raise Abort("Patch bytes changed since the last workflow step")
@@ -166,7 +152,7 @@ class Workflow:
         return current
 
     def verify(self):
-        if self.phase not in {"patch_applied", "verified"}:
+        if self.phase not in {WorkflowPhase.PATCH_APPLIED, WorkflowPhase.VERIFIED}:
             raise Abort("There is no uncommitted applied patch to verify")
         require_branch(self.root, self.applied_branch)
         self.assert_remote_unchanged()
@@ -178,15 +164,17 @@ class Workflow:
         if not self.config.checks:
             raise Abort("No project verification commands configured")
         for command in self.config.checks:
-            run(list(command), self.root, stream_output=True)
+            run(list(command), self.root, stream_output=True,
+                timeout=self.config.check_timeout_seconds)
         after, _ = self.assert_expected_paths()
         if before != after:
-            self.record["phase"] = "patch_applied"
+            self.record["phase"] = WorkflowPhase.PATCH_APPLIED.value
             self.persist()
             raise Abort("Tests changed repository files; verification invalidated")
         self.record.update(phase="verified", verified_fingerprint=after)
         self.persist()
         print("Canonical checks passed for the current changed bytes. Review the diff before commit.")
+        return True
 
     def commit_push(self):
         if self.phase != "verified":
@@ -338,23 +326,24 @@ class Workflow:
             return unavailable(("verified",), self.handoff.branch)
 
         def patch_unavailable():
-            reason = unavailable(("new", "branch_created"),
+            reason = unavailable((WorkflowPhase.NEW.value, WorkflowPhase.BRANCH_CREATED.value),
                                  self.handoff.branch if self.config.require_patch_feature_branch
-                                 and not (phase == "new" and branch == self.config.base and self.zip_selected)
+                                 and not (phase == WorkflowPhase.NEW and branch == self.config.base and self.zip_selected)
                                  else None, True)
             return reason or ("requires a checked-out branch" if not branch else None)
 
         return [
             ("Move applied patch to feature branch" if pending_branch else "Create a feature branch",
              self.branch_patch.prepare_branch_after_apply if pending_branch else lambda: self.branch_patch.new_branch(),
-             None if pending_branch else unavailable(("new",), self.config.base, True)),
+             None if pending_branch else unavailable((WorkflowPhase.NEW.value,), self.config.base, True)),
             ("Deprecated: apply-first ZIP workflows do not support BAP" if deprecated_bap
              else "Create a feature branch and apply patch", lambda: self.branch_patch.new_branch(True),
-             pending_reason or deprecated_bap or unavailable(("new",), self.config.base, True)),
+             pending_reason or deprecated_bap or unavailable((WorkflowPhase.NEW.value,), self.config.base, True)),
             (f"Apply patch to current branch ({branch or 'detached HEAD'})", self.branch_patch.unpack,
              pending_reason or patch_unavailable()),
             ("Run/re-run canonical checks", self.verify,
-             pending_reason or unavailable(("patch_applied", "verified"), self.applied_branch)),
+             pending_reason or unavailable((WorkflowPhase.PATCH_APPLIED.value,
+                                             WorkflowPhase.VERIFIED.value), self.applied_branch)),
             ("Commit and push all verified changes", self.commit_push,
              pending_reason or publish_unavailable()),
             ("Retry push of the existing commit", self.push,
@@ -367,120 +356,3 @@ class Workflow:
              pending_reason or unavailable(("merged",))),
         ]
 
-    def menu_choice(self):
-        self.print_header()
-        options = self.options()
-        print("\nActions (* = currently unavailable):")
-        for index, (label, _, reason) in enumerate(options, start=1):
-            suffix = f" * ({reason})" if reason else ""
-            print(f" {index}. [{ACTION_CODES[index]}] {label}{suffix}")
-        print(" 10. [STS] Inspect current patch status (read-only; offline)")
-        print(" 0. [EXT] Exit")
-        try:
-            return input("Choose an action (number or code): ").strip()
-        except EOFError as exc:
-            raise Abort("No action selected; use op=NUMBER or op=CODE to run non-interactively") from exc
-
-    def print_header(self):
-        print(f"\n-----\nRepository: {self.root}\nFeature branch: {self.handoff.branch}\n"
-              f"Patch: {self.handoff.patch}\nPhase: {self.phase}\n"
-              f"Current branch: {current_branch(self.root)}")
-        if self.force:
-            print("Mode: FORCE (manual recovery)")
-        elif self.loose:
-            print("Mode: LOOSE (default; supervised incremental workflow)")
-        else:
-            print("Mode: STRICT (guarded phase-by-phase workflow)")
-        print("Available modes: LOOSE (default), STRICT, FORCE. Use --help for options.")
-        print("-----")
-        if self.force:
-            print("FORCE bypasses workflow-phase checks, not Git integrity, archive safety, "
-                  "non-fast-forward protection, or GitHub review/CI rules.")
-        if self.loose:
-            print("LOOSE allows pending changes and deferred commit/push; unsafe ZIP paths, "
-                  "unreviewed overwrites, and non-fast-forward pushes remain protected.")
-    def interactive(self, selected_op=None, *, show_header=True):
-        if selected_op is not None and show_header:
-            self.print_header()
-        choice = self.menu_choice() if selected_op is None else str(selected_op).strip().upper()
-        try:
-            number = action_number(choice)
-        except ValueError as exc:
-            raise Abort(str(exc)) from exc
-        if selected_op is not None:
-            print(f"Selected action via op={choice} (#{number}, {ACTION_CODES[number]})")
-        if number == 0:
-            print("Exit selected. No action was run.")
-            return "NO_OP"
-        if number == 10:
-            from .status import display_status
-            display_status(inspect_patch(self.root, self.config, self.record,
-                                         self.handoff.patch, self.handoff.branch,
-                                         "loose" if self.loose else "force" if self.force else "strict"))
-            return "NO_OP"
-        options = self.options()
-        label, operation, reason = options[number - 1]
-        before_branch = current_branch(self.root)
-        before_head = head(self.root)
-        before_phase = self.phase
-        before_paths = status_paths(self.root)
-        print(f"\n==> START {number} [{ACTION_CODES[number]}]: {label}")
-        print(f"    Branch: {before_branch or 'detached HEAD'} | Phase: {before_phase}")
-        print(f"    Working-tree changes: {len(before_paths)} path(s)", flush=True)
-        LOGGER.info("action selected feature=%s phase=%s action=%s", self.handoff.branch, self.phase, label)
-        started = time.monotonic()
-        clear_confirmation_declined()
-        try:
-            if reason:
-                raise Abort(f"Action unavailable: {reason}")
-            if number in {2, 3}:
-                self.branch_patch.assert_patch_order()
-            if not self.skip_previous_cycles:
-                self.handle_previous_cycles()
-            operation_evidence = operation()
-        except (Abort, KeyboardInterrupt) as exc:
-            elapsed = time.monotonic() - started
-            result = ("CANCELLED" if confirmation_was_declined() else
-                      "UNKNOWN_REMOTE_RESULT" if isinstance(exc, RemoteOutcomeUnknown) else "ERROR")
-            print(f"\n==> RESULT {number} [{ACTION_CODES[number]}]: {outcome_label(result)} ({elapsed:.2f}s)")
-            if result == "UNKNOWN_REMOTE_RESULT":
-                print("    Remote side effect is unconfirmed. Inspect the matching GitHub PR "
-                      "before retrying; no automatic replay is safe.")
-            elif result == "ERROR":
-                print("    Recovery: inspect 10 [STS] and the diagnostic below before resuming.")
-            raise
-        after_branch = current_branch(self.root)
-        after_head = head(self.root)
-        after_paths = status_paths(self.root)
-        elapsed = time.monotonic() - started
-        unchanged = (before_branch == after_branch and before_head == after_head
-                     and before_phase == self.phase and before_paths == after_paths)
-        verified_existing_sync = (number == 9 and unchanged and before_phase == "synced"
-                                  and operation_evidence is True)
-        result = ("CANCELLED" if confirmation_was_declined() else
-                  "ALREADY_SATISFIED" if verified_existing_sync else
-                  "NO_OP" if unchanged else "SUCCESS")
-        print(f"\n==> RESULT {number} [{ACTION_CODES[number]}]: {outcome_label(result)} ({elapsed:.2f}s)")
-        print(f"    Phase: {before_phase} -> {self.phase}")
-        print(f"    Branch: {before_branch or 'detached HEAD'} -> {after_branch or 'detached HEAD'}")
-        print(f"    HEAD: {before_head[:12]} -> {after_head[:12]}")
-        print(f"    Working-tree changes: {len(before_paths)} -> {len(after_paths)} path(s)")
-        if result == "CANCELLED":
-            print("    A required confirmation was declined; later actions must not be inferred as safe.")
-        elif verified_existing_sync:
-            print("    Already synchronized; local base and matching merged PR were reverified.")
-        elif unchanged:
-            print("    No tracked workflow or Git-state transition detected; the action may have been "
-                  "cancelled or already satisfied.")
-        elif after_paths:
-            preview = ", ".join(sorted(after_paths)[:10])
-            remaining = len(after_paths) - min(len(after_paths), 10)
-            print(f"    Changed paths: {preview}" + (f" (+{remaining} more)" if remaining else ""))
-        if result not in {"SUCCESS", "ALREADY_SATISFIED"}:
-            print("Next suggested: NONE — No completed action transition was confirmed; inspect status with 10 [STS].")
-        else:
-            display_recommendation(inspect_patch(self.root, self.config, self.record,
-                                                  self.handoff.patch, self.handoff.branch,
-                                                  "loose" if self.loose else "force" if self.force else "strict"))
-        LOGGER.info("action completed feature=%s phase=%s action=%s", self.handoff.branch, self.phase, label)
-        return result
