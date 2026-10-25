@@ -1,6 +1,7 @@
 """Run a validated list of existing workflow operations in order."""
 
 from dataclasses import dataclass
+import uuid
 
 from .model import Abort, RemoteOutcomeUnknown
 from .core.actions import ACTION_CODES, action_number
@@ -69,6 +70,7 @@ def execute_sequence(workflow, sequence: OperationSequence, *, on_completed=None
     print("\n==> SEQUENCE START: " + ", ".join(map(describe, sequence.actions)))
     print("    skipApproves applies to confirmation prompts, not safety checks")
     last_completed = "NONE"
+    sequence_id = uuid.uuid4().hex
     for index, action in enumerate(sequence.actions, start=1):
         code = ACTION_CODES[action]
         print(f"\n==> SEQUENCE ACTION {describe(action)}", flush=True)
@@ -76,6 +78,7 @@ def execute_sequence(workflow, sequence: OperationSequence, *, on_completed=None
             if select_workflow is not None and action == 3:
                 workflow = select_workflow(index, workflow)
                 print(f"    Selected ZIP: {workflow.handoff.patch}", flush=True)
+            workflow.progress_sequence = (sequence_id, index, len(sequence.actions))
             result = workflow.interactive(code, show_header=index == 1)
             if result == "SUCCESS" and on_completed is not None:
                 on_completed(action, workflow)

@@ -5,9 +5,10 @@ import argparse
 import logging
 import re
 import sys
+import time
 from pathlib import Path
 
-from apatch_lib.gitutil import (output, repository_root, set_skip_approvals,
+from apatch_lib.gitutil import (current_branch, output, repository_root, set_skip_approvals,
                                reset_skip_approvals)
 from apatch_lib.local_ignore import ensure_runtime_ignored
 from apatch_lib.logging_setup import LOG_FILENAME, configure, set_context
@@ -15,6 +16,7 @@ from apatch_lib.migration import migrate_legacy_artifacts
 from apatch_lib.model import Abort, BASENAME_PATTERN, load_config, load_handoff, load_project_config
 from apatch_lib.params_cache import load_cached_handoff, save_cached_handoff
 from apatch_lib.patch import handoff_from_zip
+from apatch_lib.progress import ProgressEvent, ProgressRecorder, utc_now
 from apatch_lib.sequence import (OperationSequence, execute_sequence,
                                  parse_handoff_sequence, validate_multi_handoff_actions)
 from apatch_lib.state import locked_state, read_state_snapshot
@@ -118,6 +120,39 @@ def resolve_sequence_zip_names(raw: str, config):
     return tuple(names)
 
 
+def show_status_with_progress(root, config, state, handoff, patch, mode, recorder, tool_dir):
+    """Report offline status and record an independent tool-wide STS event."""
+    started_at = utc_now()
+    started = time.monotonic()
+    before_branch = current_branch(root)
+    record = {}
+    selected_patch = patch
+    result, error = "FAILED", None
+    try:
+        if state is None:
+            state = read_state_snapshot(config.state_path)
+        record, selected_patch, planned = select_record(root, state, handoff, patch=patch)
+        display_status(inspect_patch(root, config, record, selected_patch, planned, mode))
+        result, error = "SUCCESS", None
+    except (Abort, KeyboardInterrupt) as exc:
+        result, error = "FAILED", exc
+        raise
+    finally:
+        try:
+            recorder.record(ProgressEvent.capture(
+                root=root, patch_file=selected_patch,
+                operation_number=10, mode=mode, result=result,
+                phase_before=record.get("phase", "new"),
+                phase_after=record.get("phase", "new"),
+                branch_before=before_branch, branch_after=before_branch,
+                record=record, started_at_utc=started_at,
+                duration_seconds=time.monotonic() - started, error=error))
+        except Exception as exc:
+            print(f"WARNING: PROGRESS_UNAVAILABLE ({type(exc).__name__}); "
+                  "the status result is unchanged.", flush=True)
+        recorder.flush(tool_dir)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=("Manage project patches. LOOSE is the default mode; STRICT enforces "
@@ -180,6 +215,7 @@ def main():
             raise Abort("The downloads directory must be outside the Git repository")
         if config.applied_patches_path == config.state_path:
             raise Abort("Applied patch history must have a dedicated path")
+        recorder = ProgressRecorder(root)
         selected_handoffs = ()
         if args.handoff_seq is not None:
             if args.op_seq is None:
@@ -211,24 +247,24 @@ def main():
         if handoff is not None and handoff.repository != root.name:
             raise Abort("Handoff parameters belong to a different repository")
         if status_only:
-            state = read_state_snapshot(config.state_path)
-            record, patch, planned = select_record(root, state, handoff, patch=args.patch)
-            display_status(inspect_patch(root, config, record, patch, planned, args.mode))
+            show_status_with_progress(root, config, None, handoff, args.patch,
+                                      args.mode, recorder, script_dir)
             return 0
         menu_shown = args.op is None and args.op_seq is None
         if menu_shown:
             state = read_state_snapshot(config.state_path)
             preview = Workflow(root, config, handoff, state,
                                force=args.mode == "force", loose=args.mode == "loose",
-                               skip_previous_cycles=True, zip_selected=zip_selected)
+                               skip_previous_cycles=True, zip_selected=zip_selected,
+                               progress_recorder=recorder)
             selection = preview.menu_choice()
             try:
                 action = action_number(selection)
             except ValueError as exc:
                 raise Abort(str(exc)) from exc
             if action == 10:
-                display_status(inspect_patch(root, config, preview.record, handoff.patch,
-                                             handoff.branch, args.mode))
+                show_status_with_progress(root, config, state, handoff, handoff.patch,
+                                          args.mode, recorder, script_dir)
                 return 0
             args.op = ACTION_CODES[action]
         recover_cache = False
@@ -264,7 +300,7 @@ def main():
                 migrate_legacy_artifacts(root, script_dir, config, state)
                 workflow = Workflow(root, config, handoff, state,
                                     force=args.mode == "force", loose=args.mode == "loose",
-                                    zip_selected=zip_selected)
+                                    zip_selected=zip_selected, progress_recorder=recorder)
                 if args.op_seq is not None:
                     selections = iter(selected_handoffs)
 
@@ -276,7 +312,8 @@ def main():
                                     repository=selected.repository)
                         return Workflow(root, config, selected, state,
                                         force=args.mode == "force", loose=args.mode == "loose",
-                                        zip_selected=True, allow_followup_zip=True)
+                                        zip_selected=True, allow_followup_zip=True,
+                                        progress_recorder=recorder)
 
                     execute_sequence(workflow, args.op_seq,
                                      select_workflow=select_for_apply if selected_handoffs else None,
@@ -289,6 +326,7 @@ def main():
                         save_cached_handoff(root, handoff)
         finally:
             reset_skip_approvals(token)
+            recorder.flush(script_dir)
     except (Abort, KeyboardInterrupt, BlockingIOError) as exc:
         # Only failed canonical checks retain a bounded diagnostic output tail.
         logger = logging.getLogger("apatch")

@@ -22,6 +22,7 @@ Inputs include an untrusted ZIP with embedded handoff metadata (or a legacy exte
 3. Project runtime artifacts are excluded locally from Git, log context is established, and the state file is opened under a lock. Legacy runtime data is migrated when appropriate.
 4. `Workflow` chooses the relevant action under LOOSE, STRICT, or FORCE, reports the current branch/phase, and coordinates the owning helpers.
 5. Helpers inspect the actual filesystem/Git/GitHub state before side effects, update the workflow checkpoint/history, and emit console and audit events. After a successful initial `APL`, the validated handoff and archive digest are atomically cached locally.
+6. Each attempted operation produces a bounded tool-global progress event. Events are buffered while the target checkpoint lock is held and persisted only after releasing it; progress failures cannot undo or change the reported Git/GitHub outcome.
 
 `STS` takes an earlier, separate read-only path: it validates the repository and configuration, loads a snapshot without creating a state lock, and inspects local Git evidence. Interactive menu selection is also performed before opening the writable workflow state; choosing `STS` never enters the mutation path.
 
@@ -77,6 +78,7 @@ remain machine-readable.
 | `apatch_lib/params_cache.py` | Restricted, locked, atomic persistence of a verified project-local handoff |
 | `apatch_lib/model.py` | Handoff and configuration schema, path validation, shared records |
 | `apatch_lib/state.py` | Locked state persistence and atomic checkpoint updates |
+| `apatch_lib/progress.py` | Tool-global event summaries, cross-project identity, concurrency, privacy, and derived project histories |
 | `apatch_lib/status.py` | Read-only current patch evidence, cautious next-action suggestions, and report formatting |
 | `apatch_lib/patch_history.py` | Per-patch application journal and duplicate detection |
 | `apatch_lib/created_patches.py` | Optional ordered list of generated ZIP basenames and fail-closed application ordering |
@@ -142,6 +144,12 @@ New branch actions record `branch_origin` as `CREATED` or `REUSED` once the deci
 ## Output and observability
 
 The console reports operation identity, branch, phase, HEAD and working-tree transitions, Git operation outcomes, and canonical-check output. The project log records invocation and command metadata plus bounded failure diagnostics. **Canonical-check stdout/stderr is not copied wholesale into the log.**
+
+### Tool-global progress storage (P0.5a)
+
+The installed tool stores private runtime activity at `<apatch_installation>/.apatch/progress/`, not in the target project. `progress.json` is the authoritative, append-only event index; `<project>_progress.json` files are derived views, with stable suffixes when project names collide. Events use canonical root-based project IDs, UTC timestamps, action IDs, outcome categories, checkpoint-derived context, and a shared `sequence_id` for batched operations. These fields are **recorded evidence**, not live GitHub verification. Events before installation of this feature are not synthesized or backfilled.
+
+A separate global lock protects read-modify-write; fsynced atomic file replacement protects the master and views. On interruption between file replacements, the next writer reconstructs all project views from the master. A corrupt master or unsafe symlink fails closed without deleting previous events. An unwritable installation produces a `PROGRESS_UNAVAILABLE` warning but does not turn a successful repository operation into a failure. Read-only global `info=PROGRESS` reporting belongs to the next stage (P0.5b).
 
 Error text is actionable, but a successful CLI return does not imply that the repository changed: an action can be cancelled or already satisfied. See [Usage](USAGE.md#console-progress-and-results) and [Usage](USAGE.md#logging) for operational behavior.
 

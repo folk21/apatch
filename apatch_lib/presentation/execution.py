@@ -9,6 +9,7 @@ from ..core.enums import OperationOutcome
 from ..gitutil import (clear_confirmation_declined, confirmation_was_declined,
                        current_branch, head, status_paths)
 from ..model import Abort, RemoteOutcomeUnknown
+from ..progress import ProgressEvent, utc_now
 from ..status import display_recommendation, inspect_patch
 
 
@@ -16,6 +17,23 @@ LOGGER = logging.getLogger("apatch.workflow")
 
 
 class OperationPresentation:
+    def _record_progress(self, number, started_at, elapsed, result, before_phase,
+                         before_branch, after_branch, *, error=None):
+        recorder = getattr(self, "progress_recorder", None)
+        if recorder is None:
+            return
+        try:
+            recorder.record(ProgressEvent.capture(
+                root=self.root, patch_file=self.handoff.patch, operation_number=number,
+                mode="force" if self.force else "loose" if self.loose else "strict",
+                result=result, phase_before=before_phase, phase_after=self.phase,
+                branch_before=before_branch, branch_after=after_branch,
+                record=self.record, started_at_utc=started_at, duration_seconds=elapsed,
+                error=error, sequence=self.progress_sequence))
+        except Exception as exc:
+            print(f"WARNING: PROGRESS_UNAVAILABLE ({type(exc).__name__}); "
+                  "operation outcome is unchanged.", flush=True)
+
     def menu_choice(self):
         self.print_header()
         options = self.options()
@@ -64,9 +82,20 @@ class OperationPresentation:
             return "NO_OP"
         if number == 10:
             from ..status import display_status
-            display_status(inspect_patch(self.root, self.config, self.record,
-                                         self.handoff.patch, self.handoff.branch,
-                                         "loose" if self.loose else "force" if self.force else "strict"))
+            started_at = utc_now()
+            started = time.monotonic()
+            previous_phase = self.phase
+            branch = current_branch(self.root)
+            try:
+                display_status(inspect_patch(self.root, self.config, self.record,
+                                             self.handoff.patch, self.handoff.branch,
+                                             "loose" if self.loose else "force" if self.force else "strict"))
+            except (Abort, KeyboardInterrupt) as exc:
+                self._record_progress(number, started_at, time.monotonic() - started,
+                                      "FAILED", previous_phase, branch, branch, error=exc)
+                raise
+            self._record_progress(number, started_at, time.monotonic() - started,
+                                  "SUCCESS", previous_phase, branch, branch)
             return "NO_OP"
         options = self.options()
         label, operation, reason = options[number - 1]
@@ -74,6 +103,7 @@ class OperationPresentation:
         before_head = head(self.root)
         before_phase = self.phase
         before_paths = status_paths(self.root)
+        started_at = utc_now()
         print(f"\n==> START {number} [{ACTION_CODES[number]}]: {label}")
         print(f"    Branch: {before_branch or 'detached HEAD'} | Phase: {before_phase}")
         print(f"    Working-tree changes: {len(before_paths)} path(s)", flush=True)
@@ -98,6 +128,9 @@ class OperationPresentation:
                       "before retrying; no automatic replay is safe.")
             elif result == "ERROR":
                 print("    Recovery: inspect 10 [STS] and the diagnostic below before resuming.")
+            self._record_progress(number, started_at, elapsed,
+                                  "FAILED" if result == "ERROR" else result,
+                                  before_phase, before_branch, before_branch, error=exc)
             raise
         after_branch = current_branch(self.root)
         after_head = head(self.root)
@@ -137,4 +170,7 @@ class OperationPresentation:
                                                   self.handoff.patch, self.handoff.branch,
                                                   "loose" if self.loose else "force" if self.force else "strict"))
         LOGGER.info("action completed feature=%s phase=%s action=%s", self.handoff.branch, self.phase, label)
+        self._record_progress(number, started_at, elapsed,
+                              "NO_OP" if result.value == "ALREADY_SATISFIED" else result.value,
+                              before_phase, before_branch, after_branch)
         return result.value

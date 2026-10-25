@@ -1,0 +1,8 @@
+schema_version: 1
+log_directory: logs
+state_file: apply_patch.state.json
+applied_patches_file: applied_patches.txt
+require_required_checks: false
+require_review_approval: false
+checks:
+  - ["./run_tests.sh"]

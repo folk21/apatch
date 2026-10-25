@@ -427,6 +427,12 @@ If a project already has its generic `.apatch` state or history file, it takes p
 
 ## Logging
 
+### Cross-project progress history (P0.5a)
+
+After each attempted lifecycle operation, including individual `opSeq` actions and read-only `STS`, `apatch` records a small event under its own installation directory: `<apatch_installation>/.apatch/progress/progress.json`. Per-project `<project>_progress.json` files are rebuilt from this master. The index distinguishes `SUCCESS`, `NO_OP`, `CANCELLED`, `FAILED`, and `UNKNOWN_REMOTE_RESULT`, with UTC time, patch, branch, recorded phase, optional SHA/PR evidence, and bounded generic error descriptions. It does not save canonical-check output, arbitrary command arguments, or credentials.
+
+This history begins only when the feature is installed; previous invocations are not invented. The files are private, ignored by Git, protected by an interprocess lock, and are never proof of current remote GitHub state. A `PROGRESS_UNAVAILABLE` warning means only secondary event persistence failed: inspect the primary project state to determine whether the operation actually succeeded. The `info=PROGRESS` command and configurable display limits will be introduced in P0.5b; they are not part of this stage.
+
 `apatch` uses Python's standard `logging` module and writes an append-only log to `<repository>/.apatch/<log_directory>/apatch.log`. Every entry includes a timestamp and the change archive's filename as its operation identifier, along with the repository, feature branch, severity, and relevant event details.
 
 Command records include the executable and arguments, working directory, and (for non-check commands) exit status and duration. The complete commit message is recorded **only when the commit command runs**. For canonical checks, the log records command starts and failures only: a failed check records its exit status, duration, and at most the last 20 lines of combined output (up to 500 characters per line). Successful check output is shown live in the terminal but is not written to the log. Output from Git and GitHub commands and other standard input is not retained. Common sensitive arguments are masked. The log file is restricted to the current user (mode `0600`); nevertheless, failure diagnostics and commit messages may contain secrets and should not be shared without review.

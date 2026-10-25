@@ -30,7 +30,10 @@ case "${1:-full}" in
             tests.test_safety.SafetyTests.test_repeated_successful_checks_are_not_reported_as_no_op \
             tests.test_status.StatusTests.test_status_uses_unique_stored_workflow_when_cache_is_absent \
             tests.test_history.HistoryTests.test_history_lock_rejects_concurrent_use \
-            tests.test_github.GithubGuardTest.test_github_mutating_commands_are_not_retried
+            tests.test_github.GithubGuardTest.test_github_mutating_commands_are_not_retried \
+            tests.test_progress.ProgressStorageTests.test_two_subprocesses_append_without_lost_updates \
+            tests.test_progress.ProgressStorageTests.test_master_and_derived_symlinks_are_refused \
+            tests.test_progress.ProgressCliTests.test_cli_sequence_records_each_attempt_and_identity
         ;;
     full)
         exec "$TEST_PYTHON" -B -m unittest discover -s tests -v
