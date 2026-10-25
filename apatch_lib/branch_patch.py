@@ -3,11 +3,11 @@
 import logging
 
 from .branch_guard import assert_no_unfinished_feature_branches
-from .created_patches import assert_patch_order
+from .created_patches import assert_patch_order, persist_registry
 from .gitutil import (branch_exists, confirm, current_branch, head, remote_head,
                       require_branch, require_clean, run, skip_approvals_enabled)
 from .model import Abort
-from .patch import apply
+from .patch import apply, inspect
 from .patch_history import locked_history
 
 
@@ -25,13 +25,14 @@ class BranchPatchActions:
         with locked_history(self.workflow.config.applied_patches_path):
             pass
 
-    def assert_patch_order(self, history=None):
+    def assert_patch_order(self, history=None, archive=None):
         """Guard application using the authoritative applied-patch journal."""
         w = self.workflow
         if history is None:
             with locked_history(w.config.applied_patches_path) as locked:
-                return self.assert_patch_order(locked)
-        return assert_patch_order(w.root, w.handoff.patch, history)
+                return self.assert_patch_order(locked, archive)
+        archive = archive or inspect(w.config, w.handoff, w.root, before_apply=False)
+        return assert_patch_order(w.root, w.handoff.patch, history, archive.created_registry)
 
     def assert_new_branch_available(self):
         """Reject existing local and remote refs, including non-checked-out branches."""
@@ -59,7 +60,7 @@ class BranchPatchActions:
         archive = w.assert_patch_identity() if with_patch else None
         if with_patch:
             with locked_history(w.config.applied_patches_path) as history:
-                self.assert_patch_order(history)
+                self.assert_patch_order(history, archive)
                 if not self.warn_if_previously_applied(history):
                     return
                 if not confirm(f"Create branch {w.handoff.branch} from current HEAD?"):
@@ -118,7 +119,7 @@ class BranchPatchActions:
         if history is None:
             with locked_history(w.config.applied_patches_path) as locked:
                 return self.unpack(archive, history=locked)
-        self.assert_patch_order(history)
+        self.assert_patch_order(history, archive)
         if w.phase not in {"new", "branch_created"}:
             raise Abort("Patch has already been applied or advanced")
         patch_branch = current_branch(w.root)
@@ -159,6 +160,7 @@ class BranchPatchActions:
         w.persist()
         apply(w.config, w.handoff, w.root, archive)
         w.assert_expected_paths()
+        persist_registry(w.root, archive.created_registry)
         history.append(w.handoff.patch, w.handoff.branch, patch_branch)
         w.record["phase"] = "patch_applied"
         w.persist()

@@ -12,9 +12,9 @@ This directory holds proposed normative specifications and implementation plans 
 | Draft execution-history sub-specification | [APATCH-SUB-002 — Execution History and Repository Reconciliation](active/subspecs/subspec-02-state-history-audit.md) |
 | Advisory implementation plan | [APATCH-PLAN-001](plans/apatch-orchestrator-implementation-plan.md) |
 | Completed or archived specifications | None |
-| Next planned stages | P0.3b — Registry metadata transport; P0.4a — Sequential operations |
+| Next planned stages | P0.4a — Sequential operations; P0.4b — Multiple-handoff sequences |
 
-Until a specification is formally accepted, [Usage](../USAGE.md) and [Architecture](../ARCHITECTURE.md) describe the existing implementation. P0.1 (`STS` and next-action suggestions), P0.2 (project review approval), P0.2b (project CI policy), P0.2c (explicit unique handoff selection), P0.2d (feature-branch creation guard), P0.2e (historical PR revision safety), P0.2f (bounded GitHub read retries and identity reuse), and P0.3a (optional created-patch ordering guard) have implementation and test coverage. The future cross-project `info=PROGRESS` view and global/per-project JSON activity files are specified under P0.5a/b but **not yet implemented**. The `AUD` operation, detailed per-target operation journal, Git-format patch support, `opSeq`, and created-patch metadata transport are also **not yet implemented**. This status summary does not itself authorize later stages.
+Until a specification is formally accepted, [Usage](../USAGE.md) and [Architecture](../ARCHITECTURE.md) describe the existing implementation. P0.1 (`STS` and next-action suggestions), P0.2 (project review approval), P0.2b (project CI policy), P0.2c (explicit unique handoff selection), P0.2d (feature-branch creation guard), P0.2e (historical PR revision safety), P0.2f (bounded GitHub read retries and identity reuse), and P0.3a/b (created-patch ordering and reserved ZIP metadata transport) have implementation and test coverage. The future cross-project `info=PROGRESS` view and global/per-project JSON activity files are specified under P0.5a/b but **not yet implemented**. The `AUD` operation, detailed per-target operation journal, Git-format patch support, and `opSeq` are also **not yet implemented**. This status summary does not itself authorize later stages.
 
 ## Planned organization
 

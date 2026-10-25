@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 from .branch_guard import assert_no_unfinished_feature_branches
+from .created_patches import persist_registry
 from .gitutil import (branch_exists, confirm, current_branch, head, output,
                       remote_head, run, status_paths, worktree_fingerprint)
 from .model import Abort
@@ -112,7 +113,7 @@ class LooseActions:
             if not confirm("Back up these paths and permit their replacement by the ZIP?"):
                 return
         with locked_history(w.config.applied_patches_path) as history:
-            w.branch_patch.assert_patch_order(history)
+            w.branch_patch.assert_patch_order(history, archive)
             if not w.branch_patch.warn_if_previously_applied(history):
                 return
             if not confirm(f"LOOSE: Apply {w.handoff.patch} on {branch} without discarding other edits?"):
@@ -136,6 +137,7 @@ class LooseActions:
             apply(w.config, w.handoff, w.root, archive)
             _, paths = worktree_fingerprint(w.root)
             w.record.update(phase="patch_applied", changed_paths=sorted(paths))
+            persist_registry(w.root, archive.created_registry)
             history.append(w.handoff.patch, w.handoff.branch, branch)
             w.persist()
         print("Patch applied. Keep editing, apply another ZIP, run checks, or commit when ready.")
