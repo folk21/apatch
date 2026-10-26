@@ -4,7 +4,7 @@
 
 **Owner:** `apatch` CLI and target-repository `.apatch/` integration.
 
-**Sub-specifications:** [SUB-001 — Workflow Control](subspecs/subspec-01-workflow-control.md), [SUB-002 — Execution History and Reconciliation](subspecs/subspec-02-state-history-audit.md), [SUB-003 — Feature Sessions](subspecs/subspec-03-feature-session-planning.md), and [SUB-004 — Operational Workflows](subspecs/subspec-04-operational-workflows.md). **Plans:** [PLAN-001](../plans/apatch-orchestrator-implementation-plan.md), [PLAN-003](../plans/feature-session-context-aware-implementation-plan.md), [PLAN-004](../plans/operational-workflows-implementation-plan.md).
+**Sub-specifications:** [SUB-001 — Workflow Control](subspecs/subspec-01-workflow-control.md), [SUB-002 — Execution History and Reconciliation](subspecs/subspec-02-state-history-audit.md), [SUB-003 — Feature Sessions](subspecs/subspec-03-feature-session-planning.md), [SUB-004 — Operational Workflows](subspecs/subspec-04-operational-workflows.md), and [SUB-005 — Architectural Simplification](subspecs/subspec-05-architectural-simplification.md). **Plans:** [PLAN-001](../plans/apatch-orchestrator-implementation-plan.md), [PLAN-003](../plans/feature-session-context-aware-implementation-plan.md), [PLAN-004](../plans/operational-workflows-implementation-plan.md), [PLAN-005](../plans/architectural-simplification-implementation-plan.md).
 
 ## 1. Purpose
 
@@ -40,6 +40,7 @@ Current behavior is documented in [Usage](../../USAGE.md) and [Architecture](../
 | Operation execution history | Persist numbered/coded attempts and outcomes in `.apatch/apply_patch.state.json` | P1 — SUB-002 |
 | Global patch reconciliation | Audit missing/incomplete historical patch workflows and suggest recovery | P1 — SUB-002 |
 | Operational macros, activity overview and stable checks | Add guarded `RUN_ALL`, `APPLY_PATCH`, `APPLY_PATCH_CHECK`, `MERGE`, a cross-project activity preface to `AUD`, project-local base branch selection and opt-in bounded check recovery | P1 — SUB-004 |
+| Architectural simplification | Introduce explicit operation results, typed external boundaries, cohesive policy/CLI/audit modules, forward recovery and incremental non-mutating style checks without changing existing guards | P1 — SUB-005 |
 | Git-native patch handoffs | Accept Git-format `.patch`/`.diff` files alongside ZIP archives through a safe, format-aware apply pipeline | Future P1 — dedicated sub-spec |
 | Check adapters | Run tests, lint, static analysis, and security tools with typed results | P1 |
 | Check scheduling | Trigger checks by action, patch count/size, elapsed interval, or spec milestone | P1 |
