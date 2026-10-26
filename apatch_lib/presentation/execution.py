@@ -128,9 +128,15 @@ class OperationPresentation:
                 self.branch_patch.block_unattended_duplicate()
             if number == 3 and self.loose:
                 self.loose_actions.assert_followup_selection()
-            if not self.skip_previous_cycles:
-                self.handle_previous_cycles()
+            previous_cycles = ()
+            if number in {2, 3} and not self.skip_previous_cycles:
+                previous_cycles = self.inspect_previous_cycles()
             operation_evidence = operation()
+            if (number in {2, 3} and previous_cycles
+                    and before_phase in {"new", "branch_created"}
+                    and self.phase in {"patch_applied", "verified", "committed", "pushed"}
+                    and self.record.get("archive_sha256")):
+                self.link_successful_previous_cycles(previous_cycles)
         except (Abort, KeyboardInterrupt) as exc:
             elapsed = time.monotonic() - started
             result = ("CANCELLED" if confirmation_was_declined() else

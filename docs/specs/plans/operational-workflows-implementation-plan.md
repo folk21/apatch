@@ -1,6 +1,6 @@
 # APATCH-PLAN-004 — Operational Workflow Macros and Diagnostics
 
-**Status:** Advisory plan. WM-01 and WM-02 each have implementation candidates in separate ZIP overlays; WM-03–WM-05 require subsequent implementation and independent acceptance.
+**Status:** Advisory plan. WM-01 and WM-02 each have implementation candidates in separate ZIP overlays; WM-03–WM-06 require subsequent implementation and independent acceptance. WM-06 is explicitly deferred.
 
 **Normative owner:** [APATCH-SUB-004](../active/subspecs/subspec-04-operational-workflows.md). **Dependencies:** [SUB-001](../active/subspecs/subspec-01-workflow-control.md), [SUB-002](../active/subspecs/subspec-02-state-history-audit.md), and [SUB-003](../active/subspecs/subspec-03-feature-session-planning.md). The inspected source baseline is clean `main` commit `9f256d786d29d4121ea0116758af85a903d9636a` from the 2026-10-26 17:21 UTC project snapshot. This snapshot intentionally omits installation-local `apatch.conf` and target `.apatch/config.yaml` contents; verification uses an isolated sample config and does not package either private file.
 
@@ -160,6 +160,41 @@ report_final_status_without_masking_errors()
 ```
 
 **Failure/recovery:** A published commit or PR is not rolled back. If a remote mutation becomes indeterminate, stop before any other remote write and provide the exact read-only reconciliation action. If MRG succeeded but SYN failed, a subsequent macro reconciles the merged PR before attempting only SYN. **Acceptance:** WM-08–WM-11, WM-15–WM-16. **Verification:** complete synthetic Git/GitHub mock matrix, all existing suites, and review of terminal/branch cross-platform behavior.
+
+## WM-06 — Deferred visible retries and read-only GitHub reconciliation
+
+**Status:** Future, non-urgent. **Dependencies:** WM-05 publication context and
+existing revision-scoped GitHub PR identity; this stage can be implemented
+separately after the context prerequisite is verified. **Non-goals:** retrying
+`gh pr create`/`gh pr merge` blindly, weakening safety gates, introducing a
+background worker, or silently converting ambiguous remote evidence to success.
+
+| Path | Ordered work |
+| --- | --- |
+| `apatch_lib/model.py`, project YAML validator | Define validated bounded settings for maximum read attempts, total recovery budget and retry delay; preserve `github_timeout_seconds` per-call cap and existing default read retry count. Reject non-finite, negative, oversized and boolean numeric values; document precedence and old-config compatibility. |
+| `apatch_lib/github.py` | Consolidate classified transient **read-only** retries under one wall-clock deadline. After indeterminate PR create/merge, query live evidence through a bounded, read-only path; adopt only an exact, unique repository/base/head/source-SHA match and, for merge, verified merge evidence. Never issue an additional mutation automatically. |
+| `apatch_lib/gitutil.py`, `apatch_lib/console.py` | Supply bounded timeout/cancellation and flushed attempt/progress output, including start, attempt `i/n`, remaining budget, backoff and optional low-frequency heartbeat. Sanitize terminal output and redact PR body/credentials. Terminate timed-out child processes safely; never leave silent indefinite calls. |
+| `apatch_lib/loose.py`, `apatch_lib/force.py`, `apatch_lib/status.py`, `apatch.py` | Reconcile remote results only through existing protected PR/revision checks. Preserve local state and `UNKNOWN_REMOTE_RESULT` if evidence remains ambiguous; give precise recovery commands and distinguish recorded from verified outcomes. |
+| `tests/test_github.py`, `tests/test_sequences.py`, `tests/test_operation_journal.py` | Mock GraphQL 504 and 502/503, DNS/timeouts, transient success, permanent 401/403 and invalid requests; lost PR-create acknowledgement with matching PR, no PR, multiple PRs and incorrect SHA; uncertain merge with and without live proof; budget expiration, explicit cancellation, redirected `NO_COLOR` output and no second remote mutation. |
+| `docs/USAGE.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md` | Document knobs and copyable recovery examples **after** implementation, without claiming speculative retries are installed. |
+
+**Algorithm:** Reserve a monotonic wall-clock deadline for the entire transport
+recovery operation, not just each subprocess. Before every read-only attempt,
+calculate `min(remaining_budget, configured_per_call_timeout)`; print and flush
+the operation/attempt/budget. Retry only classified transient transport errors
+and only while both attempt and time caps permit. Use a small capped backoff.
+After an uncertain mutation, prefer an exact verified PR/merge identity lookup
+with that same bounded mechanism; if evidence is missing, stale, inaccessible
+or contradictory, stop with the original indeterminate outcome. Never treat
+"not observed" during an outage as evidence that nothing happened.
+
+**Failure/recovery:** Exhausted retries are finite and observable. The original
+unknown mutation result stays recoverable; no extra `gh pr create`, `gh pr merge`,
+Git push or local sync is attempted without independent confirmed evidence.
+The user receives a read-only inspection recommendation and a safe later resume
+point. **Acceptance:** WM-17–WM-21. **Verification:** mocked `gh` integration
+matrix, fake-clock deadline tests, safe interrupted subprocess handling, the
+complete canonical suites and terminal behavior review on target platforms.
 
 ## 2. Gate before every release
 

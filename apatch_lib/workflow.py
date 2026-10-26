@@ -80,17 +80,18 @@ class Workflow(OperationPresentation):
         self.loose_actions = LooseActions(self)
         self.skip_previous_cycles = skip_previous_cycles
 
-    def handle_previous_cycles(self):
-        """Keep older checkpoints but explicitly acknowledge switching patch cycles."""
+    def inspect_previous_cycles(self):
+        """Offer a new patch cycle without changing any earlier checkpoint."""
         previous = [
             (key, record) for key, record in self.state["workflows"].items()
             if key != self.key and isinstance(record, dict)
             and record.get("repository") == str(self.root.resolve())
             and record.get("patch_file") != self.handoff.patch
-            and record.get("phase") != "synced" and not record.get("superseded_by")
+            and record.get("phase") != "synced"
+            and not record.get("superseded_by") and not record.get("continued_by")
         ]
         if not previous:
-            return
+            return ()
         print("\nUnfinished workflows for this repository:")
         for _, record in previous:
             print(f"  {record.get('patch_file')} | branch={record.get('branch')} "
@@ -101,12 +102,42 @@ class Workflow(OperationPresentation):
                   "Nothing is reset or discarded.")
         elif not confirm("Start a separate patch cycle and retain the previous checkpoints?"):
             raise Abort("New patch cycle cancelled; previous checkpoints are unchanged")
-        for _, record in previous:
-            record["superseded_by"] = self.key
-            record["superseded_patch"] = self.handoff.patch
-        save(self.config.state_path, self.state)
-        LOGGER.warning("superseded %d unfinished workflow(s) with patch=%s",
-                       len(previous), self.handoff.patch)
+        return tuple(key for key, _ in previous)
+
+    def link_successful_previous_cycles(self, previous_keys):
+        """Record additive continuation only after a new application is confirmed."""
+        if not previous_keys:
+            return
+        with locked_history(self.config.applied_patches_path) as history:
+            if (not history.entries or history.entries[-1].patch != self.handoff.patch
+                    or history.entries[-1].planned_branch != self.handoff.branch
+                    or history.entries[-1].real_branch != self.record.get("applied_branch")):
+                print("WARNING: Previous-cycle linkage deferred: applied history is not "
+                      "the expected latest patch. Inspect 11 [AUD].")
+                return
+        originals = {}
+        for key in previous_keys:
+            record = self.state["workflows"].get(key)
+            if (not isinstance(record, dict) or record.get("continued_by")
+                    or record.get("superseded_by") or record.get("phase") == "synced"
+                    or record.get("branch") != self.handoff.branch):
+                continue
+            originals[key] = dict(record)
+            record["continued_by"] = self.key
+            record["continued_patch"] = self.handoff.patch
+        if not originals:
+            return
+        try:
+            save(self.config.state_path, self.state)
+        except (Abort, OSError) as exc:
+            for key, prior in originals.items():
+                self.state["workflows"][key].clear()
+                self.state["workflows"][key].update(prior)
+            print(f"WARNING: Previous-cycle linkage was not saved ({type(exc).__name__}); "
+                  "the newly applied patch remains recorded independently.")
+            return
+        LOGGER.info("linked %d unfinished workflow(s) to successfully applied patch=%s",
+                    len(originals), self.handoff.patch)
 
     @property
     def phase(self):

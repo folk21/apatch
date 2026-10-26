@@ -6,7 +6,7 @@ No stage below authorizes product implementation without a subsequent DEFAULT re
 
 ## 1. Source contracts and dependency order
 
-Existing verified entry points include `apatch.py:main`, `normalize_arguments`, `resolve_selected_handoff`, and `resolve_sequence_zip_names`; `apatch_lib/workflow.py:Workflow`, `handle_previous_cycles` and `interactive`; `apatch_lib/sequence.py:OperationSequence`, `execute_sequence` and `validate_multi_handoff_actions`; `apatch_lib/loose.py:LooseActions.assert_followup_selection`, `apply_patch`, `verify`, `commit`, `push`; `apatch_lib/branch_patch.py:BranchPatchActions.prepare_branch_after_apply`; `apatch_lib/status.py:inspect_patch`, `select_record`, `recommend_next_action`; and `apatch_lib/reconciliation.py:audit_repository` in the inspected P1.2 overlay. The later working copy also contains an **unverified, partially implemented explicit-ZIP-resume draft** in `apatch.py`, `apatch_lib/workflow.py`, `tests/test_handoffs.py`, and `docs/USAGE.md`; its presence is not acceptance or completion evidence.
+Existing verified entry points include `apatch.py:main`, `normalize_arguments`, `resolve_selected_handoff`, and `resolve_sequence_zip_names`; `apatch_lib/workflow.py:Workflow`, `inspect_previous_cycles`, and `link_successful_previous_cycles`; `apatch_lib/presentation/execution.py:OperationPresentation.interactive`; `apatch_lib/sequence.py:OperationSequence`, `execute_sequence` and `validate_multi_handoff_actions`; `apatch_lib/loose.py:LooseActions.assert_followup_selection`, `apply_patch`, `verify`, `commit`, `push`; `apatch_lib/branch_patch.py:BranchPatchActions.prepare_branch_after_apply`; `apatch_lib/status.py:inspect_patch`, `select_record`, `recommend_next_action`; and `apatch_lib/reconciliation.py:audit_repository` in the inspected P1.2 overlay. FS-00 has an implementation candidate; the explicit-ZIP-resume features of FS-00R remain unimplemented until separately verified.
 
 Persisted evidence is owned by `apatch_lib/state.py`, `operation_events.py`, `patch_history.py`, `created_patches.py`, `params_cache.py`, and `progress.py`. Subprocess and GitHub boundaries belong to `gitutil.py` and `github.py`. The shared test harness lives in `tests/_support.py`. These are **verified source paths**; proposed `session.py`, `context.py` and `planner.py` do not yet exist.
 
@@ -16,12 +16,14 @@ Every stage MUST pass focused synthetic Git integration tests and `sh ./run_test
 
 ## FS-00 — Baseline reconciliation and correct checkpoint semantics
 
+**Candidate status:** Implemented as a targeted corrective overlay pending integration and independent review. The inspection/consent phase is read-only; additive same-branch linkage is saved only after successful application and latest-journal confirmation. Rejected or cancelled `APL` does not change older relationships. This stage does not enable automatic explicit-ZIP resume or workflow macros.
+
 **Objective:** Align verified baseline, fix the premature `superseded` bookkeeping defect, and establish a stable compatibility fixture before introducing new semantics. **Dependencies:** reconcile the P1.2 and CHK-recovery overlays. **Non-goals:** new CLI flags, altered GitHub behavior, session persistence, or changing existing follow-up eligibility.
 
 | Path | Work |
 | --- | --- |
-| `apatch_lib/presentation/execution.py` | Inspect the current order: `assert_followup_selection` → `handle_previous_cycles` → action. Defer previous-cycle relationship writes until a successful `APL`/adoption result is confirmed. |
-| `apatch_lib/workflow.py` | Split `handle_previous_cycles` into a no-write inspect/consent step and an atomic success-only persistence step. Preserve historical keys for legacy readers. |
+| `apatch_lib/presentation/execution.py` | Keep `assert_followup_selection` and patch-order/duplicate guards before `inspect_previous_cycles` → action → confirmed `link_successful_previous_cycles`. No earlier-workflow relationship writes before an applied result. |
+| `apatch_lib/workflow.py` | Keep `inspect_previous_cycles` read-only and `link_successful_previous_cycles` success-only; link only matching feature-branch workflows and preserve historical keys for legacy readers. |
 | `apatch_lib/loose.py` | Ensure declines, ZIP validation errors, failed backups/extraction and interrupted applications cannot mark old workflows as replaced. Keep all current overlap backups and `followup=true` safety guards. |
 | `tests/test_handoffs.py` | Add rejection after preflight (including overlap decline), failed extraction, and successful new follow-up cases. Assert state bytes/relationship fields and old worktree contents. |
 | `tests/test_operation_journal.py` | Confirm failed/cancelled attempts are journaled once without a success claim or unrelated checkpoint mutation. |

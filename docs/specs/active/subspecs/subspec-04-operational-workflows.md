@@ -1,6 +1,6 @@
 # APATCH-SUB-004 — Operational Workflows, Activity Dashboard, and Stable Checks
 
-**Status:** DRAFT. WM-01 (read-only activity in `AUD`) and WM-02 (per-project base branch) have implementation candidates; WM-03–WM-05 are proposed and not yet implemented.
+**Status:** DRAFT. WM-01 (read-only activity in `AUD`) and WM-02 (per-project base branch) have implementation candidates; WM-03–WM-06 are proposed and not yet implemented.
 
 **Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Implementation plan:** [APATCH-PLAN-004](../../plans/operational-workflows-implementation-plan.md).
 
@@ -77,6 +77,49 @@ After any preparation or changed-worktree run, the old successful-check evidence
 
 The console SHALL identify the exact changed paths and whether an index entry, status code, symlink target, executable bit or file bytes changed; it SHALL NOT assert that the checks themselves caused the change when a concurrent editor may have done so. No full test output is copied to application logs. The status report SHOULD show a compact warning in amber, a confirmed success in green and a genuine blocker in red, respecting non-TTY output and `NO_COLOR`.
 
+## 5.1 Future bounded GitHub transport recovery (WM-06; deferred)
+
+GitHub API timeouts and gateway failures, including HTTP 504 from `gh pr create`
+preflight GraphQL queries, SHALL receive bounded, visible recovery **without
+blindly repeating an operation that may have mutated the remote**. This is a
+future implementation stage, not a currently available CLI capability.
+
+1. Explicitly read-only GitHub requests MAY be retried on classified transient
+   transport errors (network timeout, connection reset, temporary DNS failure,
+   HTTP 502/503/504). The implementation SHALL bound **both** total attempts
+   and total elapsed time, including lookup, subprocess startup, backoff and
+   recovery. An individual subprocess retains the existing
+   `github_timeout_seconds` cap. Authentication/authorization failures,
+   malformed remote identity, invalid CLI arguments, protected-branch errors,
+   failed CI and missing approvals SHALL NOT be retried as transport errors.
+2. `gh pr create`, `gh pr merge` and other potentially mutating remote
+   operations SHALL NOT be automatically replayed after an indeterminate
+   return, including an HTTP 504 originating in GitHub CLI's preflight. The
+   orchestrator MAY perform bounded **read-only reconciliation** of the exact
+   repository, target/base, feature head and recorded source commit SHA.
+   A uniquely matching current PR or verified merge of the exact revision MAY
+   be adopted and execution resumed; absent, stale, mismatched or ambiguous
+   evidence remains `UNKNOWN_REMOTE_RESULT`. A failed lookup does not prove
+   that a PR was not created.
+3. Each attempt SHALL print a concise, flushed message showing the operation,
+   attempt number/limit, per-call timeout and remaining total time budget.
+   On a transient failure, print the error category and bounded backoff with
+   the next planned attempt. Long individual requests SHOULD display a
+   periodic non-spinning progress/heartbeat notice so an active `gh` process
+   cannot look silently hung. The message SHALL not reveal tokens, PR body,
+   untrusted terminal sequences or full authenticated command arguments.
+4. The bounded defaults SHALL preserve the current single extra attempt for
+   read-only calls unless explicitly changed. The next implementation SHALL
+   define and validate the maximum read attempts, total recovery budget and
+   maximum delay in global/project configuration. Exhaustion SHALL stop
+   promptly with a concise history of attempts and a concrete safe `STS`/PR
+   inspection command. `skipApproves=true` SHALL NOT override time limits or
+   authorize duplicate mutations. `NO_COLOR`, non-TTY and interruption
+   handling remain supported.
+5. Remote reconciliation SHALL never fabricate a confirmed PR creation,
+   successful merge, synchronized local base, or completed macro merely to
+   bypass an outage. No hidden daemon/background polling is allowed.
+
 ## 6. Outcomes, recovery and compatibility
 
 1. Macro outcomes distinguish `SUCCESS`, verified `ALREADY_SATISFIED`, `BLOCKED`, `CANCELLED`, and `UNKNOWN_REMOTE_RESULT`. Only verified satisfaction may skip a step; ordinary `NO_OP` does not imply successful completion.
@@ -105,9 +148,15 @@ The console SHALL identify the exact changed paths and whether an index entry, s
 | WM-14 | Diagnostics identify changed paths and differences without inventing the modifying process; secrets/full check output are not logged. |
 | WM-15 | Empty or malformed optional history never authorizes GitHub actions, and complete success is distinguishable from recorded-only status. |
 | WM-16 | Terminal colors are appropriate and suppressed for non-TTY or `NO_COLOR`; stdout/stderr and exit codes remain machine-usable. |
+| WM-17 | Two transient read failures followed by a successful read show bounded, numbered progress; a permanent 401/403, CI failure or invalid request gets no automatic retry. |
+| WM-18 | Lost acknowledgement or HTTP 504 during PR creation triggers only read-only reconciliation; a unique PR with matching repo/base/head/source SHA is adopted without a second create. |
+| WM-19 | No matching PR, multiple matches, stale source SHA or exhausted lookup budget produces `UNKNOWN_REMOTE_RESULT`, preserves checkpoint identity and never issues another remote mutation. |
+| WM-20 | An uncertain merge is adopted only with live proof of the exact PR and revision; network errors do not authorize merge, sync or review/CI bypass. |
+| WM-21 | Per-request timeout and whole-operation time budget are enforced; attempt and heartbeat messages remain bounded, flushed, redacted and understandable with `NO_COLOR`/redirected output. |
 
 ## 8. Delivery status
 
 - **WM-01:** implementation candidate with focused tests in the associated source patch; not marked released until integrated and independently verified.
 - **WM-02:** implementation candidate with Git-syntax validation, source-labelled effective base and focused project/branch/PR tests; not marked released until integrated and independently verified.
 - **WM-03–WM-05:** advisory implementation stages only. No new macro CLI or automatic check rerun is claimed as installed.
+- **WM-06:** deferred GitHub transient-read retry and safe mutation-result reconciliation design. The current single extra read-only retry remains the installed behavior; no new mutation retry or automatic recovery is claimed.
