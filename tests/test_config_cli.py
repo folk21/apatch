@@ -276,7 +276,7 @@ class ConfigCliTests(LocalGitFixture):
         self.assertFalse((self.root / "new.txt").exists())
 
     def test_direct_action_rejects_invalid_options_and_strict_guard_is_not_skipped(self):
-        for arguments in (("op=11",), ("op=UNKNOWN",), ("skipApproves=sometimes",)):
+        for arguments in (("op=12",), ("op=UNKNOWN",), ("skipApproves=sometimes",)):
             with self.subTest(arguments=arguments):
                 result = self.invoke_cli(*arguments)
                 self.assertEqual(result.returncode, 2)

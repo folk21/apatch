@@ -26,6 +26,8 @@ Inputs include an untrusted ZIP with embedded handoff metadata (or a legacy exte
 
 `STS` takes an earlier, separate read-only path: it validates the repository and configuration, loads a snapshot without creating a state lock, and inspects local Git evidence. Interactive menu selection is also performed before opening the writable workflow state; choosing `STS` never enters the mutation path.
 
+`AUD` (`11`) also dispatches before any runtime artifact, progress recorder, or writable state lock is initialized. `apatch_lib/reconciliation.py` reads the generation and application journals, historical workflow/run records, and local Git refs and objects. Its audit result separates recorded claims from verified facts, unknown coverage, and direct conflicts. All optional remote requests are explicitly gated by `verifyRemote=true`, bounded by configured timeouts, and converted to unknown coverage on failure. Malformed state or symlinked journal sources are rejected. The report never repairs checkpoints, registries, PRs, or Git branches. Console inventory and findings are bounded; underlying stored history is not truncated or automatically deleted.
+
 The CLI can be invoked interactively, by a direct operation number/mnemonic,
 or with a validated comma-separated `opSeq`. A sequence reuses the same action
 dispatch, refreshes branch/phase checks before each operation, and halts on an
@@ -35,7 +37,8 @@ and matching merged PR is treated as already satisfied. Progress output uses
 canonical operation numbers rather than batch-relative ordinals. The sequence
 does not roll back completed Git side effects. A singleton `opSeq=STS` uses the
 same early read-only path as direct `STS`. Canonical action identities are
-defined in `apatch_lib/workflow.py`.
+defined in `apatch_lib/core/actions.py`. A singleton `opSeq=AUD` takes the
+standalone audit path; combined audit/lifecycle sequences are rejected.
 
 An explicit `handoffSeq` maps one distinct, verified self-contained ZIP to each
 `APL` in an `opSeq`. All selected ZIPs are validated before the writable state
@@ -96,6 +99,7 @@ remain machine-readable.
 | `apatch_lib/state.py`, `apatch_lib/operation_events.py` | Locked schema-v2 checkpoint persistence, version migration, and durable operation-run evidence |
 | `apatch_lib/progress.py` | Tool-global event summaries, cross-project identity, concurrency, privacy, and derived project histories |
 | `apatch_lib/status.py` | Read-only current patch evidence, cautious next-action suggestions, and report formatting |
+| `apatch_lib/reconciliation.py` | Global read-only history reconciliation, confidence/severity findings, optional bounded remote evidence |
 | `apatch_lib/patch_history.py` | Per-patch application journal and duplicate detection |
 | `apatch_lib/created_patches.py` | Optional ordered list of generated ZIP basenames and fail-closed application ordering |
 | `apatch_lib/migration.py` | Compatibility with earlier runtime file locations and names |

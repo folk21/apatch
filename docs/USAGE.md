@@ -209,7 +209,7 @@ Every menu action can be invoked directly by number or by its mnemonic code (2-4
 /path/to/apatch/apatch.sh op=STS patch=example-PATCH-01.zip
 ```
 
-`op=0` or `op=EXT` exits. Numbers `1`-`9` retain their original operations; `10`/`STS` is the read-only status command. Without `op`, the menu stays interactive and accepts either numbers or codes (for example `APL`). The Python entry point also accepts `--op=3`, `--op=APL`, `--op=STS`, `--skip-approves=true`, `--strict`, `--loose`, and `--force`.
+`op=0` or `op=EXT` exits. Numbers `1`-`9` retain their original operations; `10`/`STS` inspects the current patch and `11`/`AUD` audits all known patch history. Without `op`, the menu stays interactive and accepts numbers or codes (for example `APL`). The Python entry point also accepts `--op=3`, `--op=APL`, `--op=STS`, `--op=AUD`, `--skip-approves=true`, `--strict`, `--loose`, and `--force`.
 
 ### Current patch status: `10 [STS]`
 
@@ -225,6 +225,23 @@ Each status fact carries an evidence label:
 | `CONFLICT` | Available local Git facts contradict the saved checkpoint. |
 
 Status does not contact GitHub or the Git remote by default. A recorded PR number or pushed SHA is not proof of its current remote state. It requires neither the original ZIP nor writable state. It reads the cached handoff or an explicit legacy JSON. When the cache is **absent**, it can select an unambiguous stored workflow; use `op=STS patch=NAME.zip` if several are stored. A present but malformed or symlinked cache still fails closed. Status cannot infer operations performed manually but never checkpointed.
+
+### Repository-wide patch audit: `11 [AUD]`
+
+`AUD` correlates the optional generated-patch registry, legacy and structured applied-patch journal, all project-local workflow checkpoints, operation runs, and local Git evidence. It works without an active handoff or a cached `.apatch/params.json`, and it appears as option 11 in the interactive menu. No workflow identity is selected and no patch is applied. Examples:
+
+```bash
+/path/to/apatch/apatch.sh op=AUD
+/path/to/apatch/apatch.sh op=11
+/path/to/apatch/apatch.sh opSeq=AUD
+/path/to/apatch/apatch.sh op=AUD verifyRemote=true
+```
+
+By default the audit is **offline**. `verifyRemote=true` (`--verify-remote=true`) explicitly enables bounded, read-only GitHub PR and Git remote-ref queries. If remote inspection fails, local findings remain available and remote confidence is `UNKNOWN`. GitHub PR listings have a finite result limit, reported as incomplete coverage when reached. The option is not an approval bypass and cannot be combined with other actions. `AUD` does not accept a selected ZIP/handoff, `patch=`, `handoffSeq`, or `followup`. `opSeq=AUD` is a standalone alias, not part of a lifecycle batch.
+
+Each patch inventory item lists generation/application order, recorded workflow phase, and available local/remote confidence (`VERIFIED`, `RECORDED`, `UNKNOWN`, `CONFLICT`). Findings include severity (`ERROR`, `WARNING`, `INFO`), the patch, evidence source, and a suggested **manual** recovery step. Missing, duplicated, unregistered or out-of-order patches, unresolved attempts, absent Git refs/commits, and checkpoint conflicts are called out. A missing registry is a coverage limitation rather than an automatic failure. Historical application or push records alone never prove current remote state; two ZIPs may legitimately share one commit. The audit prints at most 100 patch inventory entries and 100 findings, with total counts retained. It does not automatically delete, compact, export, or rewrite history.
+
+`AUD` never creates state/lock/log/progress files and never modifies Git refs, the index, or the worktree. It reads original bytes without persisting in-memory schema-v1 upgrades. Malformed or unsafe state sources fail with a diagnostic so no false clean result is reported. Use `10 [STS]` to examine a particular workflow before carrying out any suggested recovery.
 
 After a successful, state-changing action, the result footer includes a potential next operation. A cancelled or unchanged action reports that no success-path recommendation can be assumed. A failed action stops with a nonzero exit code.
 

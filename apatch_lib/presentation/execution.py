@@ -43,6 +43,7 @@ class OperationPresentation:
             suffix = f" * ({reason})" if reason else ""
             print(f" {index}. [{ACTION_CODES[index]}] {label}{suffix}")
         print(" 10. [STS] Inspect current patch status (read-only; offline)")
+        print(" 11. [AUD] Audit all known patch history (read-only; offline by default)")
         print(" 0. [EXT] Exit")
         try:
             return input("Choose an action (number or code): ").strip()
@@ -97,6 +98,10 @@ class OperationPresentation:
                 raise
             self._record_progress(number, started_at, time.monotonic() - started,
                                   "SUCCESS", previous_phase, branch, branch)
+            return "NO_OP"
+        if number == 11:
+            from ..reconciliation import audit_repository, format_audit
+            print(format_audit(audit_repository(self.root, self.config)))
             return "NO_OP"
         options = self.options()
         label, operation, reason = options[number - 1]

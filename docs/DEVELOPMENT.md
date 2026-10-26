@@ -32,6 +32,11 @@ Global progress tests live in `tests/test_progress.py`; they use temporary tool 
 
 Project-local run tests live in `tests/test_operation_journal.py`; they cover schema-v1 migration, journal validation, separate process writers, STARTED/retry semantics, action outcomes, `opSeq` correlation, and read-only status. Preserve the distinction between per-target operation evidence and installed-tool progress summaries when changing either format.
 
+`test_audit.py` covers the read-only `11 [AUD]` command, missing and reordered
+patches, duplicate names, historical v1 records, unresolved runs, local Git
+conflicts, optional mocked GitHub evidence, dirty worktrees, and immutable
+state/history/refs. It never contacts a live GitHub API.
+
 `test_handoffs.py` also covers explicit cross-invocation `followup=true`. Rejected
 follow-ups preserve prior workflow checkpoints while recording the failed attempt;
 accepted repairs keep both ZIP histories and one combined commit. Redaction

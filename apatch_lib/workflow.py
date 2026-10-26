@@ -157,7 +157,7 @@ class Workflow(OperationPresentation):
             number = action_number(selected_op)
         except ValueError as exc:
             raise Abort(str(exc)) from exc
-        if number in {0, 10}:
+        if number in {0, 10, 11}:
             return super().interactive(selected_op, show_header=show_header)
         run = OperationRun.start(
             number=number, mode="FORCE" if self.force else "LOOSE" if self.loose else "STRICT",

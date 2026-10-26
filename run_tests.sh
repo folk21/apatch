@@ -24,6 +24,9 @@ case "${1:-regular}" in
         exec "$TEST_PYTHON" -B -m unittest -v \
             tests.test_runner_scripts \
             tests.test_validation \
+            tests.test_audit.AuditTests.test_audit_without_handoff_is_read_only_and_offline \
+            tests.test_audit.AuditTests.test_missing_and_out_of_order_patch \
+            tests.test_audit.AuditTests.test_v1_state_missing_commit_and_branch_are_reported_without_upgrade \
             tests.test_handoffs.HandoffsTests.test_multi_zip_sequence_combines_patches_and_final_status \
             tests.test_handoffs.HandoffsTests.test_explicit_followup_zip_after_previous_invocation_combines_uncommitted_changes \
             tests.test_handoffs.HandoffsTests.test_followup_refuses_dirty_feature_branch_without_an_applied_predecessor \
