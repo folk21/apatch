@@ -72,6 +72,11 @@ def _parse(raw: str) -> list[HistoryEntry]:
     return entries
 
 
+def parse_history(raw: str) -> tuple[HistoryEntry, ...]:
+    """Parse legacy and structured history without opening or changing its file."""
+    return tuple(_parse(raw))
+
+
 def _serialize(entries: list[HistoryEntry]) -> str:
     blocks = []
     for entry in entries:

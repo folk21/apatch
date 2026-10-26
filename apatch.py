@@ -18,6 +18,7 @@ from apatch_lib.operation_events import unresolved_runs
 from apatch_lib.params_cache import load_cached_handoff, save_cached_handoff
 from apatch_lib.patch import handoff_from_zip
 from apatch_lib.progress import ProgressEvent, ProgressRecorder, ProgressStore, render_progress, utc_now
+from apatch_lib.reconciliation import audit_repository, format_audit
 from apatch_lib.sequence import (OperationSequence, execute_sequence,
                                  parse_handoff_sequence, validate_multi_handoff_actions)
 from apatch_lib.state import locked_state, read_state_snapshot
@@ -50,6 +51,8 @@ def normalize_arguments(arguments):
             normalized.append("--skip-approves=" + argument[len("skipApproves="):])
         elif argument.startswith("info="):
             normalized.append("--info=" + argument[len("info="):])
+        elif argument.startswith("verifyRemote="):
+            normalized.append("--verify-remote=" + argument[len("verifyRemote="):])
         else:
             normalized.append(argument)
     return normalized
@@ -171,6 +174,29 @@ def show_unresolved_operations(state, root):
               f"[{run['operation']['code']}] | patch={run['patch']}")
 
 
+def select_without_handoff():
+    """Allow repository-wide inspection before any handoff has been cached."""
+    print("\nActions (* = requires an explicit ZIP/JSON handoff):")
+    for number, code in enumerate(ACTION_CODES):
+        if number == 0:
+            label = "Exit"
+        elif number == 10:
+            label = "Inspect current patch status"
+        elif number == 11:
+            label = "Audit all known patch history"
+        else:
+            label = "Patch lifecycle action *"
+        print(f" {number}. [{code}] {label}")
+    try:
+        selected = input("Choose an action (number or code): ").strip()
+    except EOFError as exc:
+        raise Abort("No action selected; use op=NUMBER or op=CODE") from exc
+    try:
+        return action_number(selected)
+    except ValueError as exc:
+        raise Abort(str(exc)) from exc
+
+
 def main():
     parser = argparse.ArgumentParser(
         description=("Manage project patches. LOOSE is the default mode; STRICT enforces "
@@ -184,6 +210,8 @@ def main():
                 "  apatch.sh opSeq=APL,BRN,APL,CHK,CMT handoffSeq=first.zip,second.zip skipApproves=true\n"
                 "  apatch.sh repair-patch followup=true opSeq=APL,CHK,CMT skipApproves=true\n"
                 "  apatch.sh op=STS\n"
+                "  apatch.sh op=AUD\n"
+                "  apatch.sh op=11 verifyRemote=true\n"
                 "  apatch.sh info=PROGRESS\n"
                 "  apatch.sh strict op=CHK\n"
                 "  apatch.sh force op=CMT\n"
@@ -207,7 +235,7 @@ def main():
     parser.set_defaults(mode="loose")
     operation_selection = parser.add_mutually_exclusive_group()
     operation_selection.add_argument("--op", type=parse_operation, metavar="NUMBER|CODE",
-                                     help="Run one action by number (0-10) or code (e.g. APL, CHK, STS)")
+                                     help="Run one action by number (0-11) or code (e.g. APL, STS, AUD)")
     operation_selection.add_argument("--op-seq", "--opSeq", type=parse_operation_sequence,
                                      metavar="CODE,CODE,...",
                                      help="Run sequential actions; stop after any error or no-op; pair with skipApproves=true for unattended use")
@@ -219,6 +247,9 @@ def main():
                         help="Explicitly apply a new ZIP to a matching unfinished LOOSE feature branch")
     parser.add_argument("--patch", metavar="NAME.zip",
                         help="Filter read-only STS by ZIP basename")
+    parser.add_argument("--verify-remote", type=parse_boolean, default=False,
+                        metavar="{true,false}",
+                        help="Opt into bounded GitHub reads during 11 [AUD] (default: false)")
     parser.add_argument("--skip-approves", "--skipApproves", type=parse_boolean,
                         default=False, metavar="{true,false}",
                         help="Skip interactive confirmations (default: false); does not bypass safety checks")
@@ -228,7 +259,8 @@ def main():
     try:
         config = load_config(script_dir)
         if args.info is not None:
-            lifecycle_flags = {"--loose", "--strict", "--force", "--skip-approves", "--followup"}
+            lifecycle_flags = {"--loose", "--strict", "--force", "--skip-approves",
+                               "--followup", "--verify-remote"}
             if (args.handoff is not None or args.handoff_seq is not None or args.patch is not None
                     or any(token.split("=", 1)[0] in lifecycle_flags for token in normalized_args)):
                 raise Abort("info=PROGRESS cannot be combined with a handoff, operation, or lifecycle options")
@@ -238,6 +270,15 @@ def main():
             return 0
         if args.patch is not None and not BASENAME_PATTERN.fullmatch(args.patch):
             raise Abort("--patch must be an ASCII-safe ZIP basename")
+        audit_only = args.op in {"AUD", "11"} or (
+            args.op_seq is not None and args.op_seq.actions == (11,))
+        if args.verify_remote and not audit_only:
+            raise Abort("verifyRemote=true is only supported by op=AUD or opSeq=AUD")
+        if args.op_seq is not None and 11 in args.op_seq.actions and not audit_only:
+            raise Abort("AUD must run separately; use op=AUD or opSeq=AUD")
+        if audit_only and (args.handoff is not None or args.handoff_seq is not None
+                           or args.patch is not None or args.followup):
+            raise Abort("AUD examines the entire repository; omit handoff, handoffSeq, patch and followup")
         sequence_only_status = args.op_seq is not None and args.op_seq.actions == (10,)
         status_only = args.op in {"STS", "10"} or sequence_only_status
         if args.patch is not None and not status_only:
@@ -260,6 +301,22 @@ def main():
             raise Abort("The downloads directory must be outside the Git repository")
         if config.applied_patches_path == config.state_path:
             raise Abort("Applied patch history must have a dedicated path")
+        if audit_only:
+            print(format_audit(audit_repository(root, config, verify_remote=args.verify_remote)))
+            return 0
+        if (args.op is None and args.op_seq is None and args.handoff is None
+                and not (root / ".apatch" / "params.json").exists()):
+            selected = select_without_handoff()
+            if selected == 11:
+                print(format_audit(audit_repository(root, config)))
+                return 0
+            if selected == 0:
+                print("Exit selected. No action was run.")
+                return 0
+            if selected not in {10}:
+                raise Abort("Patch lifecycle actions require a selected ZIP/JSON handoff")
+            args.op = "STS"
+            status_only = True
         recorder = ProgressRecorder(root)
         selected_handoffs = ()
         if args.handoff_seq is not None:
@@ -312,6 +369,9 @@ def main():
             if action == 10:
                 show_status_with_progress(root, config, state, handoff, handoff.patch,
                                           args.mode, recorder, script_dir)
+                return 0
+            if action == 11:
+                print(format_audit(audit_repository(root, config)))
                 return 0
             args.op = ACTION_CODES[action]
         recover_cache = False

@@ -346,7 +346,7 @@ class HandoffsTests(LocalGitFixture):
         self.assertIn("regular JSON", linked.stderr)
         self.assertFalse((self.root / "new.txt").exists())
 
-    def test_missing_cached_handoff_requires_explicit_zip_or_json(self):
+    def test_missing_cached_handoff_offers_inspection_but_blocks_lifecycle(self):
         self.prepare_test_launcher()
         cases = (
             ["sh", str(self.bin / "apatch.sh")],
@@ -358,10 +358,14 @@ class HandoffsTests(LocalGitFixture):
         before = command("git", "status", "--porcelain", cwd=self.root).stdout
         for argv in cases:
             with self.subTest(argv=argv):
-                result = subprocess.run(argv, cwd=self.root,
+                exited = subprocess.run(argv, cwd=self.root,
                                         input="0\n", capture_output=True, text=True)
-                self.assertEqual(result.returncode, 2)
-                self.assertIn(".apatch/params.json", result.stderr)
+                self.assertEqual(exited.returncode, 0, exited.stderr + exited.stdout)
+                self.assertIn("11. [AUD]", exited.stdout)
+                blocked = subprocess.run(argv, cwd=self.root,
+                                         input="1\n", capture_output=True, text=True)
+                self.assertEqual(blocked.returncode, 2)
+                self.assertIn("require a selected ZIP/JSON handoff", blocked.stderr)
         self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, before)
         self.assertFalse(self.state_path.exists())
 
