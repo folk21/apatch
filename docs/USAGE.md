@@ -244,6 +244,8 @@ Status does not contact GitHub or the Git remote by default. A recorded PR numbe
 
 `AUD` correlates the optional generated-patch registry, legacy and structured applied-patch journal, all project-local workflow checkpoints, operation runs, and local Git evidence. It works without an active handoff or a cached `.apatch/params.json`, and it appears as option 11 in the interactive menu. No workflow identity is selected and no patch is applied. Examples:
 
+The output starts with the same **recorded cross-project activity** summary available through `info=PROGRESS`, followed by the current repository's full patch audit. The activity summary identifies each known project's last attempted operation and its most recent successful operation separately, together with the recorded branch, patch, phase and next suggested action. Recorded history is **not** live GitHub verification. When the optional global progress ledger cannot be read, `AUD` reports `GLOBAL_PROGRESS_UNAVAILABLE` and continues the independent repository audit; malformed repository audit evidence still fails closed.
+
 ```bash
 /path/to/apatch/apatch.sh op=AUD
 /path/to/apatch/apatch.sh op=11
@@ -509,7 +511,7 @@ Project-local action evidence is kept separately in `.apatch/apply_patch.state.j
 
 After each attempted lifecycle operation, including individual `opSeq` actions and read-only `STS`, `apatch` records a small event under its own installation directory: `<apatch_installation>/.apatch/progress/progress.json`. Per-project `<project>_progress.json` files are rebuilt from this master. The index distinguishes `SUCCESS`, `NO_OP`, `CANCELLED`, `FAILED`, and `UNKNOWN_REMOTE_RESULT`, with UTC time, patch, branch, recorded phase, optional SHA/PR evidence, and bounded generic error descriptions. It does not save canonical-check output, arbitrary command arguments, or credentials.
 
-Use `apatch.sh info=PROGRESS` (or `apatch.py --info=PROGRESS`) from **any directory**, including outside a Git repository. No handoff, target `.apatch/config.yaml`, `git`, or `gh` is needed. The command reads the authoritative master without creating directories, updating files, or changing project checkpoints. It shows the latest 8 global operations and latest 3 per known project, newest first by UTC completion time and event ID. Each project includes its root, branch, patch, last result, recorded phase, suggested next action, and warnings for unfinished or uncertain operations. These display limits can be changed in the installation's **global** `apatch.conf`:
+Use `apatch.sh info=PROGRESS` (or `apatch.py --info=PROGRESS`) from **any directory**, including outside a Git repository. No handoff, target `.apatch/config.yaml`, `git`, or `gh` is needed. The command reads the authoritative master without creating directories, updating files, or changing project checkpoints. It shows the latest 8 global operations and latest 3 per known project, newest first by UTC completion time and event ID. Each project includes its root, branch, patch, distinct last attempted and last successful operations, recorded phase, suggested next action, and warnings for unfinished or uncertain operations. These display limits can be changed in the installation's **global** `apatch.conf`:
 
 ```ini
 progress_global_limit = 8

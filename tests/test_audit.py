@@ -8,6 +8,7 @@ from unittest.mock import patch
 from tests._support import LocalGitFixture, command
 from apatch_lib.model import Abort
 from apatch_lib.operation_events import OperationRun
+from apatch_lib.progress import ProgressEvent, ProgressStore, utc_now
 from apatch_lib.reconciliation import audit_repository, format_audit
 from apatch_lib.model import load_config, load_project_config
 
@@ -50,6 +51,66 @@ class AuditTests(LocalGitFixture):
         self.assertEqual(index.stat().st_mtime_ns, index_mtime)
         self.assertEqual(command("git", "show-ref", cwd=self.root).stdout, before[1])
         self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, before[2])
+
+    def test_audit_shows_attempted_and_successful_operations_for_known_projects(self):
+        other = self.base / "other_service"
+        other.mkdir()
+        store = ProgressStore(self.bin)
+
+        def record(root, number, result, phase, timestamp):
+            event = ProgressEvent.capture(
+                root=root, patch_file="example-PATCH.zip", operation_number=number,
+                mode="LOOSE", result=result, phase_before=phase, phase_after=phase,
+                branch_before="feature/example", branch_after="feature/example",
+                record={}, started_at_utc=utc_now(), duration_seconds=0.1)
+            event.data["finished_at_utc"] = timestamp
+            store.append_event(event)
+
+        record(self.root, 3, "SUCCESS", "patch_applied", "2026-10-26T10:00:00.000Z")
+        record(self.root, 4, "FAILED", "patch_applied", "2026-10-26T10:01:00.000Z")
+        record(other, 9, "SUCCESS", "synced", "2026-10-26T10:02:00.000Z")
+        original = store.master_path.read_bytes()
+
+        result = self.invoke_unbound("op=11")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("APATCH GLOBAL PROGRESS [RECORDED]", result.stdout)
+        self.assertIn("PATCH AUDIT 11 [AUD]", result.stdout)
+        self.assertIn("Projects: 2", result.stdout)
+        self.assertIn("Last attempted [RECORDED]: CHK / FAILED", result.stdout)
+        self.assertIn("Last successful [RECORDED]: APL", result.stdout)
+        self.assertIn("Last successful [RECORDED]: SYN", result.stdout)
+        self.assertIn("other_service", result.stdout)
+        self.assertLess(result.stdout.index("APATCH GLOBAL PROGRESS"),
+                        result.stdout.index("PATCH AUDIT 11 [AUD]"))
+        self.assertEqual(store.master_path.read_bytes(), original)
+        self.assertFalse(self.state_path.exists())
+        self.assertFalse(self.lock_path.exists())
+
+    def test_unreadable_global_progress_does_not_suppress_repository_audit(self):
+        progress = self.bin / ".apatch" / "progress" / "progress.json"
+        progress.parent.mkdir(parents=True)
+        progress.write_text("{invalid JSON")
+
+        result = self.invoke_unbound("op=AUD")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("GLOBAL_PROGRESS_UNAVAILABLE", result.stdout)
+        self.assertIn("PATCH AUDIT 11 [AUD]", result.stdout)
+        self.assertEqual(progress.read_text(), "{invalid JSON")
+        self.assertFalse(self.state_path.exists())
+
+    def test_symlinked_optional_progress_does_not_suppress_audit(self):
+        external = self.base / "external-progress.json"
+        external.write_text("untrusted external bytes")
+        progress = self.bin / ".apatch" / "progress" / "progress.json"
+        progress.parent.mkdir(parents=True)
+        progress.symlink_to(external)
+
+        result = self.invoke_unbound("op=11")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("GLOBAL_PROGRESS_UNAVAILABLE", result.stdout)
+        self.assertIn("PATCH AUDIT 11 [AUD]", result.stdout)
+        self.assertTrue(progress.is_symlink())
+        self.assertEqual(external.read_text(), "untrusted external bytes")
 
     def test_missing_and_out_of_order_patch(self):
         self.write_created_registry("A.zip", "B.zip", "C.zip")
@@ -157,6 +218,7 @@ class AuditTests(LocalGitFixture):
             with self.subTest(arguments=arguments):
                 result = self.invoke_unbound(*arguments)
                 self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+                self.assertIn("APATCH GLOBAL PROGRESS [RECORDED]", result.stdout)
                 self.assertIn("PATCH AUDIT 11 [AUD]", result.stdout)
         menu = self.invoke_unbound(text="11\n")
         self.assertEqual(menu.returncode, 0, menu.stderr + menu.stdout)

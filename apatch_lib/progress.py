@@ -204,8 +204,14 @@ def render_progress(snapshot, *, global_limit=8, project_limit=3):
             lines.append("    No recorded operations for this project.")
             continue
         last = recent[0]
-        lines.append(f"    Latest: {_terminal_safe(last['operation_code'])} / "
+        lines.append(f"    Last attempted [RECORDED]: {_terminal_safe(last['operation_code'])} / "
                      f"{_terminal_safe(last['result'])} at {_terminal_safe(last['finished_at_utc'])}")
+        successful = next((event for event in recent if event["result"] == "SUCCESS"), None)
+        if successful is None:
+            lines.append("    Last successful [RECORDED]: none")
+        else:
+            lines.append(f"    Last successful [RECORDED]: {_terminal_safe(successful['operation_code'])} "
+                         f"at {_terminal_safe(successful['finished_at_utc'])}")
         lines.append(f"    Branch: {_terminal_safe(last.get('branch_after'))} | "
                      f"Patch: {_terminal_safe(last.get('patch_file'))} | "
                      f"Phase: {_terminal_safe(last.get('phase_after'))}")
