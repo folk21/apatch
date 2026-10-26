@@ -101,6 +101,70 @@ class SequencesTests(LocalGitFixture):
         self.assertEqual(next(iter(json.loads(self.state_path.read_text())["workflows"].values()))["phase"],
                          "verified")
 
+    def test_formatter_changes_existing_bytes_without_changing_paths_stops_sequence_and_recovers(self):
+        runner = self.root / "run_checks.sh"
+        runner.write_text(
+            "#!/bin/sh\nset -eu\ntest -f new.txt\n"
+            "if ! grep -q '^formatted$' existing.txt; then\n"
+            "  printf 'formatted\\n' > existing.txt\n"
+            "fi\n"
+        )
+        runner.chmod(0o755)
+        result = self.invoke_cli("opSeq=APL,CHK,STS", "skipApproves=true")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("RESULT 3 [APL]: SUCCESS", result.stdout)
+        self.assertIn("RESULT 4 [CHK]: ERROR", result.stdout)
+        self.assertNotIn("RESULT 4 [CHK]: NO_OP", result.stdout)
+        self.assertIn("Phase: patch_applied -> patch_applied", result.stdout)
+        self.assertIn("Next suggested: 4 [CHK]", result.stdout)
+        self.assertIn("opSeq=CHK,STS", result.stdout)
+        self.assertIn("CHECKS_CHANGED_WORKTREE", result.stderr)
+        self.assertIn("Remaining (not executed): 10 [STS]", result.stdout)
+        self.assertNotIn("PATCH STATUS 10 [STS]", result.stdout)
+        self.assertEqual((self.root / "existing.txt").read_text(), "formatted\n")
+        self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(), self.head)
+        state = json.loads(self.state_path.read_text())
+        record = next(iter(state["workflows"].values()))
+        self.assertEqual(record["phase"], "patch_applied")
+        self.assertNotIn("verified_fingerprint", record)
+        self.assertEqual([run["outcome"] for run in state["operation_runs"]],
+                         ["SUCCEEDED", "FAILED"])
+
+        resumed = self.invoke_cli("opSeq=CHK,STS", "skipApproves=true")
+        self.assertEqual(resumed.returncode, 0, resumed.stdout + resumed.stderr)
+        self.assertIn("RESULT 4 [CHK]: SUCCESS", resumed.stdout)
+        self.assertIn("Checks passed: YES", resumed.stdout)
+        self.assertEqual(next(iter(json.loads(self.state_path.read_text())["workflows"].values()))["phase"],
+                         "verified")
+
+    def test_direct_check_invalidated_after_prior_success_clears_stale_evidence(self):
+        applied_and_verified = self.invoke_cli("opSeq=APL,CHK", "skipApproves=true")
+        self.assertEqual(applied_and_verified.returncode, 0,
+                         applied_and_verified.stdout + applied_and_verified.stderr)
+        original = next(iter(json.loads(self.state_path.read_text())["workflows"].values()))
+        self.assertIn("verified_fingerprint", original)
+        self.assertIn("verified_head", original)
+        self.assertIn("verified_branch", original)
+
+        runner = self.root / "run_checks.sh"
+        runner.write_text("#!/bin/sh\nset -eu\n"
+                          "test -f new.txt\nprintf 'formatted\\n' > existing.txt\n")
+        runner.chmod(0o755)
+        result = self.invoke_cli("op=CHK", "skipApproves=true")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("RESULT 4 [CHK]: ERROR", result.stdout)
+        self.assertIn("CHECKS_CHANGED_WORKTREE", result.stderr)
+        self.assertEqual((self.root / "existing.txt").read_text(), "formatted\n")
+        record = next(iter(json.loads(self.state_path.read_text())["workflows"].values()))
+        self.assertEqual(record["phase"], "patch_applied")
+        for key in ("verified_fingerprint", "verified_head", "verified_branch", "verified_commit"):
+            self.assertNotIn(key, record)
+
+        status = self.invoke_cli("op=STS")
+        self.assertEqual(status.returncode, 0, status.stderr)
+        self.assertIn("Checks passed: PENDING", status.stdout)
+        self.assertIn("Next suggested: 4 [CHK]", status.stdout)
+
     def test_read_only_status_sequence_does_not_initialize_workflow_files(self):
         self.zip.unlink()
         exclude = self.root / ".git" / "info" / "exclude"

@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 import uuid
 
-from .model import Abort, RemoteOutcomeUnknown
+from .model import Abort, CheckWorktreeChanged, RemoteOutcomeUnknown
 from .core.actions import ACTION_CODES, action_number
 
 
@@ -87,7 +87,10 @@ def execute_sequence(workflow, sequence: OperationSequence, *, on_completed=None
             outcome = "UNKNOWN_REMOTE_RESULT" if isinstance(exc, RemoteOutcomeUnknown) else "ERROR"
             print(f"==> SEQUENCE STOP: {describe(action)} | last confirmed: {last_completed} | outcome={outcome}")
             print(f"    Remaining (not executed): {remaining}")
-            if isinstance(exc, RemoteOutcomeUnknown):
+            if isinstance(exc, CheckWorktreeChanged):
+                print("    Recovery: check-produced edits were preserved; review them and resume "
+                      "with opSeq=CHK,STS. No ZIP replay is needed.")
+            elif isinstance(exc, RemoteOutcomeUnknown):
                 print("    Recovery: inspect 10 [STS] and live GitHub PR status; do not replay the remote mutation blindly.")
             else:
                 print("    Recovery: inspect 10 [STS] and Git state; explicitly resume from the failed step.")

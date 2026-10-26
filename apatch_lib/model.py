@@ -22,6 +22,10 @@ class RemoteOutcomeUnknown(Abort):
     """A remote mutation may have happened despite its failed acknowledgment."""
 
 
+class CheckWorktreeChanged(Abort):
+    """Canonical checks changed repository bytes and invalidated verification."""
+
+
 @dataclass(frozen=True)
 class Config:
     downloads: Path

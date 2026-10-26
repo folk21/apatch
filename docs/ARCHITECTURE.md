@@ -77,6 +77,17 @@ underlying nonzero exit status, and requires explicit live PR reconciliation.
 the primary numbered next-action recommendation; non-TTY and `NO_COLOR` output
 remain machine-readable.
 
+LOOSE `CHK` fingerprints file bytes and Git index metadata before and after
+configured checks. When a check modifies the worktree without changing the
+set of Git status paths, `apatch_lib/loose.py` raises a typed
+`CheckWorktreeChanged` failure after persisting `patch_applied` and clearing
+previous verification evidence. The shared action presentation records an
+`ERROR`/`FAILED` attempt, emits an actionable, TTY-highlighted `CHK`
+recommendation, and the sequence stops before later mutating steps. This
+avoids classifying changed bytes as `NO_OP` merely because branch, HEAD,
+phase, and status paths stayed constant. No implicit reformat/retry, reset,
+reapplication, commit, or GitHub mutation follows the failure.
+
 ## Module ownership
 
 | Module | Responsibility |
