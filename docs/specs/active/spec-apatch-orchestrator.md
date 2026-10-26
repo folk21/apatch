@@ -4,7 +4,7 @@
 
 **Owner:** `apatch` CLI and target-repository `.apatch/` integration.
 
-**P0 specification:** [APATCH-SUB-001 — Workflow Control](subspecs/subspec-01-workflow-control.md). **P1 history/audit specification:** [APATCH-SUB-002 — Execution History and Reconciliation](subspecs/subspec-02-state-history-audit.md). **Plan:** [Orchestrator implementation plan](../plans/apatch-orchestrator-implementation-plan.md).
+**Sub-specifications:** [SUB-001 — Workflow Control](subspecs/subspec-01-workflow-control.md), [SUB-002 — Execution History and Reconciliation](subspecs/subspec-02-state-history-audit.md), [SUB-003 — Feature Sessions](subspecs/subspec-03-feature-session-planning.md), and [SUB-004 — Operational Workflows](subspecs/subspec-04-operational-workflows.md). **Plans:** [PLAN-001](../plans/apatch-orchestrator-implementation-plan.md), [PLAN-003](../plans/feature-session-context-aware-implementation-plan.md), [PLAN-004](../plans/operational-workflows-implementation-plan.md).
 
 ## 1. Purpose
 
@@ -13,8 +13,8 @@
 ## 2. Compatibility and safety baseline
 
 - Preserve `LOOSE` (default), `STRICT`, and `FORCE` (recovery, not force-push).
-- Preserve action IDs `0..10`: `EXT, BRN, BAP, APL, CHK, CMT, PSH, PR, MRG, SYN, STS`; `op`, `skipApproves`, and handoff JSON schema v1.
-- Require an explicit handoff name or JSON path on every **patch lifecycle** invocation; the read-only tool-wide `info=PROGRESS` query does not select a patch or target repository. Generate unique same-stem ZIP/JSON pairs while accepting existing explicit JSON paths.
+- Preserve action IDs `0..11`: `EXT, BRN, BAP, APL, CHK, CMT, PSH, PR, MRG, SYN, STS, AUD`; `op`, `opSeq`, `handoffSeq`, `skipApproves`, and legacy handoff JSON schema v1.
+- New patch handoffs use one explicit self-contained ZIP with embedded schema-v1 `.apatch/params.json`; a verified cached selection permits later operations without repeating the ZIP argument. Legacy explicit JSON paths remain supported. The read-only tool-wide `info=PROGRESS` query does not select a patch or target repository.
 - Preserve LOOSE manual edits, multiple patches per commit, and deferred push.
 - Keep existing state, history, migration, and logging data readable; never invent a verified commit, review, or merge.
 - Keep safe ZIP extraction, worktree-preserving backups, Git guards, and non-force pushes.
@@ -39,6 +39,7 @@ Current behavior is documented in [Usage](../../USAGE.md) and [Architecture](../
 | Multi-project progress overview | Record tool-wide and per-project summaries under `<apatch_installation>/.apatch/progress/`; query recent global and per-project activity using `info=PROGRESS` | P0 — SUB-001 |
 | Operation execution history | Persist numbered/coded attempts and outcomes in `.apatch/apply_patch.state.json` | P1 — SUB-002 |
 | Global patch reconciliation | Audit missing/incomplete historical patch workflows and suggest recovery | P1 — SUB-002 |
+| Operational macros, activity overview and stable checks | Add guarded `RUN_ALL`, `APPLY_PATCH`, `APPLY_PATCH_CHECK`, `MERGE`, a cross-project activity preface to `AUD`, project-local base branch selection and opt-in bounded check recovery | P1 — SUB-004 |
 | Git-native patch handoffs | Accept Git-format `.patch`/`.diff` files alongside ZIP archives through a safe, format-aware apply pipeline | Future P1 — dedicated sub-spec |
 | Check adapters | Run tests, lint, static analysis, and security tools with typed results | P1 |
 | Check scheduling | Trigger checks by action, patch count/size, elapsed interval, or spec milestone | P1 |

@@ -162,6 +162,19 @@ def show_status_with_progress(root, config, state, handoff, patch, mode, recorde
         recorder.flush(tool_dir)
 
 
+def show_audit_with_activity(root, config, tool_dir, *, verify_remote=False):
+    """Show recorded cross-project activity before the read-only repository audit."""
+    try:
+        print(render_progress(ProgressStore(tool_dir).read_snapshot(),
+                              global_limit=config.progress_global_limit,
+                              project_limit=config.progress_project_limit))
+    except Abort as exc:
+        print(f"WARNING: GLOBAL_PROGRESS_UNAVAILABLE ({type(exc).__name__}); "
+              "repository audit remains available.")
+    print()
+    print(format_audit(audit_repository(root, config, verify_remote=verify_remote)))
+
+
 def show_unresolved_operations(state, root):
     """Expose unfinished historical runs without modifying their persisted outcome."""
     unfinished = unresolved_runs(state, root)
@@ -302,13 +315,14 @@ def main():
         if config.applied_patches_path == config.state_path:
             raise Abort("Applied patch history must have a dedicated path")
         if audit_only:
-            print(format_audit(audit_repository(root, config, verify_remote=args.verify_remote)))
+            show_audit_with_activity(root, config, script_dir,
+                                     verify_remote=args.verify_remote)
             return 0
         if (args.op is None and args.op_seq is None and args.handoff is None
                 and not (root / ".apatch" / "params.json").exists()):
             selected = select_without_handoff()
             if selected == 11:
-                print(format_audit(audit_repository(root, config)))
+                show_audit_with_activity(root, config, script_dir)
                 return 0
             if selected == 0:
                 print("Exit selected. No action was run.")
@@ -371,7 +385,7 @@ def main():
                                           args.mode, recorder, script_dir)
                 return 0
             if action == 11:
-                print(format_audit(audit_repository(root, config)))
+                show_audit_with_activity(root, config, script_dir)
                 return 0
             args.op = ACTION_CODES[action]
         recover_cache = False
