@@ -31,6 +31,35 @@ class GithubGuardTest(unittest.TestCase):
                         "mergeable": "MERGEABLE", "mergeStateStatus": "CLEAN",
                         "statusCheckRollup": [{"name": "test", "conclusion": "SUCCESS"}], "mergedAt": None}
 
+    def test_pr_creation_targets_the_project_base_and_rejects_another_target(self):
+        from apatch_lib import github
+
+        config = replace(self.config, base="release/2026-q4", base_branch_source="project")
+        self.record["pushed_sha"] = self.sha
+        expected = dict(self.details, baseRefName="release/2026-q4")
+        with patch.object(github, "require_clean"), \
+             patch.object(github, "head", return_value=self.sha), \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "pr_list", side_effect=[[], [expected]]), \
+             patch.object(github, "confirm", return_value=True), \
+             patch.object(github, "gh_run") as mutate:
+            github.create_pr(config, self.handoff, self.root, self.record, lambda: None)
+        argv = mutate.call_args.args[2]
+        self.assertEqual(argv[argv.index("--base") + 1], "release/2026-q4")
+        self.assertEqual(self.record["pr_number"], 4)
+
+        self.record.pop("pr_number", None)
+        with patch.object(github, "require_clean"), \
+             patch.object(github, "head", return_value=self.sha), \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "pr_list", return_value=[dict(self.details)]), \
+             patch.object(github, "gh_run") as mutate:
+            with self.assertRaisesRegex(Abort, "another base branch"):
+                github.create_pr(config, self.handoff, self.root, self.record, lambda: None)
+            mutate.assert_not_called()
+
     def test_mutating_github_transport_timeout_is_unknown_and_never_retried(self):
         from apatch_lib import github
 

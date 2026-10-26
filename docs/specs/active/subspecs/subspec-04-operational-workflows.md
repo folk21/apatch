@@ -1,6 +1,6 @@
 # APATCH-SUB-004 — Operational Workflows, Activity Dashboard, and Stable Checks
 
-**Status:** DRAFT. WM-01 (read-only activity in `AUD`) has an implementation candidate; WM-02–WM-05 are proposed and not yet implemented.
+**Status:** DRAFT. WM-01 (read-only activity in `AUD`) and WM-02 (per-project base branch) have implementation candidates; WM-03–WM-05 are proposed and not yet implemented.
 
 **Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Implementation plan:** [APATCH-PLAN-004](../../plans/operational-workflows-implementation-plan.md).
 
@@ -12,7 +12,7 @@ The existing implementation already provides:
 
 - Atomic numbered actions `0..11`, `op`, exact `opSeq`, `handoffSeq`, and `followup=true`.
 - Read-only repository `10 [STS]`, read-only repository audit `11 [AUD]`, and read-only, tool-wide `info=PROGRESS` backed by an installation-local event ledger.
-- Global `apatch.conf:base_branch` (default `main`), but no project-local override.
+- Global `apatch.conf:base_branch` (default `main`); WM-02 adds a candidate project-local override.
 - `CHECKS_CHANGED_WORKTREE`, which preserves edited bytes and blocks publication when canonical checks change the worktree.
 
 **Non-goals:** renumbering actions, removing `AUD` or `info=PROGRESS`, making GitHub mutations during status inspection, unsafe Git cleanup, autonomous repair-patch generation, hidden branch switching, bypassing review/CI/protected-branch rules, or changing `STRICT`/`FORCE` semantics without a separately tested migration.
@@ -109,4 +109,5 @@ The console SHALL identify the exact changed paths and whether an index entry, s
 ## 8. Delivery status
 
 - **WM-01:** implementation candidate with focused tests in the associated source patch; not marked released until integrated and independently verified.
-- **WM-02–WM-05:** advisory implementation stages only. No new macro CLI, project YAML key or automatic check rerun is claimed as installed.
+- **WM-02:** implementation candidate with Git-syntax validation, source-labelled effective base and focused project/branch/PR tests; not marked released until integrated and independently verified.
+- **WM-03–WM-05:** advisory implementation stages only. No new macro CLI or automatic check rerun is claimed as installed.

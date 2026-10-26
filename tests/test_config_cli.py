@@ -44,6 +44,66 @@ class ConfigCliTests(LocalGitFixture):
         self.assertEqual(config.checks, (("./gradlew", "test"), ("python3", "-c", "print(42)")))
         self.assertEqual(config.log_directory, self.root / ".apatch" / "build" / "checks")
 
+    def test_base_branch_inherits_global_and_accepts_project_override(self):
+        global_config = load_config(self.bin)
+        self.assertEqual(global_config.base, "main")
+        ini = self.bin / "apatch.conf"
+        original_ini = ini.read_text()
+        ini.write_text(original_ini.replace("base_branch = main\n", ""))
+        self.assertEqual(load_config(self.bin).base, "main")
+        ini.write_text(original_ini)
+        inherited = load_project_config(self.root, global_config)
+        self.assertEqual((inherited.base, inherited.base_branch_source), ("main", "global"))
+        inherited_master = load_project_config(self.root, replace(global_config, base="master"))
+        self.assertEqual((inherited_master.base, inherited_master.base_branch_source),
+                         ("master", "global"))
+        for branch in ("develop", "release/2026-q4"):
+            with self.subTest(branch=branch):
+                self.assertEqual(command("git", "check-ref-format", "--branch", branch,
+                                         cwd=self.root).stdout.strip(), branch)
+                self.project_config.write_text(
+                    "schema_version: 1\nchecks:\n  - [\"./run_checks.sh\"]\n"
+                    f"base_branch: {branch}\n")
+                configured = load_project_config(self.root, replace(global_config, base="master"))
+                self.assertEqual(configured.base, branch)
+                self.assertEqual(configured.base_branch_source, "project")
+
+    def test_invalid_project_base_branch_fails_before_any_git_mutation(self):
+        values = ('""', "null", "true", "42", "[]", "{}", '"-bad"',
+                  '"feature/"', '"topic.lock"', '"topic..bad"',
+                  '"release//today"', '"release with spaces"', '"@{-1}"')
+        for value in values:
+            with self.subTest(value=value):
+                self.project_config.write_text(
+                    "schema_version: 1\nchecks:\n  - [\"./run_checks.sh\"]\n"
+                    f"base_branch: {value}\n")
+                result = self.invoke_cli("op=BRN", "skipApproves=true")
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn("Invalid project base_branch", result.stderr)
+                self.assertFalse(self.state_path.exists())
+                self.assertEqual(command("git", "branch", "--show-current", cwd=self.root)
+                                 .stdout.strip(), "main")
+
+    def test_invalid_global_base_branch_fails_closed(self):
+        ini = self.bin / "apatch.conf"
+        original = ini.read_text()
+        self.assertIn("base_branch = main", original)
+        ini.write_text(original.replace("base_branch = main", "base_branch = topic..bad"))
+        result = self.invoke_cli("op=STS")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Invalid global base_branch", result.stderr)
+
+    def test_project_base_branch_is_visible_in_header_and_status(self):
+        self.project_config.write_text(
+            "schema_version: 1\nchecks:\n  - [\"./run_checks.sh\"]\n"
+            "base_branch: develop\n")
+        menu = self.invoke_cli(text="0\n")
+        self.assertEqual(menu.returncode, 0, menu.stderr)
+        self.assertIn("Base branch: develop (source: project)", menu.stdout)
+        status = self.invoke_cli("op=STS")
+        self.assertEqual(status.returncode, 0, status.stderr)
+        self.assertIn("Configured base: develop [CONFIG] — source: project", status.stdout)
+
     def test_project_review_approval_inherits_global_setting_when_omitted(self):
         global_config = load_config(self.bin)
         self.assertTrue(global_config.require_approval)

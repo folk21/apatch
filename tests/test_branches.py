@@ -14,6 +14,37 @@ from tests._support import (
 
 
 class BranchesTests(LocalGitFixture):
+    def test_self_contained_patch_uses_project_develop_instead_of_main(self):
+        command("git", "switch", "-c", "develop", cwd=self.root)
+        self.project_config.write_text(
+            'schema_version: 1\nbase_branch: develop\nchecks:\n  - ["./run_checks.sh"]\n')
+        command("git", "add", ".apatch/config.yaml", cwd=self.root)
+        command("git", "commit", "-m", "Select project base branch", cwd=self.root)
+        command("git", "push", "-u", "origin", "develop", cwd=self.root)
+        self.payload["base_commit"] = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        stem = self.make_self_contained_zip()
+        result = self.invoke_zip("opSeq=APL,BRN,CHK,STS", "skipApproves=true", selection=stem)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("Base branch: develop (source: project)", result.stdout)
+        self.assertIn("Configured base: develop [CONFIG] — source: project", result.stdout)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         self.payload["feature_branch"])
+        self.assertEqual((self.root / "new.txt").read_text(), "new\n")
+        self.assertEqual(command("git", "ls-remote", "--heads", "origin", "refs/heads/main",
+                                 cwd=self.root).stdout.split()[0], self.head)
+
+    def test_missing_configured_remote_base_does_not_fall_back_to_main(self):
+        from apatch_lib.branch_guard import assert_no_unfinished_feature_branches
+
+        self.project_config.write_text(
+            'schema_version: 1\nbase_branch: release/missing\nchecks:\n'
+            '  - ["./run_checks.sh"]\n')
+        config = load_project_config(self.root, load_config(self.bin))
+        with self.assertRaisesRegex(Abort, "origin/release/missing is unavailable"):
+            assert_no_unfinished_feature_branches(self.root, config, self.payload["feature_branch"])
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         "main")
+
     def test_unmerged_local_feature_branch_blocks_new_creation_in_all_modes(self):
         command("git", "switch", "-c", "feature/unfinished-local", cwd=self.root)
         command("git", "commit", "--allow-empty", "-m", "Unfinished local work", cwd=self.root)
