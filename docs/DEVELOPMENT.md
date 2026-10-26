@@ -53,7 +53,7 @@ components such as macOS `/private/var`.
 
 ## SDD documentation lifecycle
 
-The [specification index](specs/README.md) contains two active **DRAFT** sub-specifications and an advisory implementation plan; implemented slices are not automatically accepted normative requirements.
+The [specification index](specs/README.md) is the authoritative list of active **DRAFT** specifications, advisory plans, independently prepared implementation candidates, and verified delivery status. Implemented slices are not automatically accepted normative requirements.
 
 When the developer explicitly requests specification work, add one owning active spec with scope, invariants, acceptance criteria, and verifiable increments. Keep implementation plans advisory and separate from normative requirements. Use an existing convention before introducing new files. Do not infer completion or invent future stage IDs.
 

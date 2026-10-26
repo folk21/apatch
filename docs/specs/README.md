@@ -12,15 +12,18 @@ This directory holds proposed normative specifications and implementation plans 
 | Draft execution-history sub-specification | [APATCH-SUB-002 — Execution History and Repository Reconciliation](active/subspecs/subspec-02-state-history-audit.md) |
 | Draft feature-session sub-specification | [APATCH-SUB-003 — Feature Sessions and Context-Aware Execution](active/subspecs/subspec-03-feature-session-planning.md) |
 | Draft operational-workflow sub-specification | [APATCH-SUB-004 — Operational Workflows, Activity Dashboard, and Stable Checks](active/subspecs/subspec-04-operational-workflows.md) |
+| Draft architectural-simplification sub-specification | [APATCH-SUB-005 — Architectural Simplification, Typed Boundaries, and Explicit Outcomes](active/subspecs/subspec-05-architectural-simplification.md) |
 | Advisory implementation plan | [APATCH-PLAN-001](plans/apatch-orchestrator-implementation-plan.md) |
 | Advisory feature-session plan | [APATCH-PLAN-003](plans/feature-session-context-aware-implementation-plan.md) |
 | Advisory operational-workflow plan | [APATCH-PLAN-004](plans/operational-workflows-implementation-plan.md) |
+| Advisory architectural-refactoring plan | [APATCH-PLAN-005](plans/architectural-simplification-implementation-plan.md) |
 | Completed or archived specifications | None |
 | Implemented slices in inspected source | P0.1–P1.2, including self-contained ZIPs, `handoffSeq`, tool-wide progress, `info=PROGRESS`, operation journal, `11 [AUD]`, and `CHECKS_CHANGED_WORKTREE` recovery |
-| Prepared in this delivery | SUB-004 WM-01 — recorded cross-project activity in `AUD` (source/test candidate; release unverified) |
-| Next operational stages | SUB-004 WM-02 project-local base override; WM-03 guarded local macros; WM-04 stable-check policy; WM-05 publication macros |
+| Prepared implementation candidates in the inspected working baseline | SUB-004 WM-01 recorded cross-project activity; WM-02 project-local base override; SUB-003 FS-00 checkpoint-linkage correction. Installation and release are unverified. |
+| Proposed next operational stages | SUB-003 FS-00R/FS-01 onward; SUB-004 WM-03 guarded macros, WM-04 stable-check policy, WM-05 publication, deferred WM-06 GitHub transport recovery |
+| Proposed architecture stages | SUB-005 AS-01–AS-07: regression baseline, typed external boundaries, explicit results, CLI/policy/audit decomposition and incremental static checks |
 
-Until formal acceptance, [Usage](../USAGE.md) and [Architecture](../ARCHITECTURE.md) describe implemented behavior. Numeric `2 [BAP]` remains for legacy JSON compatibility (AC-54 retirement incomplete). The clean source snapshot inspected for SUB-004 is `9f256d786d29d4121ea0116758af85a903d9636a` (2026-10-26 17:21 UTC); the WM-01 modifications are a separate candidate, not evidence of installation or merge. Feature Sessions, workflow macros, project-specific base overrides, automatic check recovery, secure Git patch formats, scheduled check adapters, and P2/P3 remain proposed until their independent acceptance.
+Until formal acceptance, [Usage](../USAGE.md) and [Architecture](../ARCHITECTURE.md) describe implemented behavior. Numeric `2 [BAP]` remains for legacy JSON compatibility (AC-54 retirement incomplete). The clean source snapshot inspected for SUB-004 and SUB-005 is `9f256d786d29d4121ea0116758af85a903d9636a` (2026-10-26 17:21 UTC). Separate implementation candidates are not evidence of installation or merge. Feature Sessions, workflow macros, project-specific base overrides, automatic check recovery, safe GitHub transport reconciliation, architectural refactoring, secure Git patch formats, scheduled check adapters, and P2/P3 remain proposed until their independent acceptance.
 
 ## Planned organization
 
