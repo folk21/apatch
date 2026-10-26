@@ -3,9 +3,12 @@
 import json
 import re
 import time
+from pathlib import Path
+from typing import cast
 
+from .core.contracts import GitHubPr
 from .gitutil import confirm, head, output, remote_head, require_clean, run
-from .model import Abort, RemoteOutcomeUnknown
+from .model import Abort, Config, RemoteOutcomeUnknown
 
 
 _TRANSIENT_GITHUB_ERROR = re.compile(
@@ -16,6 +19,90 @@ _TRANSIENT_GITHUB_ERROR = re.compile(
     re.IGNORECASE,
 )
 _READ_RETRY_DELAY_SECONDS = 0.5
+_MAX_GITHUB_JSON_BYTES = 8 * 1024 * 1024
+_MAX_GITHUB_PRS = 500
+_PR_STATES = frozenset({"OPEN", "CLOSED", "MERGED"})
+
+
+def _github_json(raw: str, source: str) -> object:
+    """Decode bounded, untrusted CLI output without including its body in errors."""
+    try:
+        size = len(raw.encode("utf-8")) if type(raw) is str else _MAX_GITHUB_JSON_BYTES + 1
+    except UnicodeError as exc:
+        raise Abort(f"Invalid {source}: malformed UTF-8 text") from exc
+    if size > _MAX_GITHUB_JSON_BYTES:
+        raise Abort(f"Invalid {source}: response is not bounded UTF-8 JSON")
+    try:
+        return json.loads(raw)
+    except (ValueError, UnicodeError) as exc:
+        raise Abort(f"Invalid {source}: malformed JSON") from exc
+
+
+def _validate_pr(value: object, source: str, *, require_url: bool,
+                 expected_repo: str | None) -> GitHubPr:
+    if not isinstance(value, dict):
+        raise Abort(f"Invalid {source}: PR entry must be an object")
+    number = value.get("number")
+    if type(number) is not int or not 0 < number <= 2**63 - 1:
+        raise Abort(f"Invalid {source}: number must be a positive integer")
+    if type(value.get("state")) is not str or value["state"] not in _PR_STATES:
+        raise Abort(f"Invalid {source}: state must be OPEN, CLOSED or MERGED")
+    for field in ("headRefName", "baseRefName"):
+        name = value.get(field)
+        if (type(name) is not str or not name or len(name) > 255
+                or any(ord(char) < 32 or ord(char) == 127 for char in name)):
+            raise Abort(f"Invalid {source}: {field} must be a bounded branch name")
+    oid = value.get("headRefOid")
+    if oid is not None and (type(oid) is not str or re.fullmatch(r"[a-f0-9]{40}", oid) is None):
+        raise Abort(f"Invalid {source}: headRefOid must be a Git SHA or null")
+    if "url" in value or require_url:
+        url = value.get("url")
+        if (type(url) is not str or len(url) > 2048
+                or any(ord(char) < 32 or ord(char) == 127 for char in url)
+                or not url.startswith("https://github.com/")):
+            raise Abort(f"Invalid {source}: URL must be a GitHub HTTPS URL")
+        if expected_repo is not None:
+            match = re.fullmatch(r"https://github\.com/([^/]+/[^/]+)/pull/([1-9][0-9]*)", url)
+            if (match is None or match.group(1).lower() != expected_repo.lower()
+                    or int(match.group(2)) != number):
+                raise Abort(f"Invalid {source}: PR URL does not match the selected repository")
+    for field in ("mergedAt", "reviewDecision", "mergeable", "mergeStateStatus"):
+        if field in value and value[field] is not None and (
+                type(value[field]) is not str or len(value[field]) > 256):
+            raise Abort(f"Invalid {source}: {field} must be a string or null")
+    if "statusCheckRollup" in value and value["statusCheckRollup"] is not None:
+        checks = value["statusCheckRollup"]
+        if not isinstance(checks, list) or len(checks) > 500:
+            raise Abort(f"Invalid {source}: statusCheckRollup must be a bounded list")
+        for check in checks:
+            if not isinstance(check, dict):
+                raise Abort(f"Invalid {source}: statusCheckRollup entries must be objects")
+            for field in ("name", "context", "state", "conclusion"):
+                if field in check and check[field] is not None and (
+                        type(check[field]) is not str or len(check[field]) > 256):
+                    raise Abort(f"Invalid {source}: check {field} must be a string or null")
+    return cast(GitHubPr, value)
+
+
+def decode_pr_list(raw: str, *, expected_repo: str | None = None,
+                   require_url: bool = False, max_items: int = _MAX_GITHUB_PRS) -> list[GitHubPr]:
+    """Parse PR list responses, including the narrower read-only audit shape."""
+    value = _github_json(raw, "GitHub PR list")
+    if not isinstance(value, list) or len(value) > max_items:
+        raise Abort("Invalid GitHub PR list: expected a bounded list")
+    return [_validate_pr(item, "GitHub PR list", require_url=require_url,
+                         expected_repo=expected_repo) for item in value]
+
+
+def decode_pr_details(raw: str, *, expected_repo: str | None = None) -> GitHubPr:
+    """Parse a PR detail object before merge policy evaluates its evidence."""
+    value = _github_json(raw, "GitHub PR details")
+    pr = _validate_pr(value, "GitHub PR details", require_url=True,
+                      expected_repo=expected_repo)
+    for field in ("mergeable", "mergeStateStatus"):
+        if field not in pr:
+            raise Abort(f"Invalid GitHub PR details: missing {field}")
+    return pr
 
 
 def _github_read(config, root, argv, *, capture_output):
@@ -86,17 +173,24 @@ def remote_repository(config, root):
     return match.group(1)
 
 
-def pr_list(config, root, repo, branch, *, include_other_bases=False):
+def pr_list(config: Config, root: Path, repo: str, branch: str, *,
+            include_other_bases: bool = False) -> list[GitHubPr]:
     raw = gh_output(config, root, ["gh", "pr", "list", "--repo", repo, "--head", branch,
                                    "--state", "all", "--limit", "100", "--json",
                                    "number,state,headRefName,baseRefName,headRefOid,url,mergedAt"])
-    matches = [pr for pr in json.loads(raw) if pr["headRefName"] == branch]
+    matches = [pr for pr in decode_pr_list(raw, expected_repo=repo, require_url=True,
+                                          max_items=100) if pr["headRefName"] == branch]
     return matches if include_other_bases else [pr for pr in matches if pr["baseRefName"] == config.base]
 
 
-def pr_details(config, root, repo, number):
+def pr_details(config: Config, root: Path, repo: str, number: int) -> GitHubPr:
     fields = "number,state,headRefName,baseRefName,headRefOid,url,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,mergedAt"
-    return json.loads(gh_output(config, root, ["gh", "pr", "view", str(number), "--repo", repo, "--json", fields]))
+    raw = gh_output(config, root, ["gh", "pr", "view", str(number), "--repo", repo,
+                                   "--json", fields])
+    pr = decode_pr_details(raw, expected_repo=repo)
+    if pr["number"] != number:
+        raise Abort("Invalid GitHub PR details: returned PR number differs from requested PR")
+    return pr
 
 
 def assert_pr_matches_revision(config, handoff, pr, sha, *, merged=False):

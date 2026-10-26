@@ -60,7 +60,7 @@ class Handoff:
     delete_paths: tuple[str, ...]
 
     @property
-    def subject(self):
+    def subject(self) -> str:
         return self.message.splitlines()[0]
 
 
