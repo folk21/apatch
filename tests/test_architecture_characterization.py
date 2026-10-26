@@ -1,4 +1,4 @@
-"""AS-01 baseline contracts and explicitly tracked architecture defects.
+"""AS-01 characterization and AS-02 validated-boundary regression contracts.
 
 Expected failures document observed defects. Remove each marker when its owning
 stage implements and verifies the stricter behavior; do not weaken the assertion.
@@ -94,9 +94,7 @@ class StateBoundaryCharacterizationTests(unittest.TestCase):
                 read_state_snapshot(path)
             self.assertEqual(path.read_bytes(), contents)
 
-    @unittest.expectedFailure
     def test_nested_non_mapping_workflow_should_fail_with_domain_error(self) -> None:
-        # AS-02: Top-level validation currently accepts a workflow list.
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "state.json"
             contents = b'{"schema_version":2,"workflows":{"bad":[]},"operation_runs":[]}'
@@ -104,6 +102,46 @@ class StateBoundaryCharacterizationTests(unittest.TestCase):
             with self.assertRaises(Abort):
                 read_state_snapshot(path)
             self.assertEqual(path.read_bytes(), contents)
+
+    def test_known_workflow_field_types_are_rejected_without_writes(self) -> None:
+        corrupt_records = (
+            {"repository": ["/repo"]},
+            {"phase": {"value": "verified"}},
+            {"pr_number": True},
+            {"changed_paths": ["ok.txt", 21]},
+            {"zip_first": "true"},
+            {"remote_before_patch_head": []},
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            for record in corrupt_records:
+                with self.subTest(record=record):
+                    contents = json.dumps({"schema_version": 2,
+                                           "workflows": {"old": record},
+                                           "operation_runs": []}).encode()
+                    path.write_bytes(contents)
+                    with self.assertRaises(Abort):
+                        read_state_snapshot(path)
+                    self.assertEqual(path.read_bytes(), contents)
+
+    def test_known_fields_and_forward_extensions_survive_legacy_upgrade(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            workflow = {"repository": "/old/repository", "phase": "patch_applied",
+                        "remote_before_patch_head": None, "loose_backup": None,
+                        "future_stage": {"tags": ["alpha", 2]}}
+            original = {"schema_version": 1, "workflows": {"old": workflow},
+                        "future_root": {"unknown": True}}
+            before = json.dumps(original).encode()
+            path.write_bytes(before)
+            snapshot = read_state_snapshot(path)
+            self.assertEqual(path.read_bytes(), before)
+            self.assertEqual(snapshot["workflows"]["old"], workflow)
+            with locked_state(path) as writable:
+                save(path, writable)
+            result = json.loads(path.read_text())
+            self.assertEqual(result["workflows"]["old"], workflow)
+            self.assertEqual(result["future_root"], original["future_root"])
 
 
 class GithubBoundaryCharacterizationTests(unittest.TestCase):
@@ -118,8 +156,10 @@ class GithubBoundaryCharacterizationTests(unittest.TestCase):
         }
 
     def test_existing_pr_filter_uses_exact_head_and_configured_base(self) -> None:
-        other_base = dict(self.pr, number=5, baseRefName="develop")
-        other_head = dict(self.pr, number=6, headRefName="feature/unrelated")
+        other_base = dict(self.pr, number=5, baseRefName="develop",
+                          url="https://github.com/example/repo/pull/5")
+        other_head = dict(self.pr, number=6, headRefName="feature/unrelated",
+                          url="https://github.com/example/repo/pull/6")
         with patch.object(github, "gh_output", return_value=json.dumps(
             [self.pr, other_base, other_head],
         )) as gh_read:
@@ -158,19 +198,68 @@ class GithubBoundaryCharacterizationTests(unittest.TestCase):
                 github.gh_run(self.config, self.root, ["gh", "pr", "create"])
         mutate.assert_called_once()
 
-    @unittest.expectedFailure
     def test_pr_list_non_list_json_should_raise_domain_error(self) -> None:
-        # AS-02: Valid JSON with the wrong shape must not raise TypeError.
         with patch.object(github, "gh_output", return_value='{"unexpected":true}'):
             with self.assertRaises(Abort):
                 github.pr_list(self.config, self.root, "example/repo", self.branch)
 
-    @unittest.expectedFailure
     def test_pr_details_bad_json_should_raise_domain_error(self) -> None:
-        # AS-02: Invalid GitHub JSON must be classified before reaching callers.
         with patch.object(github, "gh_output", return_value="not-json"):
             with self.assertRaises(Abort):
                 github.pr_details(self.config, self.root, "example/repo", 4)
+
+    def test_pr_list_rejects_corrupt_items_without_reinterpreting_them_as_empty(self) -> None:
+        invalid = (
+            [None],
+            [dict(self.pr, number=True)],
+            [dict(self.pr, state=["OPEN"])],
+            [dict(self.pr, headRefName=None)],
+            [dict(self.pr, headRefOid=["a" * 40])],
+            [dict(self.pr, url="https://github.com/other/repo/pull/4")],
+            [dict(self.pr, number=4, headRefName="bad\nbranch")],
+        )
+        for items in invalid:
+            with self.subTest(items=items), \
+                    patch.object(github, "gh_output", return_value=json.dumps(items)):
+                with self.assertRaises(Abort):
+                    github.pr_list(self.config, self.root, "example/repo", self.branch)
+
+    def test_pr_details_rejects_bad_checks_and_mismatched_number(self) -> None:
+        valid = dict(self.pr, reviewDecision=None, mergeable="MERGEABLE",
+                     mergeStateStatus="CLEAN", statusCheckRollup=None)
+        with patch.object(github, "gh_output", return_value=json.dumps(valid)):
+            self.assertEqual(github.pr_details(
+                self.config, self.root, "example/repo", 4,
+            )["number"], 4)
+        invalid = (
+            dict(valid, statusCheckRollup={"checks": []}),
+            dict(valid, statusCheckRollup=["success"]),
+            dict(valid, statusCheckRollup=[{"conclusion": 1}]),
+            dict(valid, number=5),
+        )
+        for item in invalid:
+            with self.subTest(item=item), \
+                    patch.object(github, "gh_output", return_value=json.dumps(item)):
+                with self.assertRaises(Abort):
+                    github.pr_details(self.config, self.root, "example/repo", 4)
+
+    def test_bounded_pr_json_and_malformed_unicode_raise_abort(self) -> None:
+        for raw in ("[" + " " * (8 * 1024 * 1024) + "]", '"\\ud800"', "{}"):
+            with self.subTest(size=len(raw)):
+                with self.assertRaises(Abort):
+                    github.decode_pr_list(raw)
+
+    def test_audit_remote_list_shares_pr_validator_before_git_inspection(self) -> None:
+        from apatch_lib import reconciliation
+
+        config = SimpleNamespace(remote="origin", github_timeout_seconds=1)
+        invalid = json.dumps([dict(self.pr, number="4")])
+        with patch.object(github, "repository", return_value="example/repo"), \
+                patch.object(github, "gh_output", return_value=invalid), \
+                patch.object(reconciliation, "_git") as git_read:
+            with self.assertRaises(Abort):
+                reconciliation._remote_snapshot(config, self.root)
+            git_read.assert_not_called()
 
 
 class SequenceOutcomeCharacterizationTests(LocalGitFixture):

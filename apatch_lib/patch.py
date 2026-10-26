@@ -15,7 +15,7 @@ from .core.paths import (PARAMS_MEMBER, REGISTRY_MEMBER, RUNTIME_METADATA_MEMBER
                          is_protected_runtime_path)
 from .created_patches import parse_registry
 from .gitutil import run
-from .model import Abort, BASENAME_PATTERN, parse_handoff_payload, safe_relative
+from .model import Abort, BASENAME_PATTERN, Config, Handoff, parse_handoff_payload, safe_relative
 
 LOGGER = logging.getLogger("apatch.patch")
 
@@ -25,14 +25,14 @@ class Archive:
     sha256: str
     changed: frozenset[str]
     created_registry: tuple[str, ...] | None = None
-    embedded_handoff: object | None = None
+    embedded_handoff: Handoff | None = None
 
 
-def patch_file(config, handoff):
+def patch_file(config: Config, handoff: Handoff) -> Path:
     return config.downloads / handoff.patch
 
 
-def handoff_from_zip(config, root: Path, name: str):
+def handoff_from_zip(config: Config, root: Path, name: str) -> Handoff:
     """Load a self-contained ZIP handoff without trusting extracted file contents."""
     if not BASENAME_PATTERN.fullmatch(name):
         raise Abort("ZIP selection must be an ASCII-safe filename")
@@ -65,7 +65,7 @@ def handoff_from_zip(config, root: Path, name: str):
     return verified
 
 
-def inspect(config, handoff, root, *, before_apply=True):
+def inspect(config: Config, handoff: Handoff, root: Path, *, before_apply: bool = True) -> Archive:
     target = patch_file(config, handoff)
     if not target.is_file() or target.is_symlink():
         raise Abort(f"Patch ZIP does not exist or is a symlink: {target}")

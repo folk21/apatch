@@ -97,6 +97,7 @@ reapplication, commit, or GitHub mutation follows the failure.
 | `apatch_lib/console.py` | Shared terminal-only result colors and next-operation emphasis |
 | `apatch_lib/presentation/` | Action menu, console progress, and operation outcome classification |
 | `apatch_lib/core/actions.py`, `core/enums.py` | Stable operation IDs and typed lifecycle/outcome values |
+| `apatch_lib/core/contracts.py` | Typed JSON boundary views for persisted workflows and GitHub PR evidence; raw input is validated in owning adapters |
 | `apatch_lib/core/paths.py` | Protected `.apatch` paths and generated runtime ignore patterns |
 | `apatch_lib/storage/locking.py` | Shared no-follow, stable-inode advisory locking for persisted artifacts |
 | `apatch_lib/sequence.py` | Sequence syntax validation, ordered dispatch, and fail-stop diagnostics |

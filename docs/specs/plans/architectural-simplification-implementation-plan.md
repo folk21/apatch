@@ -1,6 +1,6 @@
 # APATCH-PLAN-005 — Incremental Architectural Simplification
 
-**Status:** Advisory GENSPEC implementation plan. AS-01 has a separately prepared characterization-test candidate; AS-02–AS-07 remain proposed. This document alone does not authorize production refactoring.
+**Status:** Advisory GENSPEC implementation plan. AS-01 and AS-02 have separately prepared implementation candidates; AS-03–AS-07 remain proposed. Neither candidate is assumed installed. This document alone does not authorize production refactoring.
 
 **Normative owner:** [APATCH-SUB-005](../active/subspecs/subspec-05-architectural-simplification.md). **Related owners:** [SUB-001](../active/subspecs/subspec-01-workflow-control.md), [SUB-002](../active/subspecs/subspec-02-state-history-audit.md), [SUB-003](../active/subspecs/subspec-03-feature-session-planning.md), and [SUB-004](../active/subspecs/subspec-04-operational-workflows.md).
 
@@ -81,7 +81,7 @@ Review checklist before refactoring: all expected **green** tests pass on the un
 
 ## AS-02 — Typed models and validated external boundaries
 
-**Status:** Proposed. **Dependencies:** AS-01. **Non-goals:** rewriting journal history, changing CLI grammar, mandatory Pydantic, or making remote retries.
+**Status:** Implementation candidate prepared; integration and release unverified. **Dependencies:** AS-01. **Non-goals:** rewriting journal history, changing CLI grammar, mandatory Pydantic, or making remote retries.
 
 | Exact path / function | Ordered work |
 | --- | --- |
@@ -116,7 +116,9 @@ def decode_pr_list(raw: str) -> tuple[PullRequestInfo, ...]:
 
 `parse_bounded_json`, `expect_list`, and `decode_pr_item` are **proposed helpers**, not existing APIs. Capture unknown on-disk state fields separately from typed known fields; never coerce a number into a branch name or a dictionary into an empty list.
 
-**Acceptance:** AR-02, AR-05, AR-06, AR-08, AR-10. **Failure/recovery:** invalid persisted/remote data aborts before mutations, reports the source and field class without echoing secrets, leaves original bytes untouched; a missing optional source remains distinguishable from corruption.
+**AS-02 candidate evidence:** `apatch_lib/core/contracts.py` adds typed workflow and PR JSON views without a new dependency. `state.py` validates known workflow fields before handing records to the coordinator, preserving schema-v1 read purity and unknown keys. `github.py` bounds/parses PR lists and detail objects, including repository, PR number, head revision, nullable evidence and check-rollup shape. `reconciliation.py` reuses the same decoder before remote audit processing. Existing public JSON mapping shapes and timeouts remain unchanged. Three AS-01 expected-failure cases are now ordinary passing tests; the status-advice case remains AS-05. Added corruption, round-trip, Unicode, list, identity, and audit seam tests. Full regression results and source drift must be rechecked when integrated.
+
+**Acceptance:** AR-02, AR-05, AR-06, AR-08, AR-10 (candidate evidence; no acceptance implied). **Failure/recovery:** invalid persisted/remote data aborts before mutations, reports the source and field class without echoing secrets, leaves original bytes untouched; a missing optional source remains distinguishable from corruption.
 
 ## AS-03 — Explicit outcomes and separation of action execution from presentation
 

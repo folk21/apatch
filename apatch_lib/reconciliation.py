@@ -1,6 +1,5 @@
 """Read-only reconciliation of project-local patch history and optional GitHub facts."""
 
-import json
 import os
 import re
 import stat
@@ -143,9 +142,7 @@ def _remote_snapshot(config, root):
     raw = github.gh_output(config, root, ["gh", "pr", "list", "--repo", repo,
                                           "--state", "all", "--limit", str(MAX_REMOTE_PRS),
                                           "--json", "number,state,headRefName,baseRefName,headRefOid,mergedAt"])
-    prs = json.loads(raw)
-    if not isinstance(prs, list):
-        raise Abort("Unexpected GitHub PR response")
+    prs = github.decode_pr_list(raw, expected_repo=repo, max_items=MAX_REMOTE_PRS)
     refs = _git(root, "ls-remote", "--heads", config.remote,
                 timeout=config.github_timeout_seconds)
     heads = {}
