@@ -11,7 +11,7 @@ from .branch_guard import assert_no_unfinished_feature_branches
 from .created_patches import persist_registry
 from .gitutil import (branch_exists, confirm, current_branch, head, output,
                       remote_head, run, status_paths, worktree_fingerprint)
-from .model import Abort
+from .model import Abort, CheckWorktreeChanged
 from .patch import apply, inspect
 from .patch_history import locked_history
 from .state import save
@@ -207,10 +207,14 @@ class LooseActions:
         if head(w.root) != (w.record.get("before_patch_head") or head(w.root)):
             print("WARNING: HEAD has changed since patch application.")
         if before != after:
-            print("WARNING: Checks modified the worktree. Re-run checks after reviewing the edits.")
+            for field in ("verified_fingerprint", "verified_head", "verified_branch", "verified_commit"):
+                w.record.pop(field, None)
             w.record["phase"] = WorkflowPhase.PATCH_APPLIED.value
             w.persist()
-            return
+            raise CheckWorktreeChanged(
+                "CHECKS_CHANGED_WORKTREE: Checks completed but modified repository files; "
+                "review the changes and rerun CHK on the resulting bytes."
+            )
         if paths:
             w.record.update(phase="verified", verified_fingerprint=after,
                             verified_head=head(w.root), verified_branch=branch)

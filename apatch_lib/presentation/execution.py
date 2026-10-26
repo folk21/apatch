@@ -3,12 +3,12 @@
 import logging
 import time
 
-from ..console import outcome_label
+from ..console import next_action_label, outcome_label
 from ..core.actions import ACTION_CODES, action_number
 from ..core.enums import OperationOutcome
 from ..gitutil import (clear_confirmation_declined, confirmation_was_declined,
                        current_branch, head, status_paths)
-from ..model import Abort, RemoteOutcomeUnknown
+from ..model import Abort, CheckWorktreeChanged, RemoteOutcomeUnknown
 from ..progress import ProgressEvent, utc_now
 from ..status import display_recommendation, inspect_patch
 
@@ -139,7 +139,15 @@ class OperationPresentation:
                 print("    Remote side effect is unconfirmed. Inspect the matching GitHub PR "
                       "before retrying; no automatic replay is safe.")
             elif result == "ERROR":
-                print("    Recovery: inspect 10 [STS] and the diagnostic below before resuming.")
+                if isinstance(exc, CheckWorktreeChanged):
+                    print(f"    Phase: {before_phase} -> {self.phase}")
+                    print("    Project checks passed, but they changed the checked bytes. "
+                          "Edits are preserved; verification is pending.")
+                    print(f"==> {next_action_label(4, 'CHK')} — Review the check-produced edits, "
+                          "then rerun verification.")
+                    print("    Resume: apatch.sh opSeq=CHK,STS (do not reapply the ZIP).")
+                else:
+                    print("    Recovery: inspect 10 [STS] and the diagnostic below before resuming.")
             self._record_progress(number, started_at, elapsed,
                                   "FAILED" if result == "ERROR" else result,
                                   before_phase, before_branch, before_branch, error=exc)

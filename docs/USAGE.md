@@ -161,6 +161,20 @@ or merge request may have succeeded but its outcome cannot be confirmed.
 inspect the live PR before using the normal reconciliation operations. A
 sequence stops at this outcome and identifies all skipped actions.
 
+If a LOOSE `CHK` command modifies the Git worktree (for example, a formatter
+rewrites a Dart source file), all commands may finish successfully but the
+original verification snapshot is no longer valid. `CHK` reports `ERROR` with
+`CHECKS_CHANGED_WORKTREE`, preserves the generated edits, clears stale check
+evidence, and leaves the workflow at `patch_applied`. In a sequence, subsequent
+steps (including `STS`) are skipped; no commit or push is attempted. Review the
+diff and resume the cached handoff with `apatch.sh opSeq=CHK,STS`. Do **not**
+reapply the ZIP: that can overwrite the formatter's or developer's changes.
+An unchanged second check may then mark the current bytes `verified`. Direct
+`op=CHK` and sequenced `CHK` both exit nonzero when checks mutate the worktree.
+The console highlights the failed result and the next safe operation on TTYs,
+while redirected output retains plain-text diagnostic markers. Prefer
+non-mutating formatter check modes in canonical verification commands.
+
 Terminal output presents `SUCCESS` in green, `ERROR` in red, uncertainty in
 yellow, and `==> Next suggested: N [CODE]` in bold cyan when supported. The
 same labels appear without ANSI escapes in redirected output, CI, `NO_COLOR`
