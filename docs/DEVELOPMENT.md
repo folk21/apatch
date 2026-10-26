@@ -26,6 +26,8 @@ To run the tests directly with the project virtual environment:
 
 Test durations depend heavily on the platform: the extended suite runs many subprocess-based temporary-Git integration tests and can take substantially longer on macOS. The regular suite avoids most of those invocations. Tests are grouped in `tests/test_handoffs.py`, `test_safety.py`, `test_sequences.py`, `test_history.py`, `test_branches.py`, `test_modes.py`, `test_status.py`, `test_config_cli.py`, `test_github.py`, `test_progress.py`, `test_operation_journal.py`, `test_validation.py`, and `test_runner_scripts.py`. Shared fixtures live in `tests/_support.py`.
 
+`tests/test_architecture_characterization.py` records AS-01 architectural seam contracts. Four `expectedFailure` cases deliberately demonstrate known baseline defects in ZIP-first status advice, nested state validation, and malformed GitHub JSON handling. Expected failures are not fixed behavior or passing acceptance criteria; remove each decorator only alongside its tested owning-stage fix. The regular and extended suites both execute these tests.
+
 `-B` prevents bytecode cache files. Tests use temporary Git repositories and mocked GitHub commands. No developer project repository is modified. Python, PyYAML, and Git are required; the GitHub CLI is not required for tests. Linux results alone do not guarantee macOS behavior.
 
 Global progress tests live in `tests/test_progress.py`; they use temporary tool installations and project roots, verify cross-process locking, collision-safe histories, symlink protection, idempotent replay, redaction, sequence events, CLI isolation, read-only overview, configuration limits, and malformed index handling.

@@ -22,6 +22,7 @@ cd "$SCRIPT_DIR"
 case "${1:-regular}" in
     regular|quick)
         exec "$TEST_PYTHON" -B -m unittest -v \
+            tests.test_architecture_characterization \
             tests.test_runner_scripts \
             tests.test_validation \
             tests.test_audit.AuditTests.test_audit_without_handoff_is_read_only_and_offline \
