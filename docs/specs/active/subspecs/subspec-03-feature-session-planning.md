@@ -1,6 +1,6 @@
 # APATCH-SUB-003 — Feature Sessions and Context-Aware Execution
 
-**Status:** DRAFT (GENSPEC). No behavior described as proposed in this document is implemented by approval of the document alone.
+**Status:** DRAFT (GENSPEC). FS-00 checkpoint-linkage correction has an implementation candidate; FS-00R and later context-aware behavior remain proposed. Approval of this document alone does not implement proposed behavior.
 
 **Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Implementation plan:** [APATCH-PLAN-003](../../plans/feature-session-context-aware-implementation-plan.md).
 

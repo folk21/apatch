@@ -97,6 +97,79 @@ class HandoffsTests(LocalGitFixture):
         self.assertEqual(json.loads((self.root / ".apatch/params.json").read_text())["patch_file"],
                          second.name)
 
+    def test_failed_followup_does_not_relabel_previous_workflow(self):
+        first = self.make_self_contained_zip()
+        initial = self.invoke_zip("opSeq=APL,BRN", "skipApproves=true", selection=first)
+        self.assertEqual(initial.returncode, 0, initial.stderr + initial.stdout)
+        before = json.loads(self.state_path.read_text())["workflows"]
+        initial_key = next(iter(before))
+        second = self.make_followup_zip(extra_files={".git/config": "unsafe\n"})
+        (self.root / "manual.txt").write_text("developer-owned\n")
+        denied = self.invoke_zip("followup=true", "op=APL", "skipApproves=true",
+                                 selection=second.stem)
+        self.assertEqual(denied.returncode, 2, denied.stdout + denied.stderr)
+        after = json.loads(self.state_path.read_text())["workflows"]
+        self.assertEqual(after[initial_key], before[initial_key])
+        self.assertNotIn("continued_by", after[initial_key])
+        self.assertNotIn("superseded_by", after[initial_key])
+        self.assertFalse((self.root / "second.txt").exists())
+        self.assertEqual((self.root / "manual.txt").read_text(), "developer-owned\n")
+
+    def test_declined_followup_preserves_previous_linkage_until_success(self):
+        first = self.make_self_contained_zip()
+        self.assertEqual(self.invoke_zip("opSeq=APL,BRN", "skipApproves=true",
+                                         selection=first).returncode, 0)
+        previous = json.loads(self.state_path.read_text())["workflows"]
+        initial_key = next(iter(previous))
+        second = self.make_followup_zip()
+        declined = self.invoke_zip("followup=true", "op=APL", selection=second.stem,
+                                   text="no\n")
+        self.assertEqual(declined.returncode, 0, declined.stdout + declined.stderr)
+        self.assertEqual(json.loads(self.state_path.read_text())["workflows"][initial_key],
+                         previous[initial_key])
+        self.assertFalse((self.root / "second.txt").exists())
+        accepted = self.invoke_zip("followup=true", "op=APL", "skipApproves=true",
+                                   selection=second.stem)
+        self.assertEqual(accepted.returncode, 0, accepted.stdout + accepted.stderr)
+        final = json.loads(self.state_path.read_text())["workflows"]
+        continuation = next(key for key, record in final.items()
+                            if record.get("patch_file") == second.name)
+        self.assertEqual(final[initial_key]["continued_by"], continuation)
+        self.assertEqual(final[initial_key]["continued_patch"], second.name)
+        self.assertNotIn("superseded_by", final[initial_key])
+        self.assertEqual((self.root / "existing.txt").read_text(), "second revision\n")
+
+    def test_rejected_non_application_does_not_link_pending_workflows(self):
+        first = self.make_self_contained_zip()
+        self.assertEqual(self.invoke_zip("opSeq=APL,BRN", "skipApproves=true",
+                                         selection=first).returncode, 0)
+        previous = json.loads(self.state_path.read_text())["workflows"]
+        original_key = next(iter(previous))
+        second = self.make_followup_zip()
+        failed_check = self.invoke_zip("op=CHK", selection=second.stem)
+        self.assertEqual(failed_check.returncode, 2)
+        self.assertIn("must start with op=APL", failed_check.stderr)
+        after = json.loads(self.state_path.read_text())["workflows"]
+        self.assertEqual(after[original_key], previous[original_key])
+
+    def test_followup_does_not_link_unfinished_workflow_from_another_branch(self):
+        first = self.make_self_contained_zip()
+        self.assertEqual(self.invoke_zip("opSeq=APL,BRN", "skipApproves=true",
+                                         selection=first).returncode, 0)
+        saved = json.loads(self.state_path.read_text())
+        previous = next(iter(saved["workflows"].values()))
+        unrelated = dict(previous)
+        unrelated.update(branch="feature/unrelated", patch_file="unrelated.zip")
+        saved["workflows"]["unrelated-record"] = unrelated
+        self.state_path.write_text(json.dumps(saved))
+
+        second = self.make_followup_zip()
+        accepted = self.invoke_zip("followup=true", "op=APL", "skipApproves=true",
+                                   selection=second.stem)
+        self.assertEqual(accepted.returncode, 0, accepted.stdout + accepted.stderr)
+        final = json.loads(self.state_path.read_text())["workflows"]
+        self.assertEqual(final["unrelated-record"], unrelated)
+
     def test_followup_requires_matching_pending_branch_and_rejects_mode_conflicts(self):
         first = self.make_self_contained_zip()
         second = self.make_followup_zip()

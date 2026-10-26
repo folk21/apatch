@@ -128,8 +128,8 @@ branch, existing uncommitted changes, and a matching previous `patch_applied`
 or `verified` workflow at the current HEAD and Git remote. An initial ZIP on
 the base branch, unrelated dirty feature branch, already committed predecessor,
 or STRICT/FORCE invocation cannot use this option. The guard runs before
-previous workflows are marked as superseded; a rejected application preserves
-their checkpoints.
+any earlier workflow is linked to the newly applied patch. A rejected,
+cancelled or failed application preserves earlier workflow relationships.
 
 Overlapping uncommitted files are backed up before approved replacement.
 With `skipApproves=true`, overlap confirmation is automatic: inspect the incoming
@@ -379,7 +379,19 @@ STRICT retains its guarded behavior: the workflow must already be in the `merged
 
 ### Starting another patch before the previous cycle finishes
 
-Each ZIP filename has a separate workflow checkpoint. If a newly selected ZIP differs from an unfinished patch for the same repository, `apatch` lists the previous checkpoints and asks whether to start a separate cycle. Declining leaves all checkpoints unchanged; accepting marks the older records as superseded by the new ZIP while preserving their original phases and data for inspection or later recovery. The new cycle has its own state record when its first action saves progress. Applied-patch history is not reset. A dirty working tree is never automatically discarded or overwritten when starting another cycle, even in FORCE mode.
+Each ZIP filename has a separate workflow checkpoint. Before a new `BAP` or `APL`,
+`apatch` lists other unfinished workflows for the repository. This inspection
+and any confirmation are read-only. Declining, failing validation, or failing
+application leaves earlier checkpoint relationships unchanged. After a newly
+selected ZIP is confirmed applied and recorded as the latest journal entry,
+unfinished workflows on the **same planned feature branch** may receive the
+additive `continued_by` and `continued_patch` fields. Their phase, commit and
+other existing data are preserved; older `superseded_by` fields are retained
+as historical records, not interpreted as discarded source changes. Workflows
+on different branches are never linked as a continuation merely because they
+belong to the same repository. The new cycle records its own checkpoint, and
+applied-patch history is never reset. A dirty worktree is not automatically
+discarded or overwritten, including in FORCE mode.
 
 In LOOSE mode the new cycle is acknowledged automatically. Pending patches on the current branch may be applied and eventually committed together. Any overlapping dirty files are backed up before replacement and require confirmation unless `skipApproves=true`.
 
