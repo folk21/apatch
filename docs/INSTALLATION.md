@@ -32,7 +32,7 @@ checks:
   - ["./run_checks.sh"]
 ```
 
-Replace the example with the repository's actual verification commands. Checks are executed directly without an implicit shell. Do not add `.apatch/` runtime state, journals, locks, backups, or logs to version control; the project-owned `.apatch/config.yaml` is configuration.
+Replace the example with the repository's actual verification commands. Checks are executed directly without an implicit shell. For projects merging into a branch other than the global `main` default, add `base_branch: develop` (or that project's actual target) to the same YAML file. The configured remote must contain the named branch. Do not add `.apatch/` runtime state, journals, locks, backups, or logs to version control; the project-owned `.apatch/config.yaml` is configuration.
 
 Place a self-contained ZIP under `downloads_dir` (`~/Downloads` by default). It must contain exactly one regular `<repository>/.apatch/params.json` metadata member. No separate JSON download is required. Start with `apatch.sh <zip-stem> op=APL`, then use `apatch.sh op=BRN`, followed by checks and publication actions; later invocations read the validated `.apatch/params.json` cache. An explicit legacy JSON handoff remains supported for migration. See [Usage](USAGE.md#several-operations-in-one-invocation-opseq) for one-command sequences and `handoffSeq`.
 

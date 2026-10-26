@@ -60,6 +60,7 @@ class OperationPresentation:
             print("Mode: LOOSE (default; supervised incremental workflow)")
         else:
             print("Mode: STRICT (guarded phase-by-phase workflow)")
+        print(f"Base branch: {self.config.base} (source: {self.config.base_branch_source})")
         print("Available modes: LOOSE (default), STRICT, FORCE. Use --help for options.")
         print("-----")
         if self.force:

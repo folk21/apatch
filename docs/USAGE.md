@@ -394,7 +394,7 @@ In LOOSE mode the new cycle is acknowledged automatically. Pending patches on th
 | `applied_patches_file` | Filename for applied-patch history under the target repository's `.apatch/` directory. |
 | `log_directory` | Relative path below the target repository's `.apatch/` directory; defaults to `logs`. |
 | `remote` | Git remote used for validation and publishing. |
-| `base_branch` | Target branch for feature creation and pull requests. |
+| `base_branch` | Global default target for feature creation, pull requests, and synchronization (`main` if omitted); a target project may override it. |
 | `require_patch_feature_branch` | When `true`, restrict direct patch application (option 3) to the `feature_branch` from the handoff file. Defaults to `false`. |
 | `require_review_approval` | Require an approved PR review before merging; defaults to `true` and may be overridden by the target repository's `.apatch/config.yaml`. |
 | `require_required_checks` | Require published, passing GitHub CI checks before merging; defaults to `true` and may be overridden per repository. |
@@ -418,12 +418,15 @@ Each target repository must contain `.apatch/config.yaml` (not a symlink), for e
 ```yaml
 schema_version: 1
 log_directory: logs
+base_branch: develop
 checks:
   - ["./gradlew", "test"]
   - ["./gradlew", "check"]
 ```
 
-`log_directory`, `state_file`, `applied_patches_file`, `require_review_approval`, `require_required_checks`, and `check_timeout_seconds` are optional and override their global counterparts. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. Separate lock files named `<state_file>.lock` and `<applied_patches_file>.lock` are created automatically in `.apatch/`. Omit these settings to inherit the global defaults.
+`base_branch`, `log_directory`, `state_file`, `applied_patches_file`, `require_review_approval`, `require_required_checks`, and `check_timeout_seconds` are optional and override their global counterparts. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. Separate lock files named `<state_file>.lock` and `<applied_patches_file>.lock` are created automatically in `.apatch/`. Omit these settings to inherit the global defaults.
+
+The effective base branch is selected in this order: project `.apatch/config.yaml:base_branch`, installation-wide `apatch.conf:base_branch`, then `main`. Values must be nonempty, valid Git branch names (for example `develop` or `release/2026-q4`). Invalid or malformed explicit values are rejected before any workflow action; `apatch` does not fall back to a different branch. The configured branch must exist on the selected remote for branch creation. The action header and `STS` identify the effective base branch and its `project` or `global` source. Set the override in the target project that actually uses the alternative base; changing it mid-workflow does not automatically retarget an existing PR.
 
 To allow merging without an approved review **for one repository**, set the following in that repository's `.apatch/config.yaml` alongside the required `schema_version` and `checks` fields:
 

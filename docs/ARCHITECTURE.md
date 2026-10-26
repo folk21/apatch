@@ -139,7 +139,7 @@ affected files deliberately.
 
 **Global configuration:** `apatch.conf` beside `apatch.py` defines downloads location, default remote/base branch, runtime artifact names, merge policy, and archive limits.
 
-**Target configuration:** `<target>/.apatch/config.yaml` defines canonical check commands, with optional overrides for relative logging/state/history locations. Validation refuses invalid or symlink-escaped paths.
+**Target configuration:** `<target>/.apatch/config.yaml` defines canonical check commands, with optional overrides for the configured base branch and relative logging/state/history locations. Branch precedence is project YAML `base_branch`, then global INI `base_branch`, then `main`; a Git-compatible branch-name grammar is validated locally without invoking `git` during global configuration loading. An explicit invalid setting never silently falls back. The effective value is shared by branch preparation, PR identity/target, synchronization, and status guidance; the header and `STS` identify its configuration source. Validation refuses invalid or symlink-escaped paths.
 
 **Target runtime artifacts:** by default:
 

@@ -1,6 +1,6 @@
 # APATCH-PLAN-004 — Operational Workflow Macros and Diagnostics
 
-**Status:** Advisory plan. WM-01 has an implementation candidate in the same deliverable; WM-02–WM-05 require subsequent implementation and independent acceptance.
+**Status:** Advisory plan. WM-01 and WM-02 each have implementation candidates in separate ZIP overlays; WM-03–WM-05 require subsequent implementation and independent acceptance.
 
 **Normative owner:** [APATCH-SUB-004](../active/subspecs/subspec-04-operational-workflows.md). **Dependencies:** [SUB-001](../active/subspecs/subspec-01-workflow-control.md), [SUB-002](../active/subspecs/subspec-02-state-history-audit.md), and [SUB-003](../active/subspecs/subspec-03-feature-session-planning.md). The inspected source baseline is clean `main` commit `9f256d786d29d4121ea0116758af85a903d9636a` from the 2026-10-26 17:21 UTC project snapshot. This snapshot intentionally omits installation-local `apatch.conf` and target `.apatch/config.yaml` contents; verification uses an isolated sample config and does not package either private file.
 
@@ -38,7 +38,7 @@ def show_audit_with_activity(root, config, tool_dir, verify_remote=False):
 
 ## WM-02 — Per-project base-branch override
 
-**Status:** Proposed. **Dependencies:** WM-01 for visible context; otherwise independent of macros. **Non-goals:** branch renaming, changing the remote URL, or autodetecting an alternative base from GitHub.
+**Status:** Implementation candidate (separate WM-02 overlay). **Dependencies:** WM-01 for visible context; otherwise independent of macros. **Non-goals:** branch renaming, changing the remote URL, or autodetecting an alternative base from GitHub.
 
 | Path | Ordered work |
 | --- | --- |

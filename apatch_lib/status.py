@@ -166,6 +166,7 @@ def inspect_patch(root: Path, config, record: dict, patch: str, planned_branch: 
     branch_present = _branch_present(root, actual)
     facts = {
         "Current branch": _fact(current or "DETACHED", "VERIFIED"),
+        "Configured base": _fact(config.base, "CONFIG", f"source: {config.base_branch_source}"),
         "Actual patch branch": _fact(actual, "VERIFIED" if branch_present else
                                     "CONFLICT" if index >= 1 and phase != "synced" else "UNKNOWN",
                                     "present locally" if branch_present else "not present locally"),

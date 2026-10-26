@@ -46,6 +46,7 @@ class Config:
     check_timeout_seconds: int = 900
     progress_global_limit: int = 8
     progress_project_limit: int = 3
+    base_branch_source: str = "global"
 
 
 @dataclass(frozen=True)
@@ -78,12 +79,10 @@ def load_config(script_dir: Path) -> Config:
     applied_patches = validate_runtime_filename(
         section.get("applied_patches_file", "applied_patches.txt"))
     remote = section.get("remote", "origin")
-    base = section.get("base_branch", "main")
+    base = validate_base_branch(section.get("base_branch", "main"), source="global")
     method = section.get("merge_method", "merge")
     if not re.fullmatch(r"[A-Za-z0-9._-]+", remote):
         raise Abort("Invalid remote")
-    if not re.fullmatch(r"[A-Za-z0-9._/-]+", base):
-        raise Abort("Invalid base branch")
     if method not in {"merge", "squash", "rebase"}:
         raise Abort("merge_method must be merge, squash or rebase")
     try:
@@ -128,6 +127,19 @@ def load_config(script_dir: Path) -> Config:
     )
 
 
+def validate_base_branch(value, *, source: str) -> str:
+    """Validate a configured Git branch without consulting repository history."""
+    if (type(value) is not str or not value or value.strip() != value
+            or value.startswith("-") or value == "@" or "@{" in value
+            or ".." in value or value.endswith(".") or any(
+                ord(char) < 32 or ord(char) == 127 or char in " ~^:?*[\\"
+                for char in value)
+            or any(not part or part.startswith(".") or part.endswith(".lock")
+                   for part in value.split("/"))):
+        raise Abort(f"Invalid {source} base_branch: expected a Git branch name")
+    return value
+
+
 def validate_log_subdirectory(value: str) -> Path:
     """Require a relative log directory contained within the project .apatch directory."""
     if (not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9._/-]+", value)
@@ -167,12 +179,15 @@ def load_project_config(root: Path, global_config: Config) -> Config:
         raise Abort(f"Invalid project checks YAML: {exc}") from exc
 
     required = {"schema_version", "checks"}
-    allowed = required | {"log_directory", "state_file", "applied_patches_file",
+    allowed = required | {"log_directory", "state_file", "applied_patches_file", "base_branch",
                           "require_review_approval", "require_required_checks", "check_timeout_seconds"}
     if not isinstance(data, dict) or not required <= set(data) or set(data) - allowed:
         raise Abort("Project config must contain schema_version and checks, with supported optional settings")
     if type(data["schema_version"]) is not int or data["schema_version"] != 1:
         raise Abort("Unsupported project checks schema_version")
+    base_source = "project" if "base_branch" in data else "global"
+    base = (validate_base_branch(data["base_branch"], source="project")
+            if base_source == "project" else global_config.base)
     commands = data["checks"]
     approval_source = "project" if "require_review_approval" in data else "global"
     require_approval = data.get("require_review_approval", global_config.require_approval)
@@ -218,6 +233,7 @@ def load_project_config(root: Path, global_config: Config) -> Config:
     return replace(global_config, checks=tuple(parsed), log_directory=location,
                    state_path=config_dir / state, applied_patches_path=config_dir / history,
                    check_timeout_seconds=check_timeout_seconds,
+                   base=base, base_branch_source=base_source,
                    require_approval=require_approval, review_approval_source=approval_source,
                    require_checks=require_checks, required_checks_source=checks_source)
 
