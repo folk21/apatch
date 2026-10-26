@@ -1,6 +1,6 @@
 # APATCH-PLAN-005 — Incremental Architectural Simplification
 
-**Status:** Advisory GENSPEC implementation plan; no code changes are authorized or completed by this document.
+**Status:** Advisory GENSPEC implementation plan. AS-01 has a separately prepared characterization-test candidate; AS-02–AS-07 remain proposed. This document alone does not authorize production refactoring.
 
 **Normative owner:** [APATCH-SUB-005](../active/subspecs/subspec-05-architectural-simplification.md). **Related owners:** [SUB-001](../active/subspecs/subspec-01-workflow-control.md), [SUB-002](../active/subspecs/subspec-02-state-history-audit.md), [SUB-003](../active/subspecs/subspec-03-feature-session-planning.md), and [SUB-004](../active/subspecs/subspec-04-operational-workflows.md).
 
@@ -61,7 +61,7 @@ apatch_lib/
 
 ## AS-01 — Baseline characterization and controlled defect cases
 
-**Status:** Proposed. **Purpose:** stop the refactor from changing operational semantics accidentally. **No production rewrite** in this stage unless a tiny independent defect fix is separately approved.
+**Status:** Test implementation candidate; integration and release unverified. **Purpose:** stop the refactor from changing operational semantics accidentally. **No production rewrite** in this stage unless a tiny independent defect fix is separately approved.
 
 | Exact path / function | Ordered work |
 | --- | --- |
@@ -74,6 +74,8 @@ apatch_lib/
 | `docs/ARCHITECTURE.md` | Capture existing verified module boundaries and any actual source drift before modifying the proposed ownership map. |
 
 Review checklist before refactoring: all expected **green** tests pass on the unchanged baseline; known **red** behavior has a reproducible fixture and a stage owner; every material public CLI contract has at least one positive and one negative test. Record regular/rare test durations and Python/OS information. Do not turn discovered failures into silent skips.
+
+**AS-01 candidate evidence:** `tests/test_architecture_characterization.py` adds 14 focused checks. Ten characterize current successful behavior: status phase recommendations and conflict stops; ZIP-first pending-branch advice; legacy-state read/write preservation; malformed top-level state rejection; PR filtering; bounded read-only retry versus permanent failure; no replay of uncertain PR mutation; and cancellation that leaves worktree/ZIP history unchanged. Four deliberately strict assertions use `@unittest.expectedFailure` against confirmed baseline defects: new ZIP on the base suggesting BRN before APL (**AS-05**), nested non-mapping workflow not rejected (**AS-02**), non-list `gh pr list` JSON not mapped to `Abort` (**AS-02**), and malformed `gh pr view` JSON not mapped to `Abort` (**AS-02**). The regular suite includes this module; these expected failures **do not satisfy** AR-05/AR-06/AR-07 and SHALL become normal green regressions when fixed. No production module was modified by the test candidate.
 
 **Acceptance contribution:** AR-03–AR-08, AR-12–AR-13 (baseline). **Failure/recovery:** if the inspected source diverges or the existing suite fails, stop and update the inventory; do not transplant code against the stale snapshot.
 

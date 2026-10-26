@@ -1,6 +1,6 @@
 # APATCH-SUB-005 — Architectural Simplification, Typed Boundaries, and Explicit Outcomes
 
-**Status:** DRAFT (GENSPEC). No architectural-refactoring stage has been implemented or accepted by this document.
+**Status:** DRAFT (GENSPEC). AS-01 has a characterization-test implementation candidate with four tracked expected failures; no production refactoring stage has been implemented or accepted by this document.
 
 **Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Implementation plan:** [APATCH-PLAN-005](../../plans/architectural-simplification-implementation-plan.md).
 
@@ -126,7 +126,7 @@ The names `OperationRequest`, `WorkflowContext`, `ActionResult` and `WorkflowRec
 
 ## 11. Integration gates and open design decisions
 
-The [implementation plan](../../plans/architectural-simplification-implementation-plan.md) sequences **AS-01 through AS-07** into independently reversible/tested increments. AS-01 characterization and AS-02 typed validation can start without macro functionality. AS-03 explicit-result migration SHOULD precede broader WM-03–WM-05 macro orchestration; macro planning MUST not fork a second executor. Later stages may proceed incrementally alongside independent roadmap work after interface compatibility is verified.
+The [implementation plan](../../plans/architectural-simplification-implementation-plan.md) sequences **AS-01 through AS-07** into independently reversible/tested increments. AS-01's test candidate records current passing contracts and four known RED expectations without changing runtime behavior. Remove each `expectedFailure` decorator only after its owning fix is implemented and the assertion passes. AS-02 typed validation can start without macro functionality. AS-03 explicit-result migration SHOULD precede broader WM-03–WM-05 macro orchestration; macro planning MUST not fork a second executor. Later stages may proceed incrementally alongside independent roadmap work after interface compatibility is verified.
 
 Resolve before implementing the affected stage:
 
