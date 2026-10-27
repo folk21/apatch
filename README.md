@@ -13,7 +13,7 @@ It supports interactive and direct actions with three execution modes: **LOOSE (
 | [Architecture](docs/ARCHITECTURE.md) | Modules, state management, safety boundaries, and external operations |
 | [Development and Testing](docs/DEVELOPMENT.md) | Running tests, contributing, and documentation ownership |
 | [Security and Recovery](docs/SECURITY.md) | ZIP trust boundaries, checks, partial failures, and platform support |
-| [SDD Specification Index](docs/specs/README.md) | Draft orchestrator specification, first-priority sub-specification, plan, and lifecycle |
+| [SDD Specification Index](docs/specs/README.md) | Active sub-specifications, advisory plans, processing checkpoint, review and archival lifecycle |
 | [Agent Guidance](AGENTS.md) | Repository conventions for maintainers and coding agents |
 
 ## Quick start
@@ -45,4 +45,6 @@ The implementation and regression tests are available in this repository. The [o
 
 P0.5a records cross-project operation summaries in the installed tool's private `.apatch/progress/` directory; P0.5b adds the read-only `info=PROGRESS` overview. P1.1 adds a durable project-local operation journal with explicit attempts and outcomes. Recorded evidence is not a substitute for live GitHub status.
 
-P1.2 adds `11 [AUD]`, an offline-by-default, read-only audit of known patch history, with explicit `verifyRemote=true` for optional remote verification. See [Usage](docs/USAGE.md#repository-wide-patch-audit-11-aud) for its coverage and limitations.
+P1.2 adds `11 [AUD]`, an offline-by-default, read-only audit of known patch history, with explicit `verifyRemote=true` for optional remote verification. Later source increments include FS-00R deterministic ZIP resume, WM-01/WM-02 activity and base-branch improvements, and architectural separation with optional quality tooling. See [Usage](docs/USAGE.md#repository-wide-patch-audit-11-aud) for operational details.
+
+The five subordinate specifications remain DRAFT even where code exists. The [SDD index](docs/specs/README.md) defines their lifecycle; [STATE.json](docs/specs/STATE.json) records the developer-controlled processing focus and can be checked using `python3 tools/specs/validate_state.py`. Code presence, passing checks and Git merges do not constitute formal sub-specification acceptance.

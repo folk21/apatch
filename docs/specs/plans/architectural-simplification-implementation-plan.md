@@ -1,10 +1,10 @@
 # APATCH-PLAN-005 — Incremental Architectural Simplification
 
-**Status:** Advisory GENSPEC implementation plan. AS-01 and AS-02 have separately prepared implementation candidates; AS-03–AS-07 remain proposed. Neither candidate is assumed installed. This document alone does not authorize production refactoring.
+**Status:** Advisory GENSPEC implementation plan. AS-01–AS-07 implementation, regression, or optional quality-tooling surfaces are present in the inspected `efb94f7` source. Their formal completion and acceptance still require evidence-based developer review. This plan alone does not authorize product changes.
 
 **Normative owner:** [APATCH-SUB-005](../active/subspecs/subspec-05-architectural-simplification.md). **Related owners:** [SUB-001](../active/subspecs/subspec-01-workflow-control.md), [SUB-002](../active/subspecs/subspec-02-state-history-audit.md), [SUB-003](../active/subspecs/subspec-03-feature-session-planning.md), and [SUB-004](../active/subspecs/subspec-04-operational-workflows.md).
 
-**Inspected baseline:** reconstructed project from user-provided `apatch_files.txt`, main SHA `9f256d786d29d4121ea0116758af85a903d9636a` as of 2026-10-26 17:21 UTC, with separate unverified WM-01, WM-02 and FS-00 candidates. Implementation MUST re-read the installed source and state/tests before editing. A stage that is already implemented at that later HEAD SHALL become verification-only; do not introduce redundant replacement modules.
+**Inspected baseline:** original design snapshot `9f256d786d29d4121ea0116758af85a903d9636a` (2026-10-26) and newer clean source snapshot `efb94f794b06489c3d4898ffd42218f7b16e69fd` (2026-10-27 11:25 UTC). Implementation MUST re-read the installed source and tests before editing. Any already implemented stage is verification-only until independent review; do not introduce replacement modules simply because an older plan still says proposed.
 
 ## 1. Incremental execution strategy
 
@@ -61,7 +61,7 @@ apatch_lib/
 
 ## AS-01 — Baseline characterization and controlled defect cases
 
-**Status:** Test implementation candidate; integration and release unverified. **Purpose:** stop the refactor from changing operational semantics accidentally. **No production rewrite** in this stage unless a tiny independent defect fix is separately approved.
+**Status:** Characterization tests present in inspected source; formal acceptance pending. **Purpose:** stop the refactor from changing operational semantics accidentally. **No production rewrite** in this stage unless a tiny independent defect fix is separately approved.
 
 | Exact path / function | Ordered work |
 | --- | --- |
@@ -75,13 +75,13 @@ apatch_lib/
 
 Review checklist before refactoring: all expected **green** tests pass on the unchanged baseline; known **red** behavior has a reproducible fixture and a stage owner; every material public CLI contract has at least one positive and one negative test. Record regular/rare test durations and Python/OS information. Do not turn discovered failures into silent skips.
 
-**AS-01 candidate evidence:** `tests/test_architecture_characterization.py` adds 14 focused checks. Ten characterize current successful behavior: status phase recommendations and conflict stops; ZIP-first pending-branch advice; legacy-state read/write preservation; malformed top-level state rejection; PR filtering; bounded read-only retry versus permanent failure; no replay of uncertain PR mutation; and cancellation that leaves worktree/ZIP history unchanged. Four deliberately strict assertions use `@unittest.expectedFailure` against confirmed baseline defects: new ZIP on the base suggesting BRN before APL (**AS-05**), nested non-mapping workflow not rejected (**AS-02**), non-list `gh pr list` JSON not mapped to `Abort` (**AS-02**), and malformed `gh pr view` JSON not mapped to `Abort` (**AS-02**). The regular suite includes this module; these expected failures **do not satisfy** AR-05/AR-06/AR-07 and SHALL become normal green regressions when fixed. No production module was modified by the test candidate.
+**Historical AS-01 candidate evidence:** `tests/test_architecture_characterization.py` originally introduced 14 checks. Ten characterized baseline successful behavior and four `@unittest.expectedFailure` assertions captured status advice, nested state and malformed GitHub JSON defects, later owned by AS-02/AS-05. In the newer inspected source these are normal regressions without expected-failure decorators. The original candidate changed no production module; the later fixes must be independently reviewed before stage acceptance.
 
 **Acceptance contribution:** AR-03–AR-08, AR-12–AR-13 (baseline). **Failure/recovery:** if the inspected source diverges or the existing suite fails, stop and update the inventory; do not transplant code against the stale snapshot.
 
 ## AS-02 — Typed models and validated external boundaries
 
-**Status:** Implementation candidate prepared; integration and release unverified. **Dependencies:** AS-01. **Non-goals:** rewriting journal history, changing CLI grammar, mandatory Pydantic, or making remote retries.
+**Status:** Validated boundary source/tests present; formal acceptance pending. **Dependencies:** AS-01. **Non-goals:** rewriting journal history, changing CLI grammar, mandatory Pydantic, or making remote retries.
 
 | Exact path / function | Ordered work |
 | --- | --- |
@@ -116,13 +116,13 @@ def decode_pr_list(raw: str) -> tuple[PullRequestInfo, ...]:
 
 `parse_bounded_json`, `expect_list`, and `decode_pr_item` are **proposed helpers**, not existing APIs. Capture unknown on-disk state fields separately from typed known fields; never coerce a number into a branch name or a dictionary into an empty list.
 
-**AS-02 candidate evidence:** `apatch_lib/core/contracts.py` adds typed workflow and PR JSON views without a new dependency. `state.py` validates known workflow fields before handing records to the coordinator, preserving schema-v1 read purity and unknown keys. `github.py` bounds/parses PR lists and detail objects, including repository, PR number, head revision, nullable evidence and check-rollup shape. `reconciliation.py` reuses the same decoder before remote audit processing. Existing public JSON mapping shapes and timeouts remain unchanged. Three AS-01 expected-failure cases are now ordinary passing tests; the status-advice case remains AS-05. Added corruption, round-trip, Unicode, list, identity, and audit seam tests. Full regression results and source drift must be rechecked when integrated.
+**Historical AS-02 candidate evidence:** `apatch_lib/core/contracts.py` adds typed workflow and PR JSON views without a new dependency. `state.py` validates known workflow fields before handing records to the coordinator, preserving schema-v1 read purity and unknown keys. `github.py` bounds/parses PR lists and detail objects; `reconciliation.py` reuses the decoder in remote audit processing. The original AS-02 candidate resolved three AS-01 expected failures; the newer source also contains the AS-05 status-advice fix. Recheck source and independent tests before acceptance.
 
 **Acceptance:** AR-02, AR-05, AR-06, AR-08, AR-10 (candidate evidence; no acceptance implied). **Failure/recovery:** invalid persisted/remote data aborts before mutations, reports the source and field class without echoing secrets, leaves original bytes untouched; a missing optional source remains distinguishable from corruption.
 
 ## AS-03 — Explicit outcomes and separation of action execution from presentation
 
-**Status:** Proposed. **Dependencies:** AS-01/AS-02. **Non-goals:** a new workflow DSL, altering exact sequence order, inventing new GitHub retry behavior.
+**Status:** Explicit-result source/tests present; formal acceptance pending. **Dependencies:** AS-01/AS-02. **Non-goals:** a new workflow DSL, altering exact sequence order, inventing new GitHub retry behavior.
 
 | Exact path / function | Ordered work |
 | --- | --- |
@@ -152,7 +152,7 @@ This is **conceptual pseudocode**; do not create `ActionResult.blocked` or the r
 
 ## AS-04 — Split CLI parsing, resolution and application coordination
 
-**Status:** Proposed. **Dependencies:** AS-03. **Non-goals:** introducing already-unimplemented `goal=`/macro syntax, weakening ZIP admission, or changing `followup=true` semantics.
+**Status:** CLI decomposition source/tests present; formal acceptance pending. **Dependencies:** AS-03. **Non-goals:** introducing still-unimplemented `goal=`/macro syntax, weakening ZIP admission, or changing `followup=true` semantics.
 
 | Exact path / function | Ordered work |
 | --- | --- |
@@ -184,7 +184,7 @@ Keep Python's `if __name__ == "__main__":` entry-point guard. Names in this sket
 
 ## AS-05 — One tested precondition source for executor and `STS`
 
-**Status:** Proposed. **Dependencies:** AS-03, AS-04 and alignment with SUB-003 context resolver. **Non-goals:** auto-performing a recommended action or merging LOOSE/STRICT/FORCE into one permissive policy.
+**Status:** Shared applicability and status-policy source/tests present; formal acceptance pending. **Dependencies:** AS-03, AS-04 and alignment with SUB-003 context resolver. **Non-goals:** auto-performing a recommended action or merging LOOSE/STRICT/FORCE into one permissive policy.
 
 | Exact path / function | Ordered work |
 | --- | --- |
@@ -209,7 +209,7 @@ Example decision table (normative semantics remain in SUB-003/SUB-005):
 
 ## AS-06 — Decompose the read-only audit into evidence and pure rules
 
-**Status:** Proposed. **Dependencies:** AS-02; independent of AS-04/AS-05 after stable shared DTO boundaries. **Non-goals:** network scanning of every recorded project, state repairs, changing `AUD` into a mutation command.
+**Status:** Audit collector/rule source/tests present; formal acceptance pending. **Dependencies:** AS-02; independent of AS-04/AS-05 after stable shared DTO boundaries. **Non-goals:** network scanning of every recorded project, state repairs, changing `AUD` into a mutation command.
 
 | Exact path / function | Ordered work |
 | --- | --- |
@@ -234,7 +234,7 @@ def reconcile_patch_history(
 
 ## AS-07 — Quality gates, incremental typing and documentation cleanup
 
-**Status:** Proposed; can start only as a nonblocking baseline before earlier runtime refactors. **Non-goals:** blanket rewrites, auto-formatting canonical `CHK`, automatic workflow triggers or broad dependency upgrades.
+**Status:** Incremental optional quality gate exists (`run_quality.sh`, `pyproject.toml`); further scope expansion and formal acceptance remain open. **Non-goals:** blanket rewrites, auto-formatting canonical `CHK`, automatic workflow triggers or broad dependency upgrades.
 
 | Exact path / function | Ordered work |
 | --- | --- |

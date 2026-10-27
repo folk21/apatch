@@ -1,46 +1,132 @@
-# SDD Specification Index
+# SDD Specification Index and Lifecycle
 
-This directory holds proposed normative specifications and implementation plans for `apatch`. Documents marked **DRAFT** are under discussion and do not authorize implementation.
+This directory owns specification-driven development (SDD) for `apatch`.
+Normative sub-specifications define intended behavior; separate advisory
+implementation plans define stages. A DRAFT document is not implementation
+authorization. Only the developer accepts a finished sub-specification.
 
-## Status
+## Active specifications and advisory plans
 
-| Category | Current status |
+| Specification | Implementation plan | Lifecycle |
+| --- | --- | --- |
+| [APATCH-SPEC-001 umbrella](active/spec-apatch-orchestrator.md) | [PLAN-001](plans/apatch-orchestrator-implementation-plan.md) | DRAFT |
+| [SUB-001 — Workflow Control](active/subspecs/subspec-01-workflow-control.md) | [PLAN-001 P0](plans/apatch-orchestrator-implementation-plan.md#p0--first-priority) | DRAFT; implementation evidence exists |
+| [SUB-002 — Execution History and Audit](active/subspecs/subspec-02-state-history-audit.md) | [PLAN-001 P1.1–P1.2](plans/apatch-orchestrator-implementation-plan.md#p1--execution-history-global-audit-and-scheduled-quality-checks) | DRAFT; implementation evidence exists |
+| [SUB-003 — Feature Sessions](active/subspecs/subspec-03-feature-session-planning.md) | [PLAN-003](plans/feature-session-context-aware-implementation-plan.md) | DRAFT; partially implemented |
+| [SUB-004 — Operational Workflows](active/subspecs/subspec-04-operational-workflows.md) | [PLAN-004](plans/operational-workflows-implementation-plan.md) | DRAFT; partially implemented |
+| [SUB-005 — Architectural Simplification](active/subspecs/subspec-05-architectural-simplification.md) | [PLAN-005](plans/architectural-simplification-implementation-plan.md) | DRAFT; implementation review pending |
+
+**Completed or archived specifications:** none formally accepted. Existing
+implementation is documented in [Usage](../USAGE.md),
+[Architecture](../ARCHITECTURE.md), and [Development](../DEVELOPMENT.md).
+
+### Reconciled source checkpoint
+
+Latest inspected clean snapshot: `main` at
+`efb94f794b06489c3d4898ffd42218f7b16e69fd`, generated
+2026-10-27 11:25:35 UTC. Presence of code and tests is **not** evidence of
+developer installation, formal review, acceptance, or macOS verification.
+
+- **SUB-001 / SUB-002:** P0.1–P1.2 sources and tests exist (`STS`, `AUD`,
+  cross-project progress and the operation journal). Legacy `BAP` retirement
+  remains an unresolved compatibility decision.
+- **SUB-003:** FS-00 linkage and FS-00R explicit ZIP resume have source/tests
+  and current-facing usage documentation. FS-01–FS-06 remain planned.
+- **SUB-004:** WM-01 read-only `AUD` activity and WM-02 project-local base
+  selection have source/tests. WM-03–WM-05 remain planned; WM-06 is deferred.
+- **SUB-005:** AS-01–AS-07 have corresponding source, regression and/or
+  optional quality-tooling surfaces (`core/contracts.py`, `cli_request.py`,
+  `action_applicability.py`, `audit_collectors.py`, `audit_rules.py`,
+  `run_quality.sh`). They still need final evidence review before acceptance.
+
+Reconcile this section against new Git provenance, actual tests and any
+independent changes before advancing later stages. A successful increment
+does not complete its whole sub-specification.
+
+## Processing checkpoint
+
+[`STATE.json`](STATE.json) is the only Git-tracked SDD **processing checkpoint**.
+The structure is documented by [`state.schema.json`](state.schema.json);
+validate it before staged work and in the canonical test suite:
+
+```bash
+python3 tools/specs/validate_state.py
+sh ./run_tests.sh
+```
+
+`mode: SINGLE` permits one selected focus. Every workstream names its active
+normative sub-specification, an existing plan stage ID, and its processing
+phase. Allowed phases:
+
+| Phase | Meaning |
 | --- | --- |
-| Accepted normative specifications | None yet |
-| Draft general specification | [APATCH-SPEC-001 — Patch Workflow and Quality Orchestrator](active/spec-apatch-orchestrator.md) |
-| Draft first-priority sub-specification | [APATCH-SUB-001 — Workflow Control, Patch Ordering, and Sequences](active/subspecs/subspec-01-workflow-control.md) |
-| Draft execution-history sub-specification | [APATCH-SUB-002 — Execution History and Repository Reconciliation](active/subspecs/subspec-02-state-history-audit.md) |
-| Draft feature-session sub-specification | [APATCH-SUB-003 — Feature Sessions and Context-Aware Execution](active/subspecs/subspec-03-feature-session-planning.md) |
-| Draft operational-workflow sub-specification | [APATCH-SUB-004 — Operational Workflows, Activity Dashboard, and Stable Checks](active/subspecs/subspec-04-operational-workflows.md) |
-| Draft architectural-simplification sub-specification | [APATCH-SUB-005 — Architectural Simplification, Typed Boundaries, and Explicit Outcomes](active/subspecs/subspec-05-architectural-simplification.md) |
-| Advisory implementation plan | [APATCH-PLAN-001](plans/apatch-orchestrator-implementation-plan.md) |
-| Advisory feature-session plan | [APATCH-PLAN-003](plans/feature-session-context-aware-implementation-plan.md) |
-| Advisory operational-workflow plan | [APATCH-PLAN-004](plans/operational-workflows-implementation-plan.md) |
-| Advisory architectural-refactoring plan | [APATCH-PLAN-005](plans/architectural-simplification-implementation-plan.md) |
-| Completed or archived specifications | None |
-| Implemented slices in inspected source | P0.1–P1.2, including self-contained ZIPs, `handoffSeq`, tool-wide progress, `info=PROGRESS`, operation journal, `11 [AUD]`, and `CHECKS_CHANGED_WORKTREE` recovery |
-| Prepared implementation candidates in the inspected working baseline | SUB-004 WM-01 recorded cross-project activity; WM-02 project-local base override; SUB-003 FS-00 checkpoint-linkage correction. Installation and release are unverified. |
-| Proposed next operational stages | SUB-003 FS-00R/FS-01 onward; SUB-004 WM-03 guarded macros, WM-04 stable-check policy, WM-05 publication, deferred WM-06 GitHub transport recovery |
-| Architecture stages | SUB-005 AS-01 characterization-test candidate; AS-02 typed state/GitHub boundary candidate (three baseline defects covered, one AS-05 expected failure remains); both integration-unverified. AS-03–AS-07 proposed: explicit results, CLI/policy/audit decomposition and incremental static checks |
+| `DESIGN` | Reconcile prerequisites or design the stage. |
+| `READY_FOR_IMPLEMENTATION` | Plan prepared; a separate developer task is still required. |
+| `READY_FOR_REVIEW` | Submitted implementation awaits evidence-based review. |
+| `AWAITING_DEVELOPER_DECISION` | Review findings were reported; the developer decides. |
+| `BLOCKED` | An unresolved issue prevents progress. |
+| `PAUSED` | Work is temporarily stopped. |
+| `ON_HOLD` | Another workstream is selected. |
 
-Until formal acceptance, [Usage](../USAGE.md) and [Architecture](../ARCHITECTURE.md) describe implemented behavior. Numeric `2 [BAP]` remains for legacy JSON compatibility (AC-54 retirement incomplete). The clean source snapshot inspected for SUB-004 and SUB-005 is `9f256d786d29d4121ea0116758af85a903d9636a` (2026-10-26 17:21 UTC). Separate implementation candidates are not evidence of installation or merge. Feature Sessions, workflow macros, project-specific base overrides, automatic check recovery, safe GitHub transport reconciliation, architectural refactoring, secure Git patch formats, scheduled check adapters, and P2/P3 remain proposed until their independent acceptance.
+There is deliberately no `RUNNING`, `DONE`, or `ACCEPTED` phase. `STATE.json`
+is neither a runtime monitor nor acceptance receipt. The selected workstream
+is a navigation pointer, not a lock or execution authorization. Update it
+**only at developer-directed checkpoints between stage executions**, not
+during patch application, source-bound tests, or publication. Invalid/missing
+state must be reported rather than inferred from README or other documents.
 
-## Planned organization
+This file is completely separate from the product's target-local
+`<target>/.apatch/apply_patch.state.json` used for ZIP/Git operation history.
+The initial SDD checkpoint selects SUB-003 FS-01 at `DESIGN`; all other
+workstreams are `ON_HOLD`. This does not claim previous acceptance.
 
-- `active/spec-<capability>.md`: a focused normative specification with scope, behavioral rules, invariants, and testable acceptance criteria.
-- `active/subspecs/<focused-area>.md`: optional subordinate specifications for larger capabilities.
-- `plans/<capability>-implementation-plan.md`: a separate advisory, staged plan for implementing an approved specification.
-- `archive/`: historical specifications after explicit completion or supersession, if needed.
+## Implementation-plan mapping and migration
 
-Create directories when the first actual document needs them; avoid empty scaffolding.
+Each **new staged sub-specification** must have a separate same-directory
+advisory companion `<subspec-stem>-implementation-plan.md`, linked from its
+normative owner. Include stable stage IDs, dependencies, exact verified code
+ownership, per-file steps, illustrative algorithms, migration/failure/retry
+semantics, positive/negative/recovery tests, exact commands and open decisions.
+Label unverified paths or APIs as provisional. Normative requirements and
+developer approvals always outrank an advisory plan.
 
-## Lifecycle
+The existing SUB-003/004/005 dedicated plans remain in `plans/` for now.
+The shared legacy PLAN-001 contains explicitly separate **P0 (SUB-001)** and
+**P1.1/P1.2 (SUB-002)** implementation sections; P1.3 is future adapter work.
+Each mapped section belongs to its owner above;
+neither needs a duplicate document solely to satisfy the new convention.
+When either owner needs material plan changes or archival, split/relocate the
+relevant existing sections into dedicated same-directory companions **without
+copying hundreds of lines into parallel live plans**. Update all links and
+ensure one authoritative copy of each stage. Do not archive the shared plan
+until the other owner's content is safely migrated or no longer active.
 
-1. Identify one owning capability and its current behavior using source code, tests, and user-visible documentation.
-2. In an explicitly requested **GENSPEC** stage, define the scope, non-goals, inputs/outputs, safety and recovery invariants, state transitions, and acceptance tests.
-3. Prepare a separate plan with small independent increments and test checkpoints. Plan sequencing does not by itself authorize implementation.
-4. On later **DEFAULT** implementation requests, make changes for the explicitly selected stage and record completion evidence. Update the normative spec if accepted behavior changes.
-5. Under an explicitly requested **REVIEW**, assess code against the owning specification and record findings without implicit modifications.
-6. Mark a specification complete or archived only with evidence and a deliberate lifecycle update.
+## Developer-controlled lifecycle
 
-Avoid duplicating CLI help or the README. Link to [Installation](../INSTALLATION.md), [Usage](../USAGE.md), [Architecture](../ARCHITECTURE.md), and [Development](../DEVELOPMENT.md) for descriptive details.
+1. **Inspect:** verify source SHA/worktree, current behavior, tests, owning
+   sub-spec, plan, and validated `STATE.json` before any substantive stage.
+2. **GENSPEC (explicit request):** create/update the normative sub-spec and
+   advisory incremental implementation plan. Identify acceptance cases and
+   unresolved decisions. A plan by itself never starts product implementation.
+3. **Prepare:** select one small independently testable stage. Record its
+   processing phase in `STATE.json` at a developer-controlled checkpoint.
+4. **DEFAULT (explicit stage request):** implement, test, and hand off that
+   stage; record exact commands, evidence, risks and remaining work. A ZIP,
+   commit, or merged PR does not imply stage or sub-spec acceptance.
+5. **Review:** inspect actual code and tests against normative acceptance
+   criteria, the plan, stage changes and external evidence. An explicit REVIEW
+   request is findings-only unless changes are also requested.
+6. **Final review:** only after all stages, the developer requests a
+   source-bound assessment of every acceptance criterion, tests, cross-stage
+   regressions and known risks. Report an acceptance recommendation.
+7. **Developer acceptance:** only an explicit developer decision accepts a
+   sub-specification. No agent, passing test, Git operation, state phase or
+   implementation-plan checkbox may grant acceptance automatically.
+8. **Archive:** after explicit acceptance, synchronize current-state docs,
+   umbrella references, this index and the checkpoint. **Move**, never copy,
+   the accepted normative sub-spec and its implementation-plan companion to
+   `archive/subspecs/` together, updating links. Archive the umbrella only
+   when its separate acceptance target is complete.
+
+Never auto-archive or silently promote specifications. Keep partially
+implemented or unverified requirements active, regardless of code presence.
