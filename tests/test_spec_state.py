@@ -33,7 +33,7 @@ class SpecStateTests(unittest.TestCase):
         result = validate_state()
         self.assertEqual(result["selectedWorkstreamId"], "feature-sessions")
         self.assertEqual(next(w for w in result["workstreams"]
-                              if w["id"] == "feature-sessions")["stageId"], "FS-01")
+                              if w["id"] == "feature-sessions")["stageId"], "FS-02")
         self.assertEqual(STATE_PATH.read_bytes(), before)
 
     def test_cli_reports_selected_focus_without_mutating_source(self) -> None:
