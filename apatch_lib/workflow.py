@@ -10,13 +10,13 @@ from .branch_patch import BranchPatchActions
 from .console import outcome_label
 from .core.actions import ACTION_CODES, action_number
 from .core.enums import PHASE_VALUES, WorkflowPhase
+from .core.contracts import ActionResult
 from .force import ForceActions
 from .loose import LooseActions
 from .gitutil import (confirm, current_branch, head, is_clean, output, remote_head,
                       require_branch, require_clean, run, worktree_fingerprint)
 from .model import Abort
-from .model import RemoteOutcomeUnknown
-from .operation_events import OperationRun, RunOutcome
+from .operation_events import OperationRun, RunOutcome, journal_outcome_for_result
 from .patch import inspect
 from .patch_history import locked_history
 from .presentation.execution import OperationPresentation
@@ -202,18 +202,16 @@ class Workflow(OperationPresentation):
         try:
             result = super().interactive(selected_op, show_header=show_header)
         except (Exception, KeyboardInterrupt) as exc:
-            outcome = (RunOutcome.INDETERMINATE.value if isinstance(exc, RemoteOutcomeUnknown)
-                       else RunOutcome.CANCELLED.value if confirmation_was_declined()
-                       else RunOutcome.INTERRUPTED.value if isinstance(exc, KeyboardInterrupt)
-                       else RunOutcome.FAILED.value)
+            failure = ActionResult.failed(exc, declined=confirmation_was_declined())
+            outcome = (RunOutcome.INTERRUPTED.value if isinstance(exc, KeyboardInterrupt)
+                       and failure.outcome.value == "ERROR"
+                       else journal_outcome_for_result(failure.outcome))
             finish_run(self.config.state_path, self.state, run.data["run_id"],
                        outcome=outcome, before=self.operation_run_before,
                        after=self.operation_run_after or {"phase": self.phase})
             raise
         else:
-            outcome = (RunOutcome.CANCELLED.value if result == "CANCELLED" else
-                       RunOutcome.NO_OP.value if result in {"NO_OP", "ALREADY_SATISFIED"} else
-                       RunOutcome.SUCCEEDED.value)
+            outcome = journal_outcome_for_result(result)
             finish_run(self.config.state_path, self.state, run.data["run_id"],
                        outcome=outcome, before=self.operation_run_before,
                        after=self.operation_run_after or {"phase": self.phase},
@@ -327,7 +325,7 @@ class Workflow(OperationPresentation):
         self.record.update(phase="committed", commit_sha=head(self.root))
         self.persist()
         self.record_committed_branch()
-        self.push()
+        return self.push()
 
     def push(self):
         if self.phase != "committed":
@@ -348,13 +346,14 @@ class Workflow(OperationPresentation):
         self.record.update(phase="pushed", pushed_sha=head(self.root))
         self.persist()
         print("Commit and push verified.")
+        return True
 
     def pr(self):
         if self.phase != "pushed":
             raise Abort("Push is required before opening a PR")
         require_branch(self.root, self.handoff.branch)
         self.assert_remote_unchanged()
-        github.create_pr(self.config, self.handoff, self.root, self.record, self.persist)
+        return github.create_pr(self.config, self.handoff, self.root, self.record, self.persist)
 
     def merge(self):
         if self.phase != "pr_created":
@@ -363,14 +362,15 @@ class Workflow(OperationPresentation):
         self.assert_remote_unchanged()
         repo = github.merge_pr(self.config, self.handoff, self.root, self.record, self.persist)
         if self.phase == "merged":
-            github.sync_base(self.config, self.handoff, self.root, self.record, self.persist,
-                             verified_repo=repo)
+            return github.sync_base(self.config, self.handoff, self.root, self.record, self.persist,
+                                    verified_repo=repo)
+        return None
 
     def sync(self):
         if self.phase != "merged":
             raise Abort("No confirmed GitHub merge needs synchronization")
         self.assert_remote_unchanged()
-        github.sync_base(self.config, self.handoff, self.root, self.record, self.persist)
+        return github.sync_base(self.config, self.handoff, self.root, self.record, self.persist)
 
     def options(self):
         pending_branch = self.record.get("zip_first") and self.record.get("applied_branch") == self.config.base

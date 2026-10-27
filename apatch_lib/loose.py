@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 from .core.enums import WorkflowPhase
+from .core.contracts import ActionResult
 from .branch_guard import assert_no_unfinished_feature_branches
 from .created_patches import persist_registry
 from .gitutil import (branch_exists, confirm, current_branch, head, output,
@@ -40,6 +41,7 @@ class LooseActions:
         w.branch_patch.assert_history_well_formed()
         target = w.handoff.branch
         current = self.branch()
+        already_prepared = current == target and w.phase == WorkflowPhase.BRANCH_CREATED
         origin = "REUSED"
         if current == target:
             print(f"LOOSE: already on {target}; using the existing branch.")
@@ -68,7 +70,10 @@ class LooseActions:
                             remote_url=output(["git", "remote", "get-url", w.config.remote], w.root))
             w.persist()
         if with_patch:
-            self.apply_patch()
+            return self.apply_patch()
+        if already_prepared:
+            return ActionResult.already_satisfied("Existing feature branch was reverified")
+        return True
 
     def _backup_overlaps(self, overlap):
         """Retain user-edited file contents before an explicitly approved overwrite."""
@@ -290,6 +295,7 @@ class LooseActions:
             for _, record in pending:
                 history.record_commit_branch(record["patch_file"], record["branch"], branch)
         print(f"Committed {committed_sha} on {branch}. Push remains a separate action.")
+        return True
 
     def push(self):
         w = self.w
@@ -346,12 +352,15 @@ class LooseActions:
         if updated:
             save(w.config.state_path, w.state)
         print(f"Push reconciled on {branch}; {updated} workflow checkpoint(s) updated.")
+        if remote == current_sha and not updated:
+            return ActionResult.already_satisfied("Remote branch already matches committed HEAD")
+        return True
 
     def pr(self):
-        self.w.force_actions.pr()
+        return self.w.force_actions.pr()
 
     def merge(self):
-        self.w.force_actions.merge()
+        return self.w.force_actions.merge()
 
     def sync(self):
         return self.w.force_actions.sync()

@@ -3,12 +3,14 @@
 import logging
 import time
 
+from ..action_executor import execute_workflow_action
 from ..console import next_action_label, outcome_label
 from ..core.actions import ACTION_CODES, action_number
+from ..core.contracts import ActionResult
 from ..core.enums import OperationOutcome
 from ..gitutil import (clear_confirmation_declined, confirmation_was_declined,
                        current_branch, head, status_paths)
-from ..model import Abort, CheckWorktreeChanged, RemoteOutcomeUnknown
+from ..model import Abort, CheckWorktreeChanged
 from ..progress import ProgressEvent, utc_now
 from ..status import display_recommendation, inspect_patch
 
@@ -121,26 +123,11 @@ class OperationPresentation:
         started = time.monotonic()
         clear_confirmation_declined()
         try:
-            if reason:
-                raise Abort(f"Action unavailable: {reason}")
-            if number in {2, 3}:
-                self.branch_patch.assert_patch_order()
-                self.branch_patch.block_unattended_duplicate()
-            if number == 3 and self.loose:
-                self.loose_actions.assert_followup_selection()
-            previous_cycles = ()
-            if number in {2, 3} and not self.skip_previous_cycles:
-                previous_cycles = self.inspect_previous_cycles()
-            operation_evidence = operation()
-            if (number in {2, 3} and previous_cycles
-                    and before_phase in {"new", "branch_created"}
-                    and self.phase in {"patch_applied", "verified", "committed", "pushed"}
-                    and self.record.get("archive_sha256")):
-                self.link_successful_previous_cycles(previous_cycles)
+            action_result = execute_workflow_action(self, number, operation, reason, before_phase)
         except (Abort, KeyboardInterrupt) as exc:
             elapsed = time.monotonic() - started
-            result = ("CANCELLED" if confirmation_was_declined() else
-                      "UNKNOWN_REMOTE_RESULT" if isinstance(exc, RemoteOutcomeUnknown) else "ERROR")
+            failure = ActionResult.failed(exc, declined=confirmation_was_declined())
+            result = failure.outcome.value
             print(f"\n==> RESULT {number} [{ACTION_CODES[number]}]: {outcome_label(result)} ({elapsed:.2f}s)")
             if result == "UNKNOWN_REMOTE_RESULT":
                 print("    Remote side effect is unconfirmed. Inspect the matching GitHub PR "
@@ -156,7 +143,7 @@ class OperationPresentation:
                 else:
                     print("    Recovery: inspect 10 [STS] and the diagnostic below before resuming.")
             self._record_progress(number, started_at, elapsed,
-                                  "FAILED" if result == "ERROR" else result,
+                                  failure.progress_outcome,
                                   before_phase, before_branch, before_branch, error=exc)
             raise
         after_branch = current_branch(self.root)
@@ -168,22 +155,32 @@ class OperationPresentation:
         elapsed = time.monotonic() - started
         unchanged = (before_branch == after_branch and before_head == after_head
                      and before_phase == self.phase and before_paths == after_paths)
-        verified_existing_sync = (number == 9 and unchanged and before_phase == "synced"
-                                  and operation_evidence is True)
-        repeated_verified_check = (number == 4 and unchanged and operation_evidence is True)
-        confirmed_application = (number == 3 and operation_evidence is True)
-        result = (OperationOutcome.CANCELLED if confirmation_was_declined() else
-                  OperationOutcome.ALREADY_SATISFIED if verified_existing_sync else
-                  OperationOutcome.SUCCESS if (confirmed_application or
-                                               (number == 4 and operation_evidence is True)) else
-                  OperationOutcome.NO_OP if unchanged else OperationOutcome.SUCCESS)
-        print(f"\n==> RESULT {number} [{ACTION_CODES[number]}]: {outcome_label(result.value)} ({elapsed:.2f}s)")
+        if (action_result.outcome == OperationOutcome.NO_OP and not unchanged
+                and not action_result.confirmed_partial_effect):
+            error = Abort("UNCONFIRMED_LOCAL_RESULT: Git or workflow state changed without "
+                          "explicit action completion evidence; inspect STS before retrying")
+            print(f"\n==> RESULT {number} [{ACTION_CODES[number]}]: "
+                  f"{outcome_label('ERROR')} ({elapsed:.2f}s)")
+            print("    Local changes may have occurred; no successful completion was recorded.")
+            print("    Recovery: inspect 10 [STS] and live Git state before retrying.")
+            self._record_progress(number, started_at, elapsed, "FAILED", before_phase,
+                                  before_branch, after_branch, error=error)
+            raise error
+        verified_existing_sync = (number == 9 and
+                                  action_result.outcome == OperationOutcome.ALREADY_SATISFIED)
+        repeated_verified_check = (number == 4 and unchanged and
+                                   action_result.outcome == OperationOutcome.SUCCESS)
+        confirmed_application = (number == 3 and action_result.outcome == OperationOutcome.SUCCESS)
+        result = action_result.outcome.value
+        print(f"\n==> RESULT {number} [{ACTION_CODES[number]}]: {outcome_label(result)} ({elapsed:.2f}s)")
         print(f"    Phase: {before_phase} -> {self.phase}")
         print(f"    Branch: {before_branch or 'detached HEAD'} -> {after_branch or 'detached HEAD'}")
         print(f"    HEAD: {before_head[:12]} -> {after_head[:12]}")
         print(f"    Working-tree changes: {len(before_paths)} -> {len(after_paths)} path(s)")
         if result == "CANCELLED":
             print("    A required confirmation was declined; later actions must not be inferred as safe.")
+        elif action_result.confirmed_partial_effect:
+            print(f"    Partial effect: {action_result.evidence}. Action completion is pending.")
         elif verified_existing_sync:
             print("    Already synchronized; local base and matching merged PR were reverified.")
         elif repeated_verified_check:
@@ -191,9 +188,10 @@ class OperationPresentation:
         elif confirmed_application and unchanged:
             print("    Patch application/adoption completed and was checkpointed; "
                   "the changed-path list is unchanged.")
-        elif unchanged:
-            print("    No tracked workflow or Git-state transition detected; the action may have been "
-                  "cancelled or already satisfied.")
+        elif unchanged and result == OperationOutcome.NO_OP.value:
+            print("    The action reported no completed transition; inspect current status.")
+        elif unchanged and result == OperationOutcome.SUCCESS.value:
+            print("    The action confirmed completion without changing the local Git snapshot.")
         elif after_paths:
             preview = ", ".join(sorted(after_paths)[:10])
             remaining = len(after_paths) - min(len(after_paths), 10)
@@ -205,7 +203,6 @@ class OperationPresentation:
                                                   self.handoff.patch, self.handoff.branch,
                                                   "loose" if self.loose else "force" if self.force else "strict"))
         LOGGER.info("action completed feature=%s phase=%s action=%s", self.handoff.branch, self.phase, label)
-        self._record_progress(number, started_at, elapsed,
-                              "NO_OP" if result.value == "ALREADY_SATISFIED" else result.value,
+        self._record_progress(number, started_at, elapsed, action_result.progress_outcome,
                               before_phase, before_branch, after_branch)
-        return result.value
+        return result
