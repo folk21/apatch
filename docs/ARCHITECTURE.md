@@ -66,8 +66,12 @@ fields, operation runs, individual ZIP workflows, and historical
 lock. Attachment requires matching applied history and a successful operation
 run with the same ZIP digest. Ordinary CLI actions do not create or select a
 session, and these recorded associations neither authorize automated work nor
-assert live GitHub status. Context reconciliation and CLI session planning are
-reserved for later stages.
+assert live GitHub status. The internal `apatch_lib/context.py:inspect_context`
+performs FS-02 read-only diagnosis using local Git, optional feature-session
+and ZIP evidence, configured checks, and explicitly requested remote reads.
+Its immutable `ContextReport` reports candidate scenarios and missing evidence
+without authorizing mutations. CLI goal planning and automatic continuation
+remain later stages.
 
 For an explicitly named, already applied self-contained ZIP, `zip_resume.py`
 checks the current archive digest, stable handoff signature, latest structured

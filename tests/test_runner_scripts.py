@@ -46,6 +46,7 @@ class RunnerScriptsTests(unittest.TestCase):
                 self.assertEqual(args[:4], ["-B", "-m", "unittest", "-v"])
                 self.assertNotIn("discover", args)
                 self.assertIn("tests.test_runner_scripts", args)
+                self.assertIn("tests.test_context", args)
                 self.assertIn("tests.test_handoffs.HandoffsTests.test_self_contained_lifecycle_strict", args)
 
     def test_rare_launcher_and_full_alias_run_all_tests(self):
