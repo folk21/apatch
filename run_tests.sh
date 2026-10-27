@@ -26,6 +26,7 @@ case "${1:-regular}" in
             tests.test_explicit_action_results \
             tests.test_cli_boundaries \
             tests.test_action_applicability \
+            tests.test_audit_rules \
             tests.test_runner_scripts \
             tests.test_validation \
             tests.test_audit.AuditTests.test_audit_without_handoff_is_read_only_and_offline \
