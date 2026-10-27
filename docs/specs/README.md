@@ -22,7 +22,7 @@ implementation is documented in [Usage](../USAGE.md),
 
 ### Reconciled source checkpoint
 
-Latest inspected clean snapshot: `main` at
+Inspected clean baseline snapshot: `main` at
 `efb94f794b06489c3d4898ffd42218f7b16e69fd`, generated
 2026-10-27 11:25:35 UTC. Presence of code and tests is **not** evidence of
 developer installation, formal review, acceptance, or macOS verification.
@@ -31,7 +31,11 @@ developer installation, formal review, acceptance, or macOS verification.
   cross-project progress and the operation journal). Legacy `BAP` retirement
   remains an unresolved compatibility decision.
 - **SUB-003:** FS-00 linkage and FS-00R explicit ZIP resume have source/tests
-  and current-facing usage documentation. FS-01–FS-06 remain planned.
+  and current-facing usage documentation in the baseline. The separate FS-01
+  candidate adds optional schema-v2 feature-session persistence, explicitly
+  linked applied ZIP evidence, commit/PR association and regression tests.
+  It is pending developer review and acceptance after installation; no CLI
+  session planner is enabled. FS-02–FS-06 remain proposed.
 - **SUB-004:** WM-01 read-only `AUD` activity and WM-02 project-local base
   selection have source/tests. WM-03–WM-05 remain planned; WM-06 is deferred.
 - **SUB-005:** AS-01–AS-07 have corresponding source, regression and/or
@@ -77,8 +81,10 @@ state must be reported rather than inferred from README or other documents.
 
 This file is completely separate from the product's target-local
 `<target>/.apatch/apply_patch.state.json` used for ZIP/Git operation history.
-The initial SDD checkpoint selects SUB-003 FS-01 at `DESIGN`; all other
-workstreams are `ON_HOLD`. This does not claim previous acceptance.
+The current proposed SDD checkpoint selects SUB-003 FS-01 at
+`READY_FOR_REVIEW`; all other workstreams are `ON_HOLD`. The checkpoint
+describes this handoff candidate, not a verified installation, independent
+review or developer acceptance.
 
 ## Implementation-plan mapping and migration
 

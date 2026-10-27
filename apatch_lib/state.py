@@ -11,6 +11,7 @@ from typing import Iterator, cast
 from .core.contracts import StateDocument, WorkflowRecord
 from .model import Abort
 from .operation_events import MAX_RUNS, OperationRun, validate_runs
+from .session import validate_feature_sessions
 from .storage.locking import exclusive_file_lock
 
 
@@ -65,6 +66,7 @@ def _upgrade_and_validate(data: object) -> StateDocument:
             raise Abort("Schema-v1 state must not contain a v2 operation journal")
         data = dict(data, schema_version=STATE_SCHEMA_VERSION, operation_runs=[])
     validate_runs(data.get("operation_runs"))
+    validate_feature_sessions(data.get("feature_sessions", {}), data["workflows"])
     return cast(StateDocument, data)
 
 
