@@ -6,8 +6,10 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from .action_applicability import ActionFacts, action_unavailable
 from .console import next_action_label
 from .core.enums import WorkflowPhase
+from .gitutil import worktree_fingerprint
 from .model import Abort, BRANCH_PATTERN
 
 
@@ -114,42 +116,85 @@ def _fact(value, evidence, detail=""):
 
 
 def recommend_next_action(phase: str, mode: str, branch: str, planned_branch: str,
-                          *, conflict=False, dirty=False, base="main", zip_pending_branch=False):
+                          *, conflict=False, dirty=False, base="main",
+                          zip_pending_branch=False, zip_selected=False,
+                          applied_branch: str | None = None,
+                          require_patch_feature_branch=False,
+                          stale_verification=False):
     """Provide cautious guidance; this never replaces a command's live guards."""
+    facts = ActionFacts(
+        mode=mode, phase=phase, branch=branch, planned_branch=planned_branch,
+        applied_branch=applied_branch or planned_branch, base=base, clean=not dirty,
+        zip_selected=zip_selected, zip_first=zip_pending_branch,
+        zip_pending_branch=zip_pending_branch,
+        require_patch_feature_branch=require_patch_feature_branch)
+
+    def blocked(action: int) -> str | None:
+        return action_unavailable(action, facts)
+
     if conflict or phase == "applying":
         return None, None, "Inspect or reconcile the conflicting/interrupted workflow before continuing."
     if phase == "synced":
         return None, None, "Workflow completed; no further lifecycle operation is needed."
     if phase == WorkflowPhase.NEW:
-        if mode == "strict" and branch == planned_branch:
+        if zip_selected:
+            if dirty or branch not in {base, planned_branch}:
+                return None, None, "Review existing changes and the intended checkout before ZIP-first APL."
+            if blocked(3):
+                return None, None, "The selected ZIP cannot be applied from the current Git checkout."
+            return 3, None, "Apply the verified new ZIP before creating its feature branch."
+        if mode == "strict" and branch == planned_branch and not blocked(3):
             return 3, None, "Verify live guards before applying."
         if mode == "strict" and (branch != base or dirty):
             return None, None, "STRICT branch creation requires a clean worktree on the base branch."
+        if blocked(1):
+            return None, None, "Inspect the checkout before preparing a feature branch."
         return 1, 3 if mode != "strict" else None, "Select the intended branch before applying."
     if phase == WorkflowPhase.BRANCH_CREATED:
-        if mode == "strict" and (branch != planned_branch or dirty):
-            return None, None, "STRICT patch application requires the prepared branch and clean worktree."
+        if mode == "strict" and branch != planned_branch:
+            return None, None, (
+                "The prepared feature branch is not checked out; review the intended "
+                "patch destination before explicitly choosing APL.")
+        if blocked(3):
+            return None, None, "STRICT patch application requires a compatible branch and clean worktree."
         return 3, None, "Check the selected ZIP and target branch before applying."
     if phase == WorkflowPhase.PATCH_APPLIED:
         if zip_pending_branch:
+            if branch != base:
+                return None, None, "Return to the recorded ZIP-first base checkout before BRN recovery."
             return 1, None, "Move the uncommitted ZIP changes from the base branch to the planned feature branch."
+        if blocked(4):
+            return None, None, "Reconcile the recorded patch checkout before verification."
         return 4, 3 if mode == "loose" else None, "Verify the current changed bytes before commit."
     if phase == "verified":
-        if mode == "strict" and branch != planned_branch:
-            return None, None, "STRICT publishing requires the planned feature branch."
+        if stale_verification:
+            if blocked(4):
+                return None, None, "Verification evidence is stale; reconcile the checkout before CHK."
+            return 4, None, "Working-tree bytes or revision changed since verification; rerun CHK."
+        if blocked(5):
+            return None, None, "Publishing requires the verified planned feature branch."
         return 5, 3 if mode == "loose" else None, "Check the planned commit scope and message."
     if phase == "committed":
+        if blocked(6):
+            return None, None, "Recorded commit cannot be pushed from this checkout."
         return 6, None, "Push only after checking the recorded commit and remote branch."
     if phase == "pushed":
+        if blocked(7):
+            return None, None, "PR creation requires the recorded pushed feature branch checkout."
         return 7, None, "GitHub PR discovery and creation require network access."
     if phase == "pr_created":
+        if blocked(8):
+            return None, None, "PR merge requires the recorded feature branch checkout."
         return 8, None, "Merge requires live GitHub review and CI policy checks."
     if phase == "merged":
+        if blocked(9):
+            return None, None, "Local base synchronization requires a confirmed merge checkpoint."
         return 9, None, "Confirm remote merge and synchronize the local base branch."
     return None, None, "No reliable next action can be inferred from this checkpoint."
 
 
-def inspect_patch(root: Path, config, record: dict, patch: str, planned_branch: str, mode: str):
+def inspect_patch(root: Path, config, record: dict, patch: str,
+                  planned_branch: str, mode: str, *, zip_selected: bool = False):
     """Compare stored claims with local facts; never query GitHub or change state."""
     if not isinstance(record, dict):
         raise Abort("Invalid stored workflow record")
@@ -210,10 +255,30 @@ def inspect_patch(root: Path, config, record: dict, patch: str, planned_branch: 
         if current == actual and current_head != record["before_patch_head"]:
             facts["Working HEAD"] = _fact(current_head[:12], "CONFLICT", "changed since patch application")
             conflict = True
+    stale_verification = False
+    if (phase == WorkflowPhase.VERIFIED and mode in {"loose", "force"}
+            and isinstance(record.get("verified_fingerprint"), str)):
+        try:
+            current_fingerprint, _ = worktree_fingerprint(root)
+        except (Abort, OSError):
+            facts["Current verification"] = _fact(
+                "UNKNOWN", "UNKNOWN", "current working-tree bytes could not be inspected")
+            conflict = True
+        else:
+            stale_verification = (
+                current_fingerprint != record["verified_fingerprint"]
+                or (record.get("verified_head") is not None
+                    and record["verified_head"] != current_head))
+            if stale_verification:
+                facts["Current verification"] = _fact(
+                    "STALE", "VERIFIED", "current bytes or HEAD differ from the saved CHK evidence")
     next_action, alternate, guidance = recommend_next_action(
         phase, mode, current, planned_branch, conflict=conflict, dirty=dirty, base=config.base,
         zip_pending_branch=(record.get("zip_first") is True
-                            and record.get("applied_branch") == config.base))
+                            and record.get("applied_branch") == config.base),
+        zip_selected=zip_selected, applied_branch=actual,
+        require_patch_feature_branch=config.require_patch_feature_branch,
+        stale_verification=stale_verification)
     return PatchStatus(patch, planned_branch, phase, current, facts, next_action, alternate, guidance)
 
 

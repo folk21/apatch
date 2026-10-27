@@ -56,6 +56,20 @@ already-satisfied action. There is no new journal schema or automatic retry.
 
 `STS` takes an earlier, separate read-only path: it validates the repository and configuration, loads a snapshot without creating a state lock, and inspects local Git evidence. Interactive menu selection is also performed before opening the writable workflow state; choosing `STS` never enters the mutation path.
 
+`apatch_lib/action_applicability.py` supplies a pure, local applicability policy
+for lifecycle actions 1–9. The interactive menu and `STS` construct the same
+typed `ActionFacts` snapshot and consult `action_unavailable()` instead of
+maintaining independent phase/branch rule tables. This policy only explains
+local blockers; live Git/GitHub guards in the action helpers retain final
+authority. A newly selected, self-contained ZIP on the clean base checkout
+recommends ZIP-first `APL` before `BRN`; a ZIP-first pending branch recommends
+`BRN` before any subsequent lifecycle action. In STRICT mode, a manually
+changed checkout after `BRN` is not recommended as an automatic next step;
+the earlier explicit `APL` permission remains unchanged. In LOOSE and FORCE, `STS`
+compares the current working-tree fingerprint and HEAD to the saved verified
+snapshot and recommends `CHK` when this evidence becomes stale. Neither menu
+inspection nor status advice mutates the checkpoint.
+
 `AUD` (`11`) also dispatches before any runtime artifact, progress recorder, or writable state lock is initialized. It first reads the installation-local global progress master without creating or repairing it and renders the latest attempted/successful operations for known projects as **recorded** history. Invalid optional global activity produces a bounded warning without suppressing independent repository findings. `apatch_lib/reconciliation.py` then reads the generation and application journals, historical workflow/run records, and local Git refs and objects. Its audit result separates recorded claims from verified facts, unknown coverage, and direct conflicts. All optional remote requests are explicitly gated by `verifyRemote=true`, bounded by configured timeouts, and converted to unknown coverage on failure. Malformed project-local state or symlinked journal sources are rejected. The report never repairs checkpoints, registries, PRs, or Git branches. Console inventory and findings are bounded; underlying stored history is not truncated or automatically deleted.
 
 The CLI can be invoked interactively, by a direct operation number/mnemonic,
@@ -127,6 +141,7 @@ reapplication, commit, or GitHub mutation follows the failure.
 | `apatch_lib/handoff_selection.py` | Read-only ZIP/JSON/cache selection, typed provenance and multi-handoff resolution |
 | `apatch_lib/application.py` | Single CLI dispatcher, repository bootstrap, admission gates and lifecycle coordination |
 | `apatch_lib/cli_inspection.py` | Read-only status, audit and progress presentation before lifecycle mutations |
+| `apatch_lib/action_applicability.py` | Pure local policy shared by the action menu and status recommendations |
 | `apatch_lib/workflow.py` | Action dispatch, phase coordination, menu and progress summaries |
 | `apatch_lib/console.py` | Shared terminal-only result colors and next-operation emphasis |
 | `apatch_lib/presentation/` | Action menu, console progress, and operation outcome classification |

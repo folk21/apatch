@@ -94,7 +94,8 @@ class OperationPresentation:
             try:
                 display_status(inspect_patch(self.root, self.config, self.record,
                                              self.handoff.patch, self.handoff.branch,
-                                             "loose" if self.loose else "force" if self.force else "strict"))
+                                             "loose" if self.loose else "force" if self.force else "strict",
+                                             zip_selected=getattr(self, "zip_selected", False)))
             except (Abort, KeyboardInterrupt) as exc:
                 self._record_progress(number, started_at, time.monotonic() - started,
                                       "FAILED", previous_phase, branch, branch, error=exc)
@@ -201,7 +202,8 @@ class OperationPresentation:
         else:
             display_recommendation(inspect_patch(self.root, self.config, self.record,
                                                   self.handoff.patch, self.handoff.branch,
-                                                  "loose" if self.loose else "force" if self.force else "strict"))
+                                                  "loose" if self.loose else "force" if self.force else "strict",
+                                                  zip_selected=getattr(self, "zip_selected", False)))
         LOGGER.info("action completed feature=%s phase=%s action=%s", self.handoff.branch, self.phase, label)
         self._record_progress(number, started_at, elapsed, action_result.progress_outcome,
                               before_phase, before_branch, after_branch)

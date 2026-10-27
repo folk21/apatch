@@ -61,7 +61,8 @@ def _select_menu_action(
         raise Abort(str(exc)) from exc
     if number == 10:
         show_status_with_progress(root, config, state, selection.handoff,
-                                  selection.handoff.patch, request.mode, recorder, tool_dir)
+                                  selection.handoff.patch, request.mode, recorder, tool_dir,
+                                  zip_selected=selection.zip_selected)
         return None
     if number == 11:
         show_audit_with_activity(root, config, tool_dir)
@@ -196,7 +197,8 @@ def execute_request(request: CliRequest, tool_dir: Path) -> int:
         raise Abort("Handoff parameters belong to a different repository")
     if request.status_only:
         show_status_with_progress(root, config, None, selection.handoff, request.patch,
-                                  request.mode, recorder, tool_dir)
+                                  request.mode, recorder, tool_dir,
+                                  zip_selected=selection.zip_selected)
         return 0
 
     menu_shown = request.op is None and request.op_seq is None
