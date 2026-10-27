@@ -23,6 +23,7 @@ from .sequence import execute_sequence
 from .state import locked_state, read_state_snapshot
 from .status import workflow_key
 from .workflow import Workflow
+from .zip_resume import verify_applied_zip
 
 
 @dataclass(frozen=True)
@@ -72,16 +73,23 @@ def _select_menu_action(
 
 def _admit_zip_start(
     request: CliRequest, context: ProjectContext, selection: HandoffSelection,
-) -> bool:
-    """Retain ZIP-first safeguards and the narrow saved-cache recovery path."""
+) -> tuple[bool, bool]:
+    """Separate new ZIP extraction, verified resume, and legacy BRN recovery."""
     if not selection.zip_selected:
-        return False
+        return False, False
     if request.op in {"BAP", "2"}:
         raise Abort("2 [BAP] is deprecated for self-contained ZIPs; start with 3 [APL]")
     first = (request.op_seq.actions[0] if request.op_seq is not None
              else action_number(request.op))
     if first == 3:
-        return False
+        if request.op_seq is not None and not selection.sequence:
+            snapshot = read_state_snapshot(context.config.state_path)
+            saved = snapshot["workflows"].get(workflow_key(
+                context.root, selection.handoff.branch, selection.handoff.patch))
+            if isinstance(saved, dict) and saved.get("phase") not in {None, "new"}:
+                verify_applied_zip(context.root, context.config, selection.handoff, snapshot)
+                return False, True
+        return False, False
     if first == 1:
         handoff = selection.handoff
         saved = read_state_snapshot(context.config.state_path)["workflows"].get(
@@ -93,11 +101,18 @@ def _admit_zip_start(
                              and saved.get("applied_branch") == context.config.base
                              and saved.get("archive_sha256") == handoff.patch_sha256)
             if recover_cache:
-                return True
+                return True, False
+        if request.op_seq is not None:
+            verify_applied_zip(context.root, context.config, selection.handoff,
+                               read_state_snapshot(context.config.state_path))
+            return False, True
+    if first not in {1, 3}:
+        verify_applied_zip(context.root, context.config, selection.handoff,
+                           read_state_snapshot(context.config.state_path))
+        return False, True
     message = ("A newly selected self-contained ZIP must start with op=APL; "
                "BRN is only allowed to recover an already applied matching ZIP. "
-               "If the ZIP was already applied, omit the ZIP name and "
-               "followup=true to resume with opSeq=CHK,STS")
+               "Use op=STS or op=AUD to inspect any unfinished application")
     conflict = selection.with_conflict(message, next_step="APL")
     raise Abort(conflict.evidence)
 
@@ -105,6 +120,7 @@ def _admit_zip_start(
 def _execute_lifecycle(
     request: CliRequest, context: ProjectContext, selection: HandoffSelection,
     recorder: ProgressRecorder, *, menu_shown: bool, recover_cache: bool,
+    resume_selected: bool,
 ) -> None:
     """Run exactly one workflow coordinator for normal single-handoff requests."""
     root, config, tool_dir = context.root, context.config, context.tool_dir
@@ -124,6 +140,11 @@ def _execute_lifecycle(
     token = set_skip_approvals(request.skip_approves)
     try:
         with locked_state(config.state_path) as state:
+            if resume_selected:
+                evidence = verify_applied_zip(root, config, handoff, state)
+                save_cached_handoff(root, handoff)
+                print(f"Verified selected ZIP: {evidence.patch} | phase={evidence.phase} "
+                      f"| branch={evidence.branch}; no archive replay")
             migrate_legacy_artifacts(root, tool_dir, config, state)
             show_unresolved_operations(state, root)
             workflow = Workflow(root, config, handoff, state,
@@ -147,6 +168,8 @@ def _execute_lifecycle(
                 execute_sequence(
                     workflow, request.op_seq,
                     select_workflow=select_for_apply if selection.sequence else None,
+                    on_satisfied=(lambda action, active: active.verified_resume_step(action))
+                    if resume_selected else None,
                     on_completed=lambda action, active: save_cached_handoff(root, active.handoff)
                     if active.zip_selected and
                     (action == 3 or (recover_cache and action == 1)) else None)
@@ -208,7 +231,8 @@ def execute_request(request: CliRequest, tool_dir: Path) -> int:
             return 0
         request = resolved
 
-    recover_cache = _admit_zip_start(request, context, selection)
+    recover_cache, resume_selected = _admit_zip_start(request, context, selection)
     _execute_lifecycle(request, context, selection, recorder,
-                       menu_shown=menu_shown, recover_cache=recover_cache)
+                       menu_shown=menu_shown, recover_cache=recover_cache,
+                       resume_selected=resume_selected)
     return 0

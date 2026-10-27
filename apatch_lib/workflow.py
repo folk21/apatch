@@ -1,7 +1,6 @@
 """Interactive, resumable local workflow with independent live Git guards."""
 
 import hashlib
-import json
 import logging
 from pathlib import Path
 
@@ -9,7 +8,7 @@ from . import github
 from .action_applicability import (ActionFacts, action_unavailable,
                                    DEPRECATED_BAP_REASON)
 from .branch_patch import BranchPatchActions
-from .console import outcome_label
+from .console import outcome_label, terminal_style
 from .core.actions import ACTION_CODES, action_number
 from .core.enums import PHASE_VALUES, WorkflowPhase
 from .core.contracts import ActionResult
@@ -22,8 +21,10 @@ from .operation_events import OperationRun, RunOutcome, journal_outcome_for_resu
 from .patch import inspect
 from .patch_history import locked_history
 from .presentation.execution import OperationPresentation
+from .progress import utc_now
 from .state import finish_run, save, start_run
 from .gitutil import clear_confirmation_declined, confirmation_was_declined
+from .zip_resume import handoff_signature, verify_applied_zip
 
 
 LOGGER = logging.getLogger("apatch.workflow")
@@ -52,12 +53,7 @@ class Workflow(OperationPresentation):
         self.key = hashlib.sha256(key_data.encode()).hexdigest()
         self.record = state["workflows"].get(self.key, {})
         LOGGER.info("workflow loaded feature=%s patch=%s phase=%s", handoff.branch, handoff.patch, self.record.get("phase", "new"))
-        signature = hashlib.sha256(json.dumps({
-            "repository": handoff.repository, "branch": handoff.branch,
-            "patch": handoff.patch, "message": handoff.message,
-            "base": handoff.base_commit, "digest": handoff.patch_sha256,
-            "deletes": handoff.delete_paths,
-        }, sort_keys=True).encode()).hexdigest()
+        signature = handoff_signature(handoff)
         self.signature = signature
         if not skip_previous_cycles and self.record and self.record.get("handoff_signature") != signature:
             if not self.loose:
@@ -229,6 +225,33 @@ class Workflow(OperationPresentation):
         with locked_history(self.config.applied_patches_path) as history:
             history.record_commit_branch(self.handoff.patch, self.handoff.branch,
                                          current_branch(self.root))
+
+    def verified_resume_step(self, number: int) -> str | None:
+        """Record a proven non-mutating APL/BRN satisfaction, never a new success."""
+        if number not in {1, 3}:
+            return None
+        evidence = verify_applied_zip(self.root, self.config, self.handoff, self.state)
+        if number == 1 and evidence.pending_branch:
+            return None
+        run = OperationRun.start(
+            number=number, mode="FORCE" if self.force else "LOOSE" if self.loose else "STRICT",
+            root=self.root, workflow_key=self.key, patch=self.handoff.patch,
+            phase=self.phase, sequence=self.progress_sequence)
+        start_run(self.config.state_path, self.state, run)
+        finish_run(self.config.state_path, self.state, run.data["run_id"],
+                   outcome=RunOutcome.NO_OP.value,
+                   before={"phase": self.phase, "branch": evidence.branch},
+                   after={"phase": self.phase, "branch": evidence.branch})
+        self.operation_run_id = run.data["run_id"]
+        try:
+            self._record_progress(number, utc_now(), 0.0, "NO_OP", self.phase,
+                                  evidence.branch, evidence.branch)
+        finally:
+            self.operation_run_id = None
+        print(f"==> RESULT {number} [{ACTION_CODES[number]}]: "
+              f"{terminal_style('ALREADY_SATISFIED', '33')} — verified selected ZIP; "
+              "no Git or archive replay")
+        return "ALREADY_SATISFIED"
 
     def assert_base(self):
         if self.handoff.base_commit and head(self.root) != self.handoff.base_commit:
