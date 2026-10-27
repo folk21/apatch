@@ -15,6 +15,7 @@ from .gitutil import (branch_exists, confirm, current_branch, head, output,
 from .model import Abort, CheckWorktreeChanged
 from .patch import apply, inspect
 from .patch_history import locked_history
+from .session_continuation import require_session_continuation
 from .state import save
 
 
@@ -133,13 +134,25 @@ class LooseActions:
             raise Abort("followup=true requires a matching unfinished, uncommitted ZIP workflow "
                         "at the current HEAD; inspect 10 [STS] before retrying")
 
+    def assert_session_continuation(self, *, archive=None):
+        """Recheck the narrowly scoped internal FS-03 admission before APL."""
+        session_id = self.w._session_continuation_id
+        if session_id is None:
+            raise Abort("Session-aware APL requires an explicit active session")
+        return require_session_continuation(self.w.root, self.w.config, self.w.handoff,
+                                            session_id, archive=archive)
+
     def apply_patch(self):
         w = self.w
         branch = self.branch()
         archive = inspect(w.config, w.handoff, w.root)
         before = status_paths(w.root)
         zip_first = archive.embedded_handoff is not None and branch == w.config.base
-        self.assert_followup_selection(archive=archive)
+        session_id = getattr(w, "_session_continuation_id", None)
+        if session_id is None:
+            self.assert_followup_selection(archive=archive)
+        else:
+            self.assert_session_continuation(archive=archive)
         if zip_first and before:
             raise Abort("A new self-contained ZIP must start on a clean base branch")
         if zip_first:
@@ -170,6 +183,8 @@ class LooseActions:
                 set(archive.changed) | set(w.handoff.delete_paths))
             if latest_overlap != overlap:
                 raise Abort("Overlapping changed paths changed during confirmation; review and retry")
+            if session_id is not None:
+                self.assert_session_continuation(archive=archive)
             backup = self._backup_overlaps(overlap)
             w.record.update(
                 phase="applying", applied_branch=branch,

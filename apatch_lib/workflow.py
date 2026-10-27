@@ -25,6 +25,7 @@ from .presentation.execution import OperationPresentation
 from .progress import utc_now
 from .session import (attach_applied_workflow, create_feature_session,
                       remote_identity)
+from .session_continuation import require_session_continuation
 from .state import finish_run, save, start_run
 from .gitutil import clear_confirmation_declined, confirmation_was_declined
 from .zip_resume import handoff_signature, verify_applied_zip
@@ -47,6 +48,7 @@ class Workflow(OperationPresentation):
         self.loose = loose
         self.zip_selected = zip_selected
         self.allow_followup_zip = allow_followup_zip
+        self._session_continuation_id = None
         self.progress_recorder = progress_recorder
         self.progress_sequence = None
         self.operation_run_id = None
@@ -136,6 +138,26 @@ class Workflow(OperationPresentation):
             self.record.update(old_record)
             raise
         return result
+
+    def apply_session_zip(self, session_id: str):
+        """Internal FS-03 continuation path; no CLI dispatcher uses it yet.
+
+        The goal planner may call this under the existing project-state lock.
+        A confirmed APL is recorded before the new patch is linked to its session.
+        """
+        if not self.loose or self.force or not self.zip_selected or self.allow_followup_zip:
+            raise Abort("Session continuation requires an explicitly selected new ZIP in LOOSE")
+        if self.phase != WorkflowPhase.NEW or self._session_continuation_id is not None:
+            raise Abort("Session continuation requires a new, unstarted patch workflow")
+        require_session_continuation(self.root, self.config, self.handoff, session_id)
+        self._session_continuation_id = session_id
+        try:
+            outcome = self.interactive("APL")
+        finally:
+            self._session_continuation_id = None
+        if outcome == "SUCCESS":
+            self.attach_session(session_id)
+        return outcome
 
     def inspect_previous_cycles(self):
         """Offer a new patch cycle without changing any earlier checkpoint."""

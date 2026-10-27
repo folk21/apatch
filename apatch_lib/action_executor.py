@@ -21,7 +21,10 @@ def execute_workflow_action(workflow: "Workflow", number: int,
         workflow.branch_patch.assert_patch_order()
         workflow.branch_patch.block_unattended_duplicate()
     if number == 3 and workflow.loose:
-        workflow.loose_actions.assert_followup_selection()
+        if getattr(workflow, "_session_continuation_id", None) is None:
+            workflow.loose_actions.assert_followup_selection()
+        else:
+            workflow.loose_actions.assert_session_continuation()
     previous_cycles: tuple[str, ...] = ()
     if number in {2, 3} and not workflow.skip_previous_cycles:
         previous_cycles = workflow.inspect_previous_cycles()
