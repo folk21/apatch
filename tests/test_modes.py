@@ -168,6 +168,8 @@ class ModesTests(LocalGitFixture):
 
     def test_synced_checkpoint_returns_positive_evidence_for_matching_merged_pr(self):
         from apatch_lib import github
+        from apatch_lib.core.contracts import ActionResult
+        from apatch_lib.core.enums import OperationOutcome
         from apatch_lib.workflow import Workflow
 
         config = load_project_config(self.root, load_config(self.bin))
@@ -182,7 +184,9 @@ class ModesTests(LocalGitFixture):
                 patch.object(github, "pr_list", return_value=[matching_pr]), \
                 redirect_stdout(console):
             evidence = workflow.force_actions.sync()
-        self.assertIs(evidence, True)
+        self.assertIsInstance(evidence, ActionResult)
+        self.assertEqual(evidence.outcome, OperationOutcome.ALREADY_SATISFIED)
+        self.assertIn("reverified", evidence.evidence)
         self.assertEqual(workflow.phase, "synced")
         self.assertIn("merge was reverified for the current patch revision", console.getvalue())
 

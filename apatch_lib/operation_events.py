@@ -8,6 +8,7 @@ import re
 import uuid
 
 from .core.actions import ACTION_CODES
+from .core.enums import OperationOutcome
 from .model import Abort, BASENAME_PATTERN
 
 
@@ -23,6 +24,24 @@ class RunOutcome(str, Enum):
     CANCELLED = "CANCELLED"
     INTERRUPTED = "INTERRUPTED"
     INDETERMINATE = "INDETERMINATE"
+
+
+_JOURNAL_OUTCOMES = {
+    OperationOutcome.SUCCESS: RunOutcome.SUCCEEDED,
+    OperationOutcome.ALREADY_SATISFIED: RunOutcome.NO_OP,
+    OperationOutcome.NO_OP: RunOutcome.NO_OP,
+    OperationOutcome.ERROR: RunOutcome.FAILED,
+    OperationOutcome.CANCELLED: RunOutcome.CANCELLED,
+    OperationOutcome.UNKNOWN_REMOTE_RESULT: RunOutcome.INDETERMINATE,
+}
+
+
+def journal_outcome_for_result(result: str | OperationOutcome) -> str:
+    """Centralize the public action-outcome to persisted-journal mapping."""
+    try:
+        return _JOURNAL_OUTCOMES[OperationOutcome(result)].value
+    except (ValueError, KeyError) as exc:
+        raise Abort("Unexpected action result; operation journal cannot be finalized") from exc
 
 
 def utc_now():

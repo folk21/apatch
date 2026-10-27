@@ -78,7 +78,7 @@ class BranchPatchActions:
                 w.record.update(phase="branch_created", branch_base=head(w.root),
                                 remote_url=remote_url, branch_origin="CREATED")
                 w.persist()
-                self.unpack(archive, history=history, history_confirmed=True)
+                return self.unpack(archive, history=history, history_confirmed=True)
         else:
             if not confirm(f"Create branch {w.handoff.branch} from current HEAD?"):
                 return
@@ -93,6 +93,7 @@ class BranchPatchActions:
             w.record.update(phase="branch_created", branch_base=head(w.root),
                             remote_url=remote_url, branch_origin="CREATED")
             w.persist()
+            return True
 
     def prepare_branch_after_apply(self):
         """Move verified uncommitted patch bytes from base to the planned feature branch."""
@@ -139,6 +140,7 @@ class BranchPatchActions:
         with locked_history(w.config.applied_patches_path) as history:
             history.record_commit_branch(w.handoff.patch, w.handoff.branch, w.handoff.branch)
         print(f"Patch changes now reside on {w.handoff.branch}; run CHK next.")
+        return True
 
     def warn_if_previously_applied(self, history):
         w = self.workflow

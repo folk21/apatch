@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from . import github
 from .branch_guard import assert_no_unfinished_feature_branches
 from .created_patches import persist_registry
+from .core.contracts import ActionResult
 from .gitutil import (branch_exists, confirm, current_branch, head, output, remote_head,
                       require_clean, run, worktree_fingerprint)
 from .model import Abort
@@ -105,7 +106,8 @@ class ForceActions:
                         remote_before_patch_head=self.previous_remote_head(target),
                         branch_origin=w.record.get("branch_origin", origin))
         if with_patch:
-            self.apply_or_adopt()
+            return self.apply_or_adopt()
+        return True
 
     def _matches_archive_files(self, archive):
         """Detect an already committed patch without writing any worktree files."""
@@ -320,7 +322,7 @@ class ForceActions:
         self.checkpoint("committed", "commit created", applied_branch=branch,
                         before_patch_head=before, commit_sha=committed, remote_url=self.remote_url())
         w.record_committed_branch()
-        self._push_recorded_commit()
+        return self._push_recorded_commit()
 
     def _push_recorded_commit(self):
         w = self.w
@@ -335,7 +337,7 @@ class ForceActions:
             self.checkpoint("pushed", "existing remote push adopted", pushed_sha=current,
                             remote_url=self.remote_url())
             print(f"Remote {w.config.remote}/{branch} already matches {current}.")
-            return
+            return True
         if remote:
             run(["git", "fetch", "--no-tags", w.config.remote, f"refs/heads/{branch}"], w.root)
             result = run(["git", "merge-base", "--is-ancestor", remote, current], w.root,
@@ -350,12 +352,13 @@ class ForceActions:
         self.checkpoint("pushed", "push completed", pushed_sha=current,
                         remote_url=self.remote_url())
         print("FORCE push completed and verified against the remote branch.")
+        return True
 
     def push(self):
         require_clean(self.w.root)
         if not self._adopt_commit():
             return
-        self._push_recorded_commit()
+        return self._push_recorded_commit()
 
     def _effective_handoff(self):
         branch = (self.w.record.get("applied_branch")
@@ -385,7 +388,7 @@ class ForceActions:
         handoff = self._ensure_pushed()
         if handoff is None:
             return
-        github.create_pr(w.config, handoff, w.root, w.record, w.persist)
+        return github.create_pr(w.config, handoff, w.root, w.record, w.persist)
 
     def _expected_pr_revision(self, branch):
         """Anchor PR recovery to recorded work or the actual local feature ref."""
@@ -440,8 +443,9 @@ class ForceActions:
             github.merge_pr(w.config, handoff, w.root, w.record, w.persist,
                             verified_repo=repo)
         if w.phase == "merged":
-            github.sync_base(w.config, handoff, w.root, w.record, w.persist,
-                             verified_repo=repo)
+            return github.sync_base(w.config, handoff, w.root, w.record, w.persist,
+                                    verified_repo=repo)
+        return None
 
     def sync(self):
         w = self.w
@@ -456,10 +460,12 @@ class ForceActions:
                 print("WARNING: Previously recorded synced state could not be verified "
                       f"for the current patch revision: {exc}")
                 print("The checkpoint is unchanged. Use PR to reconcile an unmerged revision.")
-                return
+                return ActionResult.partial(
+                    "Local base synchronized; previously recorded PR merge could not be reverified")
             print(f"PR #{pr['number']} merge was reverified for the current patch revision; "
                   "local base synchronization refreshed.")
-            return True
+            return ActionResult.already_satisfied(
+                "Synced base and matching merged PR were reverified")
         try:
             handoff = self._effective_handoff()
             pr = github.confirmed_merged_pr(w.config, handoff, w.root, w.record)
@@ -468,7 +474,9 @@ class ForceActions:
             print(f"WARNING: Local {w.config.base} is synchronized, but PR merge verification "
                   f"is pending: {exc}")
             print("The workflow phase is unchanged. Retry SYN when GitHub is available.")
-            return
+            return ActionResult.partial(
+                "Local base synchronized; GitHub PR merge verification is pending")
         self.checkpoint("synced", "local base synchronized after confirmed PR merge",
                         pr_number=pr["number"], local_base_head=local_base_head)
         print(f"GitHub confirmed PR #{pr['number']} merged; workflow synchronization is complete.")
+        return True

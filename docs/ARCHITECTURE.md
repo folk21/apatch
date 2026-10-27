@@ -24,6 +24,26 @@ Inputs include an untrusted ZIP with embedded handoff metadata (or a legacy exte
 5. For lifecycle actions 1–9, a project-local `STARTED` run is atomically recorded before the helper acts. Helpers inspect actual filesystem/Git/GitHub state, update workflow checkpoints, then atomically record a terminal run outcome and bounded evidence. After a successful initial `APL`, the validated handoff and archive digest are cached locally.
 6. Each attempted action also produces a bounded tool-global progress event. Events are buffered while the target checkpoint lock is held and persisted only after releasing it; progress failures cannot undo or change the reported Git/GitHub outcome. The global event ID matches the project run ID for actions 1–9.
 
+Lifecycle actions report explicit completion evidence to
+`apatch_lib/action_executor.py`, which owns action admission and dispatch.
+`ActionResult` in `apatch_lib/core/contracts.py` normalizes verified successes,
+unchanged/no-op outcomes, confirmation declines, and an explicitly reverified
+`SYN`. `OperationPresentation` renders this result; Git branch/HEAD/path
+snapshots are diagnostics, not a fallback success detector. If an action reports
+no completion but the observed local state changed, execution fails closed with
+`UNCONFIRMED_LOCAL_RESULT` and requires inspection rather than replay. A
+verified local-only `SYN` effect can instead report `ActionResult.partial()`:
+the local base update is acknowledged, the unverified GitHub merge remains
+pending, and the operation journals a `NO_OP` rather than claiming completion.
+The existing context-local confirmation flag remains a compatibility adapter for
+legacy boolean prompts pending a separate confirmation API migration.
+
+`journal_outcome_for_result()` provides one mapping from public action results
+to the existing schema-v2 operation journal: `SUCCESS` to `SUCCEEDED`,
+`ALREADY_SATISFIED` and `NO_OP` to `NO_OP`, and uncertain GitHub mutations to
+`INDETERMINATE`. Progress retains its established `NO_OP` spelling for an
+already-satisfied action. There is no new journal schema or automatic retry.
+
 `STS` takes an earlier, separate read-only path: it validates the repository and configuration, loads a snapshot without creating a state lock, and inspects local Git evidence. Interactive menu selection is also performed before opening the writable workflow state; choosing `STS` never enters the mutation path.
 
 `AUD` (`11`) also dispatches before any runtime artifact, progress recorder, or writable state lock is initialized. It first reads the installation-local global progress master without creating or repairing it and renders the latest attempted/successful operations for known projects as **recorded** history. Invalid optional global activity produces a bounded warning without suppressing independent repository findings. `apatch_lib/reconciliation.py` then reads the generation and application journals, historical workflow/run records, and local Git refs and objects. Its audit result separates recorded claims from verified facts, unknown coverage, and direct conflicts. All optional remote requests are explicitly gated by `verifyRemote=true`, bounded by configured timeouts, and converted to unknown coverage on failure. Malformed project-local state or symlinked journal sources are rejected. The report never repairs checkpoints, registries, PRs, or Git branches. Console inventory and findings are bounded; underlying stored history is not truncated or automatically deleted.
@@ -96,6 +116,7 @@ reapplication, commit, or GitHub mutation follows the failure.
 | `apatch_lib/workflow.py` | Action dispatch, phase coordination, menu and progress summaries |
 | `apatch_lib/console.py` | Shared terminal-only result colors and next-operation emphasis |
 | `apatch_lib/presentation/` | Action menu, console progress, and operation outcome classification |
+| `apatch_lib/action_executor.py` | Shared guarded action execution and explicit completion normalization |
 | `apatch_lib/core/actions.py`, `core/enums.py` | Stable operation IDs and typed lifecycle/outcome values |
 | `apatch_lib/core/contracts.py` | Typed JSON boundary views for persisted workflows and GitHub PR evidence; raw input is validated in owning adapters |
 | `apatch_lib/core/paths.py` | Protected `.apatch` paths and generated runtime ignore patterns |

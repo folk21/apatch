@@ -237,7 +237,7 @@ def create_pr(config, handoff, root, record, save_checkpoint):
         _record_current_pr(record, pr)
         save_checkpoint()
         print(f"Found matching PR: {pr['url']}. Run apatch again after checks/review.")
-        return
+        return True
     same_revision = [pr for pr in prs if (pr["baseRefName"] == config.base
                                            and pr["headRefOid"] == local)]
     if same_revision:
@@ -271,6 +271,7 @@ def create_pr(config, handoff, root, record, save_checkpoint):
     _record_current_pr(record, active_after_create[0])
     save_checkpoint()
     print("PR created. Merge is intentionally unavailable until the next invocation.")
+    return True
 
 
 def merge_pr(config, handoff, root, record, save_checkpoint, *, verified_repo=None):
@@ -380,3 +381,4 @@ def sync_base(config, handoff, root, record, save_checkpoint, *, verified_repo=N
     record["phase"] = "synced"
     save_checkpoint()
     print(f"Local {config.base} is synchronized after GitHub PR merge.")
+    return True
