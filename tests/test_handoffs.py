@@ -148,7 +148,7 @@ class HandoffsTests(LocalGitFixture):
         second = self.make_followup_zip()
         failed_check = self.invoke_zip("op=CHK", selection=second.stem)
         self.assertEqual(failed_check.returncode, 2)
-        self.assertIn("must start with op=APL", failed_check.stderr)
+        self.assertIn("No completed application checkpoint", failed_check.stderr)
         after = json.loads(self.state_path.read_text())["workflows"]
         self.assertEqual(after[original_key], previous[original_key])
 
@@ -214,7 +214,7 @@ class HandoffsTests(LocalGitFixture):
         self.assertFalse((self.root / "second.txt").exists())
         self.assertEqual(json.loads(self.state_path.read_text())["workflows"], {})
 
-    def test_repeated_followup_is_rejected_before_overwriting_manual_repairs(self):
+    def test_repeated_followup_sequence_preserves_manual_repairs_without_archive_replay(self):
         first = self.make_self_contained_zip()
         initial = self.invoke_zip("opSeq=APL,BRN", "skipApproves=true", selection=first)
         self.assertEqual(initial.returncode, 0, initial.stderr + initial.stdout)
@@ -239,13 +239,16 @@ class HandoffsTests(LocalGitFixture):
                        for name in ("existing.txt", "second.txt")}
         backups = list((self.root / ".apatch" / "backups").glob("overlap-*"))
 
-        duplicate = self.invoke_zip("followup=true", "opSeq=APL,CHK,STS",
-                                    "skipApproves=true", selection=repair.stem)
-        self.assertEqual(duplicate.returncode, 2, duplicate.stdout + duplicate.stderr)
-        self.assertIn("Patch already applied", duplicate.stderr)
-        self.assertNotIn("Backed up", duplicate.stdout)
-        self.assertNotIn("SEQUENCE ACTION 4 [CHK]", duplicate.stdout)
-        self.assertEqual(json.loads(self.state_path.read_text())["workflows"], saved_workflows)
+        resumed_explicit = self.invoke_zip("followup=true", "opSeq=APL,CHK,STS",
+                                           "skipApproves=true", selection=repair.stem)
+        self.assertEqual(resumed_explicit.returncode, 0,
+                         resumed_explicit.stdout + resumed_explicit.stderr)
+        self.assertIn("Already satisfied: 3 [APL]", resumed_explicit.stdout)
+        self.assertIn("Canonical checks passed", resumed_explicit.stdout)
+        self.assertNotIn("Backed up", resumed_explicit.stdout)
+        self.assertIn("SEQUENCE ACTION 4 [CHK]", resumed_explicit.stdout)
+        updated_records = json.loads(self.state_path.read_text())["workflows"]
+        self.assertEqual(set(updated_records), set(saved_workflows))
         self.assertEqual(self.history_path.read_bytes(), saved_history)
         self.assertEqual(list((self.root / ".apatch" / "backups").glob("overlap-*")), backups)
         for name, original in saved_files.items():
@@ -262,14 +265,16 @@ class HandoffsTests(LocalGitFixture):
                                          selection=stem).returncode, 0)
         (self.root / "existing.txt").write_text("manual revision\n")
         before = command("git", "status", "--porcelain", cwd=self.root).stdout
-        repeated = self.invoke_zip("opSeq=APL,STS", selection=stem,
+        repeated = self.invoke_zip("op=APL", selection=stem,
                                    text="YES\nyes\nYES\n")
         self.assertEqual(repeated.returncode, 0, repeated.stdout + repeated.stderr)
         self.assertEqual(before, command("git", "status", "--porcelain", cwd=self.root).stdout)
         self.assertEqual((self.root / "existing.txt").read_text(), "updated\n")
         self.assertIn("RESULT 3 [APL]: SUCCESS", repeated.stdout)
         self.assertIn("Patch application/adoption completed and was checkpointed", repeated.stdout)
-        self.assertIn("SEQUENCE RESULT: SUCCESS", repeated.stdout)
+        inspected = self.invoke_zip("op=STS", selection=stem)
+        self.assertEqual(inspected.returncode, 0, inspected.stderr + inspected.stdout)
+        self.assertIn("PATCH STATUS 10 [STS]", inspected.stdout)
 
     def test_multi_zip_shell_launcher_accepts_download_paths_and_pushes_combined_commit(self):
         first = self.make_self_contained_zip()

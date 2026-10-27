@@ -27,6 +27,7 @@ case "${1:-regular}" in
             tests.test_cli_boundaries \
             tests.test_action_applicability \
             tests.test_audit_rules \
+            tests.test_zip_resume \
             tests.test_runner_scripts \
             tests.test_validation \
             tests.test_audit.AuditTests.test_audit_without_handoff_is_read_only_and_offline \
@@ -35,7 +36,7 @@ case "${1:-regular}" in
             tests.test_handoffs.HandoffsTests.test_multi_zip_sequence_combines_patches_and_final_status \
             tests.test_handoffs.HandoffsTests.test_explicit_followup_zip_after_previous_invocation_combines_uncommitted_changes \
             tests.test_handoffs.HandoffsTests.test_followup_refuses_dirty_feature_branch_without_an_applied_predecessor \
-            tests.test_handoffs.HandoffsTests.test_repeated_followup_is_rejected_before_overwriting_manual_repairs \
+            tests.test_handoffs.HandoffsTests.test_repeated_followup_sequence_preserves_manual_repairs_without_archive_replay \
             tests.test_handoffs.HandoffsTests.test_explicit_interactive_reapplication_with_same_path_set_reports_success \
             tests.test_config_cli.ConfigCliTests.test_direct_action_reapply_duplicate_is_blocked_with_skip_approves \
             tests.test_modes.ModesTests.test_force_repeated_adoption_is_successful_with_unchanged_path_set \

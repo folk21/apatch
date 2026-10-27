@@ -54,6 +54,17 @@ to the existing schema-v2 operation journal: `SUCCESS` to `SUCCEEDED`,
 `INDETERMINATE`. Progress retains its established `NO_OP` spelling for an
 already-satisfied action. There is no new journal schema or automatic retry.
 
+For an explicitly named, already applied self-contained ZIP, `zip_resume.py`
+checks the current archive digest, stable handoff signature, latest structured
+applied-history entry, matching successful `APL` operation run and live local
+branch/HEAD/remote evidence. A read-only preflight is repeated under the
+project state lock before `application.py` switches the active cached handoff.
+During a verified repeated `opSeq=APL,BRN` prefix, the corresponding steps
+are reported `ALREADY_SATISFIED` and journaled as `NO_OP`, not invoked as Git
+or archive mutations. A pending ZIP-first branch transfer still executes the
+real guarded `BRN`. Missing or conflicting evidence stops before resumption;
+direct intentional `op=APL` and legacy handoffs retain their original guards.
+
 `STS` takes an earlier, separate read-only path: it validates the repository and configuration, loads a snapshot without creating a state lock, and inspects local Git evidence. Interactive menu selection is also performed before opening the writable workflow state; choosing `STS` never enters the mutation path.
 
 `apatch_lib/action_applicability.py` supplies a pure, local applicability policy

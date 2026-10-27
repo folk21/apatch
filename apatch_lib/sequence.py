@@ -62,7 +62,8 @@ def validate_multi_handoff_actions(sequence: OperationSequence, selections: tupl
         raise ValueError("Apply all ZIPs before commit/push/PR/merge/sync in a multi-ZIP sequence")
 
 
-def execute_sequence(workflow, sequence: OperationSequence, *, on_completed=None, select_workflow=None):
+def execute_sequence(workflow, sequence: OperationSequence, *, on_completed=None,
+                     select_workflow=None, on_satisfied=None):
     """Run numbered operations in order, allowing explicit read-only status reports."""
     def describe(number):
         return f"{number} [{ACTION_CODES[number]}]"
@@ -71,15 +72,23 @@ def execute_sequence(workflow, sequence: OperationSequence, *, on_completed=None
     print("    skipApproves applies to confirmation prompts, not safety checks")
     last_completed = "NONE"
     sequence_id = uuid.uuid4().hex
+    executed: list[str] = []
+    satisfied: list[str] = []
+    reported: list[str] = []
     for index, action in enumerate(sequence.actions, start=1):
         code = ACTION_CODES[action]
         print(f"\n==> SEQUENCE ACTION {describe(action)}", flush=True)
+        replay_free = False
         try:
             if select_workflow is not None and action == 3:
                 workflow = select_workflow(index, workflow)
                 print(f"    Selected ZIP: {workflow.handoff.patch}", flush=True)
             workflow.progress_sequence = (sequence_id, index, len(sequence.actions))
-            result = workflow.interactive(code, show_header=index == 1)
+            result = on_satisfied(action, workflow) if on_satisfied is not None else None
+            if result == "ALREADY_SATISFIED":
+                replay_free = True
+            elif result is None:
+                result = workflow.interactive(code, show_header=index == 1)
             if result == "SUCCESS" and on_completed is not None:
                 on_completed(action, workflow)
         except (Abort, KeyboardInterrupt) as exc:
@@ -97,16 +106,27 @@ def execute_sequence(workflow, sequence: OperationSequence, *, on_completed=None
             failure_type = RemoteOutcomeUnknown if isinstance(exc, RemoteOutcomeUnknown) else Abort
             raise failure_type(f"Sequence operation {describe(action)} stopped: {exc}") from exc
         if action == 10 and result == "NO_OP":
+            reported.append(describe(action))
             print("==> SEQUENCE REPORT 10 [STS]: DISPLAYED (read-only)")
-        elif result == "ALREADY_SATISFIED" and action == 9:
-            print("==> SEQUENCE CONTINUE: 9 [SYN] already synchronized and reverified")
+        elif result == "ALREADY_SATISFIED" and (action == 9 or (replay_free and action in {1, 3})):
+            satisfied.append(describe(action))
+            if action == 9:
+                print(f"==> SEQUENCE CONTINUE: {describe(action)} already synchronized")
+            else:
+                print(f"==> SEQUENCE CONTINUE: {describe(action)} already satisfied and reverified")
         elif result != "SUCCESS":
             remaining = ", ".join(map(describe, sequence.actions[index:])) or "NONE"
             print(f"==> SEQUENCE STOP: {describe(action)} outcome={result}")
             print(f"    Last confirmed: {last_completed}; remaining (not executed): {remaining}")
             raise Abort("Sequence stopped after an unchanged/cancelled action; inspect 10 [STS] before resuming")
+        else:
+            executed.append(describe(action))
         last_completed = describe(action)
         if index < len(sequence.actions):
             print(f"==> Next scheduled: {describe(sequence.actions[index])}")
     print("\n==> SEQUENCE RESULT: SUCCESS | completed: "
           + ", ".join(map(describe, sequence.actions)))
+    print("    Executed: " + (", ".join(executed) or "NONE"))
+    print("    Already satisfied: " + (", ".join(satisfied) or "NONE"))
+    print("    Read-only reports: " + (", ".join(reported) or "NONE"))
+    print("    Not executed: NONE")

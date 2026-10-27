@@ -74,8 +74,10 @@ not executed, so inspect `op=STS` and resume explicitly with `op=` or a
 shorter `opSeq`. Never automatically rerun an uncertain remote mutation.
 
 `op` and `opSeq` are mutually exclusive. Empty/unknown operations, `EXT` in a
-sequence, and repeated `APL` without distinct explicit ZIP selections are
-rejected. Legacy JSON-based sessions retain the old branch-first recovery path.
+sequence, and multiple `APL` entries in one sequence without distinct ZIP
+selections are rejected. A separate invocation may reuse one previously applied
+ZIP through the explicitly verified resume path described below. Legacy
+JSON-based sessions retain the old branch-first recovery path.
 
 ### Several ZIPs before one commit (`handoffSeq`)
 
@@ -146,10 +148,51 @@ selection or `followup=true`:
 /path/to/apatch/apatch.sh opSeq=CHK,STS skipApproves=true
 ```
 
-Unattended `APL` refuses a ZIP already recorded in the applied-patch history,
-even with `skipApproves=true`. This prevents accidentally restoring old archive
-bytes over manual fixes. Deliberate reapplication remains available through
-interactive `APL` with `skipApproves=false` and an explicit duplicate confirmation.
+### Explicit resume of an already applied ZIP (FS-00R)
+
+An explicitly named **latest applied** ZIP may select the previously verified
+application without extracting it again, even if `.apatch/params.json` is missing
+or points to a different patch. For example, after an interrupted check or a
+manual correction, keep the same ZIP name and resume at `CHK`:
+
+```bash
+/path/to/apatch/apatch.sh existing-patch opSeq=CHK,STS skipApproves=true
+/path/to/apatch/apatch.sh existing-patch op=CMT skipApproves=true
+```
+
+For a previously completed `APL` and `BRN`, a repeated prefix is verified one
+step at a time and reported as `ALREADY_SATISFIED`, **without replaying the ZIP
+or switching branches**:
+
+```bash
+/path/to/apatch/apatch.sh existing-patch opSeq=APL,BRN,CHK,STS skipApproves=true
+```
+
+If ZIP-first `APL` succeeded on the base branch but `BRN` never completed,
+only `APL` is satisfied; `BRN` still executes under its existing live guards.
+A follow-up ZIP successfully applied directly on its feature branch may also
+be reselected: it must have its own successful `APL` journal evidence.
+
+This resume path requires an unchanged ZIP digest and embedded handoff,
+a matching checkpoint signature, exactly one **latest** structured applied-history
+entry, a successful project-local `APL` operation record, the expected Git
+branch/HEAD and remote identity, and the continued presence of recorded patch
+paths. The archive is revalidated before selection and the stored evidence is
+rechecked under the state lock before updating the active cached handoff.
+Extra manual worktree paths may be present; normal LOOSE/STRICT/FORCE action
+checks still decide whether verification or publication is permitted.
+
+Missing or contradictory evidence, a different archive under the same filename,
+an interrupted `applying` record, an older-than-last ZIP or a mismatched branch
+blocks unattended resume. Use `op=STS` and `op=AUD` to investigate; never delete
+history or reapply just to make the checkpoint match. A missing original ZIP
+cannot be selected explicitly; an existing trusted cached handoff retains its
+normal separate continuation path.
+
+Direct `op=APL` still refuses unattended replay of an already recorded ZIP,
+even with `skipApproves=true`. Deliberate manual reapplication retains its
+interactive confirmation and overlap safeguards. An idempotent `APL` within
+a verified `opSeq` is **not** a request to reapply archive bytes.
 
 Outcome lines use `SUCCESS` for an observed state transition or a completed,
 checkpointed archive application,
