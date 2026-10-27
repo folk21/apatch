@@ -1,6 +1,6 @@
 # APATCH-SUB-004 — Operational Workflows, Activity Dashboard, and Stable Checks
 
-**Status:** DRAFT. WM-01 (read-only activity in `AUD`) and WM-02 (per-project base branch) have implementation candidates; WM-03–WM-06 are proposed and not yet implemented.
+**Status:** DRAFT. WM-01 (read-only activity in `AUD`) and WM-02 (per-project base branch) have implementations in the inspected source; WM-03–WM-05 are proposed and WM-06 is deferred. Formal acceptance is not recorded.
 
 **Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Implementation plan:** [APATCH-PLAN-004](../../plans/operational-workflows-implementation-plan.md).
 
@@ -12,7 +12,7 @@ The existing implementation already provides:
 
 - Atomic numbered actions `0..11`, `op`, exact `opSeq`, `handoffSeq`, and `followup=true`.
 - Read-only repository `10 [STS]`, read-only repository audit `11 [AUD]`, and read-only, tool-wide `info=PROGRESS` backed by an installation-local event ledger.
-- Global `apatch.conf:base_branch` (default `main`); WM-02 adds a candidate project-local override.
+- Global `apatch.conf:base_branch` (default `main`) and an implemented WM-02 project-local override.
 - `CHECKS_CHANGED_WORKTREE`, which preserves edited bytes and blocks publication when canonical checks change the worktree.
 
 **Non-goals:** renumbering actions, removing `AUD` or `info=PROGRESS`, making GitHub mutations during status inspection, unsafe Git cleanup, autonomous repair-patch generation, hidden branch switching, bypassing review/CI/protected-branch rules, or changing `STRICT`/`FORCE` semantics without a separately tested migration.
@@ -30,7 +30,7 @@ For each known project, the dashboard SHALL distinguish:
 
 The tool-wide event ledger may be incomplete (new installation, independent tool copies, manual Git operations, corrupted progress). The dashboard SHALL label its data `RECORDED`; it SHALL NOT imply current remote PR/merge state or discover arbitrary directories. Progress lookup MUST NOT create or repair a file. If the optional progress master is unavailable or unsafe, `AUD` SHALL show a bounded warning and continue its independent repository audit. Malformed repository audit inputs MUST still fail closed. `verifyRemote=true` continues to apply only to the current repository's audit; it does not initiate cross-project GitHub scans.
 
-**WM-01 implementation candidate:** append the dashboard to every `AUD` dispatch path and distinguish the latest attempted versus last successful event in `render_progress()`. This change SHALL be additive and read-only for both the target repository and the tool-wide ledger.
+**WM-01 implemented behavior:** the dashboard is appended to `AUD` dispatch paths and distinguishes the latest attempted versus last successful event in `render_progress()`. It SHALL remain additive and read-only for both the target repository and the tool-wide ledger.
 
 ## 3. Four higher-level operations
 
@@ -156,7 +156,7 @@ future implementation stage, not a currently available CLI capability.
 
 ## 8. Delivery status
 
-- **WM-01:** implementation candidate with focused tests in the associated source patch; not marked released until integrated and independently verified.
-- **WM-02:** implementation candidate with Git-syntax validation, source-labelled effective base and focused project/branch/PR tests; not marked released until integrated and independently verified.
+- **WM-01:** implementation and focused tests are in the inspected `efb94f7` source; formal acceptance is still pending.
+- **WM-02:** project-local base-branch override, validation and related tests are in the inspected source; formal acceptance is still pending.
 - **WM-03–WM-05:** advisory implementation stages only. No new macro CLI or automatic check rerun is claimed as installed.
 - **WM-06:** deferred GitHub transient-read retry and safe mutation-result reconciliation design. The current single extra read-only retry remains the installed behavior; no new mutation retry or automatic recovery is claimed.

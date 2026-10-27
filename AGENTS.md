@@ -6,6 +6,7 @@ These rules apply to the entire `apatch` repository. They are implementation gui
 
 1. Read [README.md](README.md), then the document relevant to the task: [Architecture](docs/ARCHITECTURE.md), [Usage](docs/USAGE.md), [Installation](docs/INSTALLATION.md), or [Development](docs/DEVELOPMENT.md).
 2. Check the [SDD specification index](docs/specs/README.md) before implementing behavior described by a specification. Orchestrator specifications remain **DRAFT**; individual stages may already be implemented. Verify actual source behavior and tests before treating a proposed requirement as available, and do not label documentation-only work as completed behavior.
+   For staged SDD work, use the index's lifecycle and validate `docs/specs/STATE.json` at developer-controlled checkpoints with `python3 tools/specs/validate_state.py`. This is a repository documentation checkpoint, never a runtime workflow state or implicit approval. Require explicit developer acceptance before archiving any sub-specification and its plan.
 3. Read only the owning modules and relevant tests after identifying the behavior to change. See [Architecture](docs/ARCHITECTURE.md) for code ownership.
 4. Follow newer verified repository contents over stale concatenated snapshots. A snapshot may omit files and is not necessarily a complete checkout.
 

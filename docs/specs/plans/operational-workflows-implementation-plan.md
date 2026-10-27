@@ -1,8 +1,8 @@
 # APATCH-PLAN-004 — Operational Workflow Macros and Diagnostics
 
-**Status:** Advisory plan. WM-01 and WM-02 each have implementation candidates in separate ZIP overlays; WM-03–WM-06 require subsequent implementation and independent acceptance. WM-06 is explicitly deferred.
+**Status:** Advisory plan. WM-01 and WM-02 implementations are present in the inspected `efb94f7` source, pending formal review. WM-03–WM-05 remain proposed; WM-06 is explicitly deferred.
 
-**Normative owner:** [APATCH-SUB-004](../active/subspecs/subspec-04-operational-workflows.md). **Dependencies:** [SUB-001](../active/subspecs/subspec-01-workflow-control.md), [SUB-002](../active/subspecs/subspec-02-state-history-audit.md), and [SUB-003](../active/subspecs/subspec-03-feature-session-planning.md). The inspected source baseline is clean `main` commit `9f256d786d29d4121ea0116758af85a903d9636a` from the 2026-10-26 17:21 UTC project snapshot. This snapshot intentionally omits installation-local `apatch.conf` and target `.apatch/config.yaml` contents; verification uses an isolated sample config and does not package either private file.
+**Normative owner:** [APATCH-SUB-004](../active/subspecs/subspec-04-operational-workflows.md). **Dependencies:** [SUB-001](../active/subspecs/subspec-01-workflow-control.md), [SUB-002](../active/subspecs/subspec-02-state-history-audit.md), and [SUB-003](../active/subspecs/subspec-03-feature-session-planning.md). The original design baseline is `9f256d7`; a newer inspected clean `main` snapshot is `efb94f794b06489c3d4898ffd42218f7b16e69fd` (2026-10-27 11:25 UTC). Installation-local `apatch.conf` and target `.apatch/config.yaml` are excluded from the snapshot; use isolated config fixtures and never package private settings.
 
 ## 1. Sequencing and cross-cutting rules
 
@@ -12,7 +12,7 @@ All stages require `sh ./run_tests.sh`, `sh ./run_rare_checks.sh` before handoff
 
 ## WM-01 — Recorded activity before project audit
 
-**Status:** Implementation candidate. **Dependencies:** existing P0.5 progress and P1.2 audit. **Non-goals:** changing repository audit findings, refreshing all project remotes, recording read-only `AUD` invocations, or creating a dashboard database.
+**Status:** Present in inspected source; independent acceptance pending. **Dependencies:** existing P0.5 progress and P1.2 audit. **Non-goals:** changing repository audit findings, refreshing all project remotes, recording read-only `AUD` invocations, or creating a dashboard database.
 
 | Path | Ordered work |
 | --- | --- |
@@ -38,7 +38,7 @@ def show_audit_with_activity(root, config, tool_dir, verify_remote=False):
 
 ## WM-02 — Per-project base-branch override
 
-**Status:** Implementation candidate (separate WM-02 overlay). **Dependencies:** WM-01 for visible context; otherwise independent of macros. **Non-goals:** branch renaming, changing the remote URL, or autodetecting an alternative base from GitHub.
+**Status:** Present in inspected source; independent acceptance pending. **Dependencies:** WM-01 for visible context; otherwise independent of macros. **Non-goals:** branch renaming, changing the remote URL, or autodetecting an alternative base from GitHub.
 
 | Path | Ordered work |
 | --- | --- |

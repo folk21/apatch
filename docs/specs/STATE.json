@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "mode": "SINGLE",
+  "selectedWorkstreamId": "feature-sessions",
+  "workstreams": [
+    {
+      "id": "workflow-control",
+      "specPath": "docs/specs/active/subspecs/subspec-01-workflow-control.md",
+      "stageId": "P0.5b",
+      "phase": "ON_HOLD"
+    },
+    {
+      "id": "state-history-audit",
+      "specPath": "docs/specs/active/subspecs/subspec-02-state-history-audit.md",
+      "stageId": "P1.2",
+      "phase": "ON_HOLD"
+    },
+    {
+      "id": "feature-sessions",
+      "specPath": "docs/specs/active/subspecs/subspec-03-feature-session-planning.md",
+      "stageId": "FS-01",
+      "phase": "DESIGN"
+    },
+    {
+      "id": "operational-workflows",
+      "specPath": "docs/specs/active/subspecs/subspec-04-operational-workflows.md",
+      "stageId": "WM-03",
+      "phase": "ON_HOLD"
+    },
+    {
+      "id": "architectural-simplification",
+      "specPath": "docs/specs/active/subspecs/subspec-05-architectural-simplification.md",
+      "stageId": "AS-07",
+      "phase": "ON_HOLD"
+    }
+  ]
+}

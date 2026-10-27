@@ -26,7 +26,7 @@ To run the tests directly with the project virtual environment:
 
 Test durations depend heavily on the platform: the extended suite runs many subprocess-based temporary-Git integration tests and can take substantially longer on macOS. The regular suite avoids most of those invocations. Tests are grouped in `tests/test_handoffs.py`, `test_safety.py`, `test_sequences.py`, `test_history.py`, `test_branches.py`, `test_modes.py`, `test_status.py`, `test_config_cli.py`, `test_github.py`, `test_progress.py`, `test_operation_journal.py`, `test_validation.py`, and `test_runner_scripts.py`. Shared fixtures live in `tests/_support.py`.
 
-`tests/test_architecture_characterization.py` records AS-01 architectural seam contracts. Four `expectedFailure` cases deliberately demonstrate known baseline defects in ZIP-first status advice, nested state validation, and malformed GitHub JSON handling. Expected failures are not fixed behavior or passing acceptance criteria; remove each decorator only alongside its tested owning-stage fix. The regular and extended suites both execute these tests.
+`tests/test_architecture_characterization.py` records AS-01 architectural seam contracts. The latest inspected source also contains fixes for the previously expected failures in ZIP-first status advice, nested state validation and GitHub JSON handling. Treat those regression tests as behavior evidence, not automatic acceptance of SUB-005. The regular and extended suites both execute these tests.
 
 `-B` prevents bytecode cache files. Tests use temporary Git repositories and mocked GitHub commands. No developer project repository is modified. Python, PyYAML, and Git are required; the GitHub CLI is not required for tests. Linux results alone do not guarantee macOS behavior.
 
@@ -74,7 +74,7 @@ A baseline Ruff inventory of `apatch.py`, `apatch_lib/`, and `tests/` found 272 
 
 ## SDD documentation lifecycle
 
-The [specification index](specs/README.md) is the authoritative list of active **DRAFT** specifications, advisory plans, independently prepared implementation candidates, and verified delivery status. Implemented slices are not automatically accepted normative requirements.
+The [specification index](specs/README.md) owns the developer-controlled lifecycle of active **DRAFT** specifications, their advisory plans, stage evidence, final review and explicit acceptance. The tracked [SDD checkpoint](specs/STATE.json) records only processing focus, distinct from the tool's runtime state. Validate it directly with `python3 tools/specs/validate_state.py`; both test suites also cover it through `tests/test_spec_state.py`. Implemented slices are not automatically accepted normative requirements.
 
 When the developer explicitly requests specification work, add one owning active spec with scope, invariants, acceptance criteria, and verifiable increments. Keep implementation plans advisory and separate from normative requirements. Use an existing convention before introducing new files. Do not infer completion or invent future stage IDs.
 
@@ -88,6 +88,6 @@ When the developer explicitly requests specification work, add one owning active
 | `docs/USAGE.md` | User-facing CLI reference, configuration, safety, and recovery |
 | `docs/ARCHITECTURE.md` | Component boundaries and runtime design |
 | `docs/DEVELOPMENT.md` | Tests, development workflow, and documentation ownership |
-| `docs/specs/README.md` | Draft specification index, implementation status, and lifecycle |
+| `docs/specs/README.md` | Active specification index, advisory plan mapping, SDD checkpoint rules and acceptance/archival lifecycle |
 
 Write changes in the owning document and cross-link it. Avoid duplicating README sections across multiple files.
