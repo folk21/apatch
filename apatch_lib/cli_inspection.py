@@ -17,7 +17,7 @@ from .status import display_status, inspect_patch, select_record
 def show_status_with_progress(
     root: Path, config: Config, state: dict[str, object] | None,
     handoff: Handoff | None, patch: str | None, mode: str,
-    recorder: ProgressRecorder, tool_dir: Path,
+    recorder: ProgressRecorder, tool_dir: Path, *, zip_selected: bool = False,
 ) -> None:
     """Report offline status and record an independent tool-wide STS event."""
     started_at = utc_now()
@@ -31,7 +31,9 @@ def show_status_with_progress(
             state = read_state_snapshot(config.state_path)
         show_unresolved_operations(state, root)
         record, selected_patch, planned = select_record(root, state, handoff, patch=patch)
-        display_status(inspect_patch(root, config, record, selected_patch, planned, mode))
+        display_status(inspect_patch(
+            root, config, record, selected_patch, planned, mode,
+            zip_selected=zip_selected))
         result, error = "SUCCESS", None
     except (Abort, KeyboardInterrupt) as exc:
         result, error = "FAILED", exc

@@ -6,6 +6,8 @@ import logging
 from pathlib import Path
 
 from . import github
+from .action_applicability import (ActionFacts, action_unavailable,
+                                   DEPRECATED_BAP_REASON)
 from .branch_patch import BranchPatchActions
 from .console import outcome_label
 from .core.actions import ACTION_CODES, action_number
@@ -373,96 +375,75 @@ class Workflow(OperationPresentation):
         return github.sync_base(self.config, self.handoff, self.root, self.record, self.persist)
 
     def options(self):
-        pending_branch = self.record.get("zip_first") and self.record.get("applied_branch") == self.config.base
-        pending_reason = ("apply-first patch changes must be moved to a feature branch with 1 [BRN]"
-                          if pending_branch else None)
-        deprecated_bap = ("2 [BAP] is deprecated for self-contained ZIP workflows; use 3 [APL], then 1 [BRN]"
-                          if self.record.get("zip_first") else None)
+        pending_branch = (self.record.get("zip_first") is True
+                          and self.record.get("applied_branch") == self.config.base)
+        branch = current_branch(self.root)
+        facts = ActionFacts(
+            mode="force" if self.force else "loose" if self.loose else "strict",
+            phase=self.phase, branch=branch, planned_branch=self.handoff.branch,
+            applied_branch=self.applied_branch, base=self.config.base,
+            clean=is_clean(self.root) if not (self.loose or self.force) else True,
+            zip_selected=self.zip_selected, zip_first=self.record.get("zip_first") is True,
+            zip_pending_branch=pending_branch,
+            require_patch_feature_branch=self.config.require_patch_feature_branch)
+        unavailable = lambda number: action_unavailable(number, facts)
+        deprecated_bap = DEPRECATED_BAP_REASON if facts.zip_first else None
         if self.loose:
-            branch = current_branch(self.root)
             actions = self.loose_actions
             return [
                 ("Move applied patch to feature branch" if pending_branch else "Create/adopt a feature branch",
-                 self.branch_patch.prepare_branch_after_apply if pending_branch else actions.prepare_branch, None),
+                 self.branch_patch.prepare_branch_after_apply if pending_branch else actions.prepare_branch,
+                 unavailable(1)),
                 ("Deprecated: apply-first ZIP workflows do not support BAP" if deprecated_bap
                  else "Create/adopt a feature branch and apply patch",
-                 lambda: actions.prepare_branch(with_patch=True), pending_reason or deprecated_bap),
+                 lambda: actions.prepare_branch(with_patch=True), unavailable(2)),
                 (f"Apply another patch to current branch ({branch or 'detached HEAD'})",
-                 actions.apply_patch, pending_reason),
-                ("Run/re-run canonical checks (allow manual edits)", actions.verify, pending_reason),
-                ("Commit accumulated changes (do not push)", actions.commit, pending_reason),
-                ("Push committed changes on current branch", actions.push, pending_reason),
-                (f"Create/find PR for current patch branch -> {self.config.base}", actions.pr, pending_reason),
-                (f"Merge PR into {self.config.base}", actions.merge, pending_reason),
-                (f"Synchronize local {self.config.base} and reconcile PR status", actions.sync, pending_reason),
+                 actions.apply_patch, unavailable(3)),
+                ("Run/re-run canonical checks (allow manual edits)", actions.verify, unavailable(4)),
+                ("Commit accumulated changes (do not push)", actions.commit, unavailable(5)),
+                ("Push committed changes on current branch", actions.push, unavailable(6)),
+                (f"Create/find PR for current patch branch -> {self.config.base}", actions.pr, unavailable(7)),
+                (f"Merge PR into {self.config.base}", actions.merge, unavailable(8)),
+                (f"Synchronize local {self.config.base} and reconcile PR status", actions.sync, unavailable(9)),
             ]
         if self.force:
-            branch = current_branch(self.root)
             actions = self.force_actions
             return [
                 ("Move applied patch to feature branch" if pending_branch else "Create/adopt a feature branch",
-                 self.branch_patch.prepare_branch_after_apply if pending_branch else actions.prepare_branch, None),
+                 self.branch_patch.prepare_branch_after_apply if pending_branch else actions.prepare_branch,
+                 unavailable(1)),
                 ("Deprecated: apply-first ZIP workflows do not support BAP" if deprecated_bap
                  else "Create/adopt a feature branch and apply/adopt patch",
-                 lambda: actions.prepare_branch(with_patch=True), pending_reason or deprecated_bap),
+                 lambda: actions.prepare_branch(with_patch=True), unavailable(2)),
                 (f"Apply/adopt patch on current branch ({branch or 'detached HEAD'})",
-                 actions.apply_or_adopt, pending_reason),
-                ("Run/re-run canonical checks", actions.verify, pending_reason),
-                ("Commit and push current changes", actions.commit_push, pending_reason),
-                ("Retry/reconcile push", actions.push, pending_reason),
-                (f"Create/find PR for current patch branch -> {self.config.base}", actions.pr, pending_reason),
-                (f"Merge PR into {self.config.base}", actions.merge, pending_reason),
-                (f"Synchronize local {self.config.base} and reconcile PR status", actions.sync, pending_reason),
+                 actions.apply_or_adopt, unavailable(3)),
+                ("Run/re-run canonical checks", actions.verify, unavailable(4)),
+                ("Commit and push current changes", actions.commit_push, unavailable(5)),
+                ("Retry/reconcile push", actions.push, unavailable(6)),
+                (f"Create/find PR for current patch branch -> {self.config.base}", actions.pr, unavailable(7)),
+                (f"Merge PR into {self.config.base}", actions.merge, unavailable(8)),
+                (f"Synchronize local {self.config.base} and reconcile PR status", actions.sync, unavailable(9)),
             ]
-        phase = self.phase
-        branch = current_branch(self.root)
-        clean = is_clean(self.root)
-
-        def unavailable(phases, required_branch=None, require_clean=False):
-            if phase not in phases:
-                return f"requires phase: {', '.join(phases)}"
-            if required_branch is not None and branch != required_branch:
-                return f"requires current branch: {required_branch}"
-            if require_clean and not clean:
-                return "requires a clean working tree"
-            return None
-
-        def publish_unavailable():
-            reason = unavailable(("verified",))
-            if reason:
-                return reason
-            if self.applied_branch != self.handoff.branch:
-                return f"patch was applied to {self.applied_branch}; automated publishing requires {self.handoff.branch}"
-            return unavailable(("verified",), self.handoff.branch)
-
-        def patch_unavailable():
-            reason = unavailable((WorkflowPhase.NEW.value, WorkflowPhase.BRANCH_CREATED.value),
-                                 self.handoff.branch if self.config.require_patch_feature_branch
-                                 and not (phase == WorkflowPhase.NEW and branch == self.config.base and self.zip_selected)
-                                 else None, True)
-            return reason or ("requires a checked-out branch" if not branch else None)
-
         return [
             ("Move applied patch to feature branch" if pending_branch else "Create a feature branch",
              self.branch_patch.prepare_branch_after_apply if pending_branch else lambda: self.branch_patch.new_branch(),
-             None if pending_branch else unavailable((WorkflowPhase.NEW.value,), self.config.base, True)),
+             unavailable(1)),
             ("Deprecated: apply-first ZIP workflows do not support BAP" if deprecated_bap
              else "Create a feature branch and apply patch", lambda: self.branch_patch.new_branch(True),
-             pending_reason or deprecated_bap or unavailable((WorkflowPhase.NEW.value,), self.config.base, True)),
+             unavailable(2)),
             (f"Apply patch to current branch ({branch or 'detached HEAD'})", self.branch_patch.unpack,
-             pending_reason or patch_unavailable()),
+             unavailable(3)),
             ("Run/re-run canonical checks", self.verify,
-             pending_reason or unavailable((WorkflowPhase.PATCH_APPLIED.value,
-                                             WorkflowPhase.VERIFIED.value), self.applied_branch)),
+             unavailable(4)),
             ("Commit and push all verified changes", self.commit_push,
-             pending_reason or publish_unavailable()),
+             unavailable(5)),
             ("Retry push of the existing commit", self.push,
-             pending_reason or unavailable(("committed",), self.handoff.branch)),
+             unavailable(6)),
             (f"Create/find PR {self.handoff.branch} -> {self.config.base}", self.pr,
-             pending_reason or unavailable(("pushed",), self.handoff.branch)),
+             unavailable(7)),
             (f"Merge PR into {self.config.base} and switch to {self.config.base}", self.merge,
-             pending_reason or unavailable(("pr_created",), self.handoff.branch)),
+             unavailable(8)),
             (f"Resume synchronization of local {self.config.base}", self.sync,
-             pending_reason or unavailable(("merged",))),
+             unavailable(9)),
         ]
 

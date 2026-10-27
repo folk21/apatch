@@ -54,12 +54,10 @@ class StatusPolicyCharacterizationTests(unittest.TestCase):
                 self.assertIsNone(alternate)
                 self.assertIn("reconcile", reason.lower())
 
-    @unittest.expectedFailure
     def test_new_self_contained_zip_should_recommend_apl_before_brn(self) -> None:
-        # AS-05: The current phase-only policy incorrectly recommends BRN first.
         number, _, _ = recommend_next_action(
             "new", "loose", "main", "feature/example",
-            base="main", dirty=False,
+            base="main", dirty=False, zip_selected=True,
         )
         self.assertEqual(number, 3)
 
