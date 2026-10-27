@@ -18,7 +18,7 @@ Inputs include an untrusted ZIP with embedded handoff metadata (or a legacy exte
 ## Execution flow
 
 1. `apatch.sh` normalizes supported shell-friendly mode arguments and invokes the tool interpreter.
-2. `apatch.py` parses CLI options, identifies the actual target Git repository, and loads configuration. For a new cycle it verifies an explicitly selected ZIP and embedded handoff; for continuation it loads `.apatch/params.json`. Explicit legacy JSON selection remains supported.
+2. The thin `apatch.py` entry point passes an immutable request from `cli_request.py` to `application.py`. `handoff_selection.py` resolves explicitly selected ZIPs, legacy JSON, multi-ZIP inputs, or the verified cached handoff. Resolution does not authorize replay or bypass the existing ZIP-first admission gates.
 3. Project runtime artifacts are excluded locally from Git, log context is established, and the state file is opened under a lock. Legacy runtime data is migrated when appropriate.
 4. `Workflow` chooses the relevant action under LOOSE, STRICT, or FORCE, reports the current branch/phase, and coordinates the owning helpers.
 5. For lifecycle actions 1–9, a project-local `STARTED` run is atomically recorded before the helper acts. Helpers inspect actual filesystem/Git/GitHub state, update workflow checkpoints, then atomically record a terminal run outcome and bounded evidence. After a successful initial `APL`, the validated handoff and archive digest are cached locally.
@@ -37,6 +37,16 @@ the local base update is acknowledged, the unverified GitHub merge remains
 pending, and the operation journals a `NO_OP` rather than claiming completion.
 The existing context-local confirmation flag remains a compatibility adapter for
 legacy boolean prompts pending a separate confirmation API migration.
+
+The CLI entry point exposes its earlier helper names as compatibility exports;
+their implementation lives in `cli_request.py` and `handoff_selection.py`.
+`CliRequest` keeps parsed user intent immutable across direct, menu, and
+sequence dispatch. `HandoffSelection` records `NEW_ZIP`, `APPLIED_ZIP`,
+`CACHED_WORKFLOW`, `LEGACY_JSON`, or `CONFLICT` provenance for explicit
+inspection, but recorded provenance never grants permission to reapply a ZIP.
+`application.py` owns the single repository bootstrap and action dispatch.
+`cli_inspection.py` retains the early `STS`, `AUD`, and tool-wide progress
+paths without initializing writable workflow state or logging side effects.
 
 `journal_outcome_for_result()` provides one mapping from public action results
 to the existing schema-v2 operation journal: `SUCCESS` to `SUCCEEDED`,
@@ -112,7 +122,11 @@ reapplication, commit, or GitHub mutation follows the failure.
 
 | Module | Responsibility |
 | --- | --- |
-| `apatch.py`, `apatch.sh` | CLI parsing, handoff discovery, mode selection, top-level error handling |
+| `apatch.py`, `apatch.sh` | Thin CLI entry point, shell launcher, top-level error handling and legacy helper exports |
+| `apatch_lib/cli_request.py` | CLI aliases, argparse grammar, immutable request and option compatibility validation |
+| `apatch_lib/handoff_selection.py` | Read-only ZIP/JSON/cache selection, typed provenance and multi-handoff resolution |
+| `apatch_lib/application.py` | Single CLI dispatcher, repository bootstrap, admission gates and lifecycle coordination |
+| `apatch_lib/cli_inspection.py` | Read-only status, audit and progress presentation before lifecycle mutations |
 | `apatch_lib/workflow.py` | Action dispatch, phase coordination, menu and progress summaries |
 | `apatch_lib/console.py` | Shared terminal-only result colors and next-operation emphasis |
 | `apatch_lib/presentation/` | Action menu, console progress, and operation outcome classification |
