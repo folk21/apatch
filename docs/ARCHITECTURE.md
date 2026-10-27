@@ -72,6 +72,17 @@ inspection nor status advice mutates the checkpoint.
 
 `AUD` (`11`) also dispatches before any runtime artifact, progress recorder, or writable state lock is initialized. It first reads the installation-local global progress master without creating or repairing it and renders the latest attempted/successful operations for known projects as **recorded** history. Invalid optional global activity produces a bounded warning without suppressing independent repository findings. `apatch_lib/reconciliation.py` then reads the generation and application journals, historical workflow/run records, and local Git refs and objects. Its audit result separates recorded claims from verified facts, unknown coverage, and direct conflicts. All optional remote requests are explicitly gated by `verifyRemote=true`, bounded by configured timeouts, and converted to unknown coverage on failure. Malformed project-local state or symlinked journal sources are rejected. The report never repairs checkpoints, registries, PRs, or Git branches. Console inventory and findings are bounded; underlying stored history is not truncated or automatically deleted.
 
+Audit reconciliation has three independent ownership boundaries:
+`audit_collectors.py` reads bounded local files, validated checkpoint snapshots,
+Git evidence, and opt-in GitHub data without modifying any source;
+`audit_rules.py` interprets recorded patch order, workflow checkpoints,
+operation attempts, and supplied remote observations through pure functions;
+`reconciliation.py` coordinates these stages and renders the original
+`AuditReport` fields and console format. Remote collection remains behind the
+existing `_remote_snapshot` compatibility seam for tests and callers. The
+collectors do not assign `VERIFIED` to GitHub claims from stored state, and
+unavailable/incomplete remote coverage does not silently validate a PR.
+
 The CLI can be invoked interactively, by a direct operation number/mnemonic,
 or with a validated comma-separated `opSeq`. A sequence reuses the same action
 dispatch, refreshes branch/phase checks before each operation, and halts on an
@@ -161,7 +172,9 @@ reapplication, commit, or GitHub mutation follows the failure.
 | `apatch_lib/state.py`, `apatch_lib/operation_events.py` | Locked schema-v2 checkpoint persistence, version migration, and durable operation-run evidence |
 | `apatch_lib/progress.py` | Tool-global event summaries, cross-project identity, concurrency, privacy, and derived project histories |
 | `apatch_lib/status.py` | Read-only current patch evidence, cautious next-action suggestions, and report formatting |
-| `apatch_lib/reconciliation.py` | Global read-only history reconciliation, confidence/severity findings, optional bounded remote evidence |
+| `apatch_lib/audit_collectors.py` | Bounded no-follow history reads, local Git evidence and opt-in GitHub transport |
+| `apatch_lib/audit_rules.py` | Pure history/checkpoint/remote reconciliation rules and immutable findings |
+| `apatch_lib/reconciliation.py` | Read-only audit coordinator, public report contract and bounded rendering |
 | `apatch_lib/patch_history.py` | Per-patch application journal and duplicate detection |
 | `apatch_lib/created_patches.py` | Optional ordered list of generated ZIP basenames and fail-closed application ordering |
 | `apatch_lib/migration.py` | Compatibility with earlier runtime file locations and names |
