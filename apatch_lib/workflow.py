@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+from copy import deepcopy
 from pathlib import Path
 
 from . import github
@@ -22,6 +23,8 @@ from .patch import inspect
 from .patch_history import locked_history
 from .presentation.execution import OperationPresentation
 from .progress import utc_now
+from .session import (attach_applied_workflow, create_feature_session,
+                      remote_identity)
 from .state import finish_run, save, start_run
 from .gitutil import clear_confirmation_declined, confirmation_was_declined
 from .zip_resume import handoff_signature, verify_applied_zip
@@ -77,6 +80,62 @@ class Workflow(OperationPresentation):
         self.force_actions = ForceActions(self)
         self.loose_actions = LooseActions(self)
         self.skip_previous_cycles = skip_previous_cycles
+
+    def create_session(self):
+        """Explicitly initialize a session; ordinary CLI actions do not invoke this."""
+        if current_branch(self.root) not in {self.handoff.branch, self.config.base}:
+            raise Abort("Feature session creation requires the intended feature or base branch")
+        existing = deepcopy(self.state.get("feature_sessions"))
+        try:
+            session = create_feature_session(
+                self.state, root=self.root, remote_name=self.config.remote,
+                remote_url=output(["git", "remote", "get-url", self.config.remote], self.root),
+                base_branch=self.config.base, feature_branch=self.handoff.branch,
+                observed_head=head(self.root))
+            save(self.config.state_path, self.state)
+        except Exception:
+            if existing is None:
+                self.state.pop("feature_sessions", None)
+            else:
+                self.state["feature_sessions"] = existing
+            raise
+        return session
+
+    def attach_session(self, session_id: str):
+        """Opt in after recorded APL/BAP, under the existing project-state lock."""
+        sessions = self.state.get("feature_sessions", {})
+        session = sessions.get(session_id)
+        if (session is None or session.get("remote_name") != self.config.remote
+                or session.get("base_branch") != self.config.base
+                or session.get("remote_identity") != remote_identity(
+                    output(["git", "remote", "get-url", self.config.remote], self.root))):
+            raise Abort("Feature session remote or base context cannot be verified")
+        if current_branch(self.root) not in {self.handoff.branch, self.config.base}:
+            raise Abort("Feature session requires the intended feature or configured base branch")
+        if self.state["workflows"].get(self.key) is not self.record:
+            raise Abort("Selected workflow is not a persisted checkpoint")
+        if (self.record.get("handoff_signature") != self.signature
+                or self.record.get("archive_sha256") != self.handoff.patch_sha256):
+            raise Abort("Feature session link requires the verified selected ZIP identity")
+        old_sessions = deepcopy(self.state.get("feature_sessions"))
+        old_record = dict(self.record)
+        try:
+            with locked_history(self.config.applied_patches_path) as history:
+                entries = [item for item in history.entries if item.patch == self.handoff.patch]
+                if len(entries) != 1:
+                    raise Abort("Feature session requires exactly one applied history entry")
+                result = attach_applied_workflow(self.state, session_id, self.key,
+                                                 history_entry=entries[0])
+                save(self.config.state_path, self.state)
+        except Exception:
+            if old_sessions is None:
+                self.state.pop("feature_sessions", None)
+            else:
+                self.state["feature_sessions"] = old_sessions
+            self.record.clear()
+            self.record.update(old_record)
+            raise
+        return result
 
     def inspect_previous_cycles(self):
         """Offer a new patch cycle without changing any earlier checkpoint."""

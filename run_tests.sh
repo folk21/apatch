@@ -23,6 +23,7 @@ case "${1:-regular}" in
     regular|quick)
         exec "$TEST_PYTHON" -B -m unittest -v \
             tests.test_spec_state \
+            tests.test_feature_sessions \
             tests.test_architecture_characterization \
             tests.test_explicit_action_results \
             tests.test_cli_boundaries \

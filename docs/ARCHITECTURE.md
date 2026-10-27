@@ -54,6 +54,21 @@ to the existing schema-v2 operation journal: `SUCCESS` to `SUCCEEDED`,
 `INDETERMINATE`. Progress retains its established `NO_OP` spelling for an
 already-satisfied action. There is no new journal schema or automatic retry.
 
+Feature Session persistence is an additive, optional collection in the existing
+schema-v2 target-local checkpoint. `apatch_lib/session.py` validates opaque
+session IDs, repository/remote/base/feature identity, ordered patch-workflow
+links, recorded commits, PR revisions, and explicit terminal decisions. Remote
+URLs are stored only as SHA-256 identity fingerprints to avoid saving embedded
+credentials. An existing v1/v2 checkpoint remains readable; its unrelated
+fields, operation runs, individual ZIP workflows, and historical
+`superseded_by` values are preserved. `Workflow.create_session()` and
+`Workflow.attach_session()` are explicit internal APIs under the project-state
+lock. Attachment requires matching applied history and a successful operation
+run with the same ZIP digest. Ordinary CLI actions do not create or select a
+session, and these recorded associations neither authorize automated work nor
+assert live GitHub status. Context reconciliation and CLI session planning are
+reserved for later stages.
+
 For an explicitly named, already applied self-contained ZIP, `zip_resume.py`
 checks the current archive digest, stable handoff signature, latest structured
 applied-history entry, matching successful `APL` operation run and live local
@@ -181,6 +196,7 @@ reapplication, commit, or GitHub mutation follows the failure.
 | `apatch_lib/params_cache.py` | Restricted, locked, atomic persistence of a verified project-local handoff |
 | `apatch_lib/model.py` | Handoff and configuration schema, path validation, shared records |
 | `apatch_lib/state.py`, `apatch_lib/operation_events.py` | Locked schema-v2 checkpoint persistence, version migration, and durable operation-run evidence |
+| `apatch_lib/session.py` | Optional feature-session persistence, validation, explicit linkage and recorded revision associations |
 | `apatch_lib/progress.py` | Tool-global event summaries, cross-project identity, concurrency, privacy, and derived project histories |
 | `apatch_lib/status.py` | Read-only current patch evidence, cautious next-action suggestions, and report formatting |
 | `apatch_lib/audit_collectors.py` | Bounded no-follow history reads, local Git evidence and opt-in GitHub transport |

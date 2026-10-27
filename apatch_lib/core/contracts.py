@@ -40,9 +40,14 @@ class WorkflowRecord(TypedDict, total=False):
     continued_by: str
     continued_patch: str
     superseded_by: str
+    session_id: str
 
 
-class StateDocument(TypedDict):
+class _OptionalStateFields(TypedDict, total=False):
+    feature_sessions: dict[str, dict[str, object]]
+
+
+class StateDocument(_OptionalStateFields):
     schema_version: int
     workflows: dict[str, WorkflowRecord]
     operation_runs: list[dict[str, object]]
