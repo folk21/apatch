@@ -25,6 +25,7 @@ case "${1:-regular}" in
             tests.test_spec_state \
             tests.test_feature_sessions \
             tests.test_context \
+            tests.test_session_continuation \
             tests.test_architecture_characterization \
             tests.test_explicit_action_results \
             tests.test_cli_boundaries \

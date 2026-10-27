@@ -34,9 +34,10 @@ developer installation, formal review, acceptance, or macOS verification.
   and current-facing usage documentation in the baseline. FS-01 adds optional
   schema-v2 feature-session persistence and explicit association evidence; the
   developer reported its application successful, but formal review and
-  acceptance are not recorded. The FS-02 candidate adds internal read-only
-  context classification without a public goal planner. FS-03–FS-06 remain
-  proposed.
+  acceptance are not recorded. FS-02 adds internal read-only context
+  classification. The FS-03 candidate adds opt-in, internal continuation after
+  commit/push with explicit active-session and remote guards. FS-04–FS-06
+  remain proposed; no public goal planner is enabled.
 - **SUB-004:** WM-01 read-only `AUD` activity and WM-02 project-local base
   selection have source/tests. WM-03–WM-05 remain planned; WM-06 is deferred.
 - **SUB-005:** AS-01–AS-07 have corresponding source, regression and/or
@@ -82,10 +83,10 @@ state must be reported rather than inferred from README or other documents.
 
 This file is completely separate from the product's target-local
 `<target>/.apatch/apply_patch.state.json` used for ZIP/Git operation history.
-The current proposed SDD checkpoint selects SUB-003 FS-02 at
+The current proposed SDD checkpoint selects SUB-003 FS-03 at
 `READY_FOR_REVIEW`; all other workstreams are `ON_HOLD`. The checkpoint
-describes the FS-02 handoff candidate, not verified installation, independent
-review or developer acceptance of either FS-01 or FS-02.
+describes the FS-03 handoff candidate, not verified installation, independent
+review or developer acceptance of any preceding feature-session stage.
 
 ## Implementation-plan mapping and migration
 

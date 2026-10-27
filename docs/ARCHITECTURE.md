@@ -70,8 +70,17 @@ assert live GitHub status. The internal `apatch_lib/context.py:inspect_context`
 performs FS-02 read-only diagnosis using local Git, optional feature-session
 and ZIP evidence, configured checks, and explicitly requested remote reads.
 Its immutable `ContextReport` reports candidate scenarios and missing evidence
-without authorizing mutations. CLI goal planning and automatic continuation
-remain later stages.
+without authorizing mutations. The FS-03 internal session-continuation path
+in `apatch_lib/session_continuation.py` separately verifies a committed or
+published predecessor against the active session, applied journal, current
+HEAD, remote revision, and a unique open PR when present. The guarded
+`Workflow.apply_session_zip()` API invokes one new LOOSE `APL`, then links its
+successful application to the same session without modifying prior patch,
+commit, or PR records. Local changes overlapping the incoming ZIP are blocked
+before extraction; disjoint developer edits are preserved. The legacy
+`followup=true` path and direct CLI commands retain their previous behavior.
+The new internal API has no public CLI goal dispatcher or automatic commit,
+push, or PR publication; those remain later stages.
 
 For an explicitly named, already applied self-contained ZIP, `zip_resume.py`
 checks the current archive digest, stable handoff signature, latest structured
