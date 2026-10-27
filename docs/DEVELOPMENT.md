@@ -49,9 +49,28 @@ components such as macOS `/private/var`.
 
 - Run focused regression tests for affected modes and edge cases before the extended suite. Keep high-priority scenarios in the curated regular command when new regressions justify it.
 - Use temporary repositories and local bare remotes for Git integration tests; keep GitHub interactions mocked.
-- For shell changes, run `sh -n apatch.sh`, `sh -n run_tests.sh`, and `sh -n run_rare_checks.sh`.
+- For shell changes, run `sh -n apatch.sh`, `sh -n run_tests.sh`, `sh -n run_rare_checks.sh`, and `sh -n run_quality.sh`.
 - For documentation changes, verify relative links, file paths, CLI examples, and the separation between global and project configuration.
 - Report the tests actually run and their environment. Passing Linux tests does not establish macOS compatibility.
+
+## Optional non-mutating quality checks
+
+Quality checks are separate from the target repository's canonical `CHK` commands and the normal test launchers. Install the optional development tools in the same interpreter that `run_quality.sh` selects (`.venv/bin/python` if present, otherwise `python3`). With a project virtual environment:
+
+```bash
+.venv/bin/python -m pip install -r requirements-quality.txt
+sh ./run_quality.sh all
+sh ./run_quality.sh lint
+sh ./run_quality.sh types
+```
+
+Without `.venv`, use `python3 -m pip install -r requirements-quality.txt` first.
+
+The launcher exits **2** and prints `NOT_RUN` if a requested optional tool is missing. A missing linter or type checker is not a passed gate. `ruff check --no-cache`, `ruff format --check --no-cache`, and `mypy --no-incremental --cache-dir=/dev/null` inspect source without rewriting it or creating project-local tool caches. `run_quality.sh` never invokes Ruff's formatting or fix modes.
+
+The first **Ruff lint** scope is `apatch_lib/core/`, `apatch_lib/action_applicability.py`, and `apatch_lib/audit_rules.py`, using E4/E7/E9/F rules. The narrower **format-check** scope is `core/__init__.py`, `core/contracts.py`, and `core/enums.py`, which already conform. The first **mypy** scope is `core/actions.py`, `core/contracts.py`, `core/enums.py`, `core/paths.py`, and `action_applicability.py`. Unchecked imported modules are deliberately excluded with `follow_imports=skip`; this is a partial boundary check, not whole-project type safety. The configuration targets Python 3.10.
+
+A baseline Ruff inventory of `apatch.py`, `apatch_lib/`, and `tests/` found 272 lint findings before this gate, mainly unused imports. The broader tree also has formatting differences. Expand each scope only after the newly included files pass without unrelated mass rewrites; use the separate Ruff commands to inventory remaining debt. The optional dependencies do not belong in runtime `requirements.txt`, and no automatic GitHub pull-request trigger is added.
 
 ## SDD documentation lifecycle
 

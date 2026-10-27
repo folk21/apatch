@@ -20,7 +20,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 TOOL = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(TOOL))
 from apatch_lib.model import Abort, RemoteOutcomeUnknown, load_handoff, load_project_config, safe_relative
 from apatch_lib.patch import inspect
 from apatch_lib.model import load_config
