@@ -36,9 +36,9 @@ class SpecStateTests(unittest.TestCase):
     def test_current_state_is_valid_read_only_and_focus_is_explicit(self) -> None:
         before = STATE_PATH.read_bytes()
         result = validate_state()
-        self.assertEqual(result["selectedWorkstreamId"], "feature-sessions")
+        self.assertEqual(result["selectedWorkstreamId"], "operational-workflows")
         self.assertEqual(next(w for w in result["workstreams"]
-                              if w["id"] == "feature-sessions")["stageId"], "FS-06")
+                              if w["id"] == "operational-workflows")["stageId"], "WM-03")
         self.assertEqual({item["id"] for item in result["workstreams"]},
                          {"feature-sessions", "operational-workflows"})
         self.assertEqual(STATE_PATH.read_bytes(), before)
@@ -50,7 +50,7 @@ class SpecStateTests(unittest.TestCase):
             cwd=ROOT, text=True, capture_output=True, check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("SDD STATE VALID: feature-sessions", result.stdout)
+        self.assertIn("SDD STATE VALID: operational-workflows", result.stdout)
         self.assertEqual(STATE_PATH.read_bytes(), before)
 
     def test_rejects_unknown_and_missing_root_fields(self) -> None:
@@ -74,7 +74,7 @@ class SpecStateTests(unittest.TestCase):
         data["selectedWorkstreamId"] = "missing-focus"
         self.assert_invalid(data, "Selected workstream does not exist")
         data = copy.deepcopy(self.original)
-        self.record(data, "feature-sessions")["phase"] = "ON_HOLD"
+        self.record(data, data["selectedWorkstreamId"])["phase"] = "ON_HOLD"
         self.assert_invalid(data, "Selected workstream cannot be paused")
 
     def test_rejects_duplicate_ids_or_spec_paths(self) -> None:
@@ -97,7 +97,7 @@ class SpecStateTests(unittest.TestCase):
                 data["workstreams"][0][key] = value
                 self.assert_invalid(data, expected)
         data = copy.deepcopy(self.original)
-        self.record(data, "operational-workflows")["phase"] = "READY_FOR_IMPLEMENTATION"
+        self.record(data, "feature-sessions")["phase"] = "READY_FOR_IMPLEMENTATION"
         self.assert_invalid(data, "Only the selected SINGLE")
 
     def test_spec_lifecycle_has_one_canonical_spec_and_plan_per_owner(self) -> None:

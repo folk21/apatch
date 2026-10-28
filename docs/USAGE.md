@@ -110,6 +110,40 @@ GitHub review/CI, revision or fast-forward protections.
 These goal semantics do not change standalone `op`, deterministic `opSeq`,
 or FORCE recovery behavior.
 
+### Local workflow macros (`op=APPLY_PATCH`, `op=APPLY_PATCH_CHECK`; WM-03)
+
+In LOOSE mode, two named macros reuse the guarded ZIP/session planner without
+changing the numeric operation IDs or expanding `opSeq` behind the scenes:
+
+```bash
+apatch.sh my-new-patch op=APPLY_PATCH skipApproves=true
+apatch.sh my-new-patch op=APPLY_PATCH_CHECK skipApproves=true
+apatch.sh op=APPLY_PATCH_CHECK skipApproves=true
+```
+
+`APPLY_PATCH` stops after safe `APL` and any necessary `BRN`; it does not run
+checks or commit. `APPLY_PATCH_CHECK` additionally runs canonical `CHK` and
+requires stable verified bytes. Both re-evaluate the exact ZIP, branch, HEAD,
+recorded application and active session after each completed action. An
+already-applied ZIP is not extracted again; a pending initial branch transfer
+can resume at `BRN`. A missing ZIP, ambiguous history, unsafe collision,
+wrong checkout or missing check executable stops before an unsupported step.
+Neither macro implicitly enables `followup=true` or accepts legacy JSON.
+
+Each invocation prints executed, independently verified already-satisfied,
+and not-executed actions. It then attempts a final `10 [STS]` report, even if
+the macro fails. An unavailable final status produces its own warning and does
+not replace the original failure or success exit code. The report does not
+perform remote GitHub writes. `skipApproves=true` still skips confirmations
+only, never the safety checks.
+
+`MERGE` and `RUN_ALL` are reserved macro names, but their execution remains
+unavailable until WM-05; they report a clear error instead of performing a
+partially guarded publication. `MRG` retains its existing atomic action
+meaning. Macros reject STRICT/FORCE and cannot be combined with `opSeq`,
+`handoffSeq`, `followup`, or a `goal` option. Existing `op=NUMBER`, `op=CODE`
+and exact sequences are unchanged.
+
 ### Several operations in one invocation (`opSeq`)
 
 `opSeq` runs its comma-separated actions in order using the same checks and
@@ -597,7 +631,7 @@ Commands run sequentially from the target repository root; execution stops on th
 
 `check_timeout_seconds` bounds the **total duration** of each canonical check (integer 1–3600, default `900`). `check_idle_timeout_seconds` bounds the time **without a complete output line** (integer 1–3600, default `30`). Both settings may be overridden in `.apatch/config.yaml`; for example, a silent build taking longer than 30 seconds can set `check_idle_timeout_seconds: 120`. On either timeout, `apatch` terminates the check's process group and stops the sequence before commit or publication. The idle limit prevents a hung check from consuming the entire total deadline when it stops reporting progress.
 
-For the `apatch` tool's own repository, `./run_tests.sh` runs the fast regular safety suite by default, and `./run_rare_checks.sh` runs the complete regression suite. `CHK` executes only the checks explicitly listed in the target repository's `.apatch/config.yaml`; it does not automatically run the extended suite. GitHub Actions is manual-only and publishes no automatic push/PR test results. Run the extended suite locally before merging, even when `require_required_checks: false` is configured. GitHub branch-protection rules may independently require checks; verify those rules before relying on manual-only testing. See [Development](DEVELOPMENT.md).
+For the `apatch` tool's own repository, `./run_tests.sh` runs a bounded regular smoke suite by default, and `./run_rare_checks.sh` runs the complete regression suite. Routine tests use two parallel workers on macOS (four elsewhere); set `APATCH_TEST_WORKERS=1`, `2`, `3`, or `4` to override this limit. A timed-out test receives one serial retry only while the suite-wide three-retry budget remains available. Unrecovered or unretried timeouts fail the suite. `CHK` executes only the checks explicitly listed in the target repository's `.apatch/config.yaml`; it does not automatically run the extended suite. GitHub Actions is manual-only and publishes no automatic push/PR test results. Run the extended suite locally before merging, even when `require_required_checks: false` is configured. GitHub branch-protection rules may independently require checks; verify those rules before relying on manual-only testing. See [Development](DEVELOPMENT.md).
 
 If the project configuration is missing, malformed, or has no commands, `apatch` stops with an explicit error. Adjust the example commands to match each target repository.
 

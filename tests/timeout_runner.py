@@ -17,6 +17,22 @@ from pathlib import Path
 _TIMEOUT_TEXT = re.compile(r"\b(?:timed?\s*out|timeout|stalled with no output)\b", re.IGNORECASE)
 TEST_CASE_TIMEOUT_SECONDS = 30
 MAX_OUTPUT_CHARACTERS = 8000
+MAX_TEST_WORKERS = 4
+MAX_SERIAL_RETRIES = 3
+
+
+def configured_workers(value=None, *, platform=None):
+    """Choose a bounded worker count, reducing contention on macOS."""
+    platform = sys.platform if platform is None else platform
+    if value is None:
+        return 2 if platform == "darwin" else 4
+    try:
+        count = int(value)
+    except (ValueError, TypeError) as exc:
+        raise ValueError("APATCH_TEST_WORKERS must be an integer from 1 to 4") from exc
+    if str(count) != str(value) or not 1 <= count <= MAX_TEST_WORKERS:
+        raise ValueError("APATCH_TEST_WORKERS must be an integer from 1 to 4")
+    return count
 
 
 def is_timeout_error(error):
@@ -113,12 +129,21 @@ def _run_test_in_process(test_id, root, env, timeout_seconds):
 
 
 def run_isolated_test_ids(test_ids, *, timeout_seconds=TEST_CASE_TIMEOUT_SECONDS,
-                          workers=4, stream=None):
+                          workers=4, max_serial_retries=MAX_SERIAL_RETRIES,
+                          stream=None):
     """Execute in parallel without sharing mutable Git fixtures or live GitHub."""
+    if not 1 <= workers <= MAX_TEST_WORKERS:
+        raise ValueError("workers must be an integer from 1 to 4")
+    if not isinstance(max_serial_retries, int) or max_serial_retries < 0:
+        raise ValueError("max_serial_retries must be a nonnegative integer")
     stream = sys.stderr if stream is None else stream
     root = Path(__file__).resolve().parents[1]
     started = time.monotonic()
     results = []
+    total = len(test_ids)
+    print(f"TEST RUNNER: {total} cases; workers={workers}; "
+          f"per-case timeout={timeout_seconds:g}s; "
+          f"serial retry cap={max_serial_retries}", file=stream, flush=True)
     with tempfile.TemporaryDirectory(prefix="apatch-offline-gh-") as directory:
         environment = os.environ.copy()
         if os.name == "posix":
@@ -137,11 +162,11 @@ def run_isolated_test_ids(test_ids, *, timeout_seconds=TEST_CASE_TIMEOUT_SECONDS
                             timeout_seconds): test_id
                 for test_id in test_ids
             }
-            for future in as_completed(futures):
+            for completed, future in enumerate(as_completed(futures), start=1):
                 result = future.result()
                 results.append(result)
-                print(f"{result.test_id} ... {result.outcome} ({result.elapsed:.2f}s)",
-                      file=stream, flush=True)
+                print(f"[{completed}/{total}] {result.test_id} ... "
+                      f"{result.outcome} ({result.elapsed:.2f}s)", file=stream, flush=True)
                 if result.outcome != "OK":
                     details = (result.stdout + "\n" + result.stderr).strip()
                     if len(details) > MAX_OUTPUT_CHARACTERS:
@@ -150,10 +175,20 @@ def run_isolated_test_ids(test_ids, *, timeout_seconds=TEST_CASE_TIMEOUT_SECONDS
                         print(details, file=stream, flush=True)
         first_timeouts = {item.test_id for item in results if item.outcome == "TIMEOUT"}
         recovered = set()
+        skipped_retries = set()
+        retried = 0
         for index, result in enumerate(results):
             if result.outcome != "TIMEOUT":
                 continue
-            print(f"RETRY (serial) {result.test_id} after concurrent timeout",
+            if retried >= max_serial_retries:
+                skipped_retries.add(result.test_id)
+                print(f"RETRY SKIPPED {result.test_id}: "
+                      f"serial retry cap {max_serial_retries} reached",
+                      file=stream, flush=True)
+                continue
+            retried += 1
+            print(f"RETRY (serial {retried}/{max_serial_retries}) "
+                  f"{result.test_id} after concurrent timeout",
                   file=stream, flush=True)
             retry = _run_test_in_process(result.test_id, root, environment, timeout_seconds)
             results[index] = retry
@@ -177,8 +212,12 @@ def run_isolated_test_ids(test_ids, *, timeout_seconds=TEST_CASE_TIMEOUT_SECONDS
         print("OK", file=stream)
     print(f"\nTIMEOUT-AFFECTED TESTS: {len(timed_out)}", file=stream)
     for test_id in timed_out:
-        status = "recovered on serial retry" if test_id in recovered else "not recovered"
+        status = ("recovered on serial retry" if test_id in recovered
+                  else "not retried (retry cap reached)" if test_id in skipped_retries
+                  else "not recovered")
         print(f"  {test_id} ({status})", file=stream)
+    print(f"SERIAL RETRIES: {retried} attempted, {len(skipped_retries)} skipped "
+          f"(cap={max_serial_retries})", file=stream)
     return results
 
 
@@ -199,7 +238,11 @@ def main():
             parser.error("specify test names or --full")
         suite = unittest.defaultTestLoader.loadTestsFromNames(args.tests)
     test_ids = list(_flatten_test_ids(suite))
-    results = run_isolated_test_ids(test_ids)
+    try:
+        workers = configured_workers(os.environ.get("APATCH_TEST_WORKERS"))
+    except ValueError as exc:
+        parser.error(str(exc))
+    results = run_isolated_test_ids(test_ids, workers=workers)
     return 0 if all(item.outcome == "OK" for item in results) else 1
 
 

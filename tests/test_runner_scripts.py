@@ -38,7 +38,7 @@ class RunnerScriptsTests(unittest.TestCase):
         args = self.arguments_file.read_text().splitlines() if self.arguments_file.exists() else []
         return result, args
 
-    def test_default_and_quick_run_regular_checks(self):
+    def test_default_quick_and_regular_run_curated_checks(self):
         for options in ((), ("regular",), ("quick",)):
             with self.subTest(options=options):
                 result, args = self.invoke("run_tests.sh", *options)
@@ -46,9 +46,20 @@ class RunnerScriptsTests(unittest.TestCase):
                 self.assertEqual(args[:4], ["-B", "-m", "tests.timeout_runner", "-v"])
                 self.assertNotIn("discover", args)
                 self.assertIn("tests.test_runner_scripts", args)
-                self.assertIn("tests.test_context", args)
-                self.assertIn("tests.test_session_continuation", args)
-                self.assertIn("tests.test_handoffs.HandoffsTests.test_self_contained_lifecycle_strict", args)
+                self.assertIn(
+                    "tests.test_context.ContextTests."
+                    "test_new_base_is_local_candidate_not_unverified_remote_authorization",
+                    args)
+                self.assertIn(
+                    "tests.test_session_continuation.SessionContinuationTests."
+                    "test_modified_collision_blocks_before_history_or_source_writes",
+                    args)
+                self.assertIn("tests.test_macros", args)
+                self.assertIn(
+                    "tests.test_handoffs.HandoffsTests.test_self_contained_lifecycle_loose",
+                    args)
+                self.assertNotIn("tests.test_publication_goals", args)
+                self.assertLess(len(args), 50)
 
     def test_rare_launcher_and_full_alias_run_all_tests(self):
         for script, options in (("run_rare_checks.sh", ()), ("run_tests.sh", ("full",))):

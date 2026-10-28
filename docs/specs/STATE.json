@@ -1,19 +1,19 @@
 {
   "schemaVersion": 1,
   "mode": "SINGLE",
-  "selectedWorkstreamId": "feature-sessions",
+  "selectedWorkstreamId": "operational-workflows",
   "workstreams": [
     {
       "id": "feature-sessions",
       "specPath": "docs/specs/active/subspecs/subspec-03-feature-session-planning.md",
       "stageId": "FS-06",
-      "phase": "READY_FOR_REVIEW"
+      "phase": "ON_HOLD"
     },
     {
       "id": "operational-workflows",
       "specPath": "docs/specs/active/subspecs/subspec-04-operational-workflows.md",
       "stageId": "WM-03",
-      "phase": "ON_HOLD"
+      "phase": "READY_FOR_REVIEW"
     }
   ]
 }

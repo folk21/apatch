@@ -333,6 +333,12 @@ Error text is actionable, but a successful CLI return does not imply that the re
 
 The remote `MERGED` goal records the confirmed PR merge, synchronizes the configured base branch via `SYN`, and closes the linked feature session. If `SYN` succeeded but final session closure was interrupted, a subsequent explicit `goal=MERGED` verifies the same live PR revision, synchronized base HEAD, ZIP, and session identity before executing local-only `FIN`. This step does not push, create a PR, merge, or synchronize again; unverifiable or mismatched evidence blocks finalization.
 
+### Local macro coordination (WM-03)
+
+`apatch_lib/macros.py` translates the two supported local named operations to the existing evidence-driven planner. The internal `APPLIED` goal ends after `APL` and necessary `BRN`; `CHECKED` additionally requires stable `CHK`. Every atomic action still uses its existing `Workflow` dispatcher, journal and safety gates. A completion callback records only independently successful operations for the macro summary; a failed or cancelled action does not become an already-satisfied step. Macro dispatch is separate from the numbered action table and exact `opSeq` grammar.
+
+Final status uses the ordinary repository-local `10 [STS]` reader. It is best effort, runs after the macro success or error path, and cannot override the original exception or exit status. The tool-wide progress entry for `STS` remains separate from target-repository mutation evidence. The remote `MERGE` and `RUN_ALL` macros are deliberately reserved until the guarded WM-05 implementation.
+
 ## Extension points
 
 Before adding an operation or changing a mode, inspect the owning helper, CLI parsing, status messages, state/history implications, and black-box tests. Update the public operation matrix in Usage and regression coverage together. For significant behavior changes, establish a normative SDD spec first; the initial spec will be introduced separately.

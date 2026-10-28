@@ -11,8 +11,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tests._support import run_bounded
-from tests.timeout_runner import (IsolatedResult, TimeoutSummaryRunner, is_timeout_error,
-                                  run_isolated_test_ids)
+from tests.timeout_runner import (IsolatedResult, TimeoutSummaryRunner, configured_workers,
+                                  is_timeout_error, run_isolated_test_ids)
 
 
 class IsolatedSampleCases(unittest.TestCase):
@@ -32,6 +32,40 @@ class IsolatedSampleCases(unittest.TestCase):
 
 
 class TimeoutReportingTests(unittest.TestCase):
+    def test_worker_selection_is_platform_aware_and_bounded(self):
+        self.assertEqual(configured_workers(platform="darwin"), 2)
+        self.assertEqual(configured_workers(platform="linux"), 4)
+        self.assertEqual(configured_workers("1", platform="darwin"), 1)
+        self.assertEqual(configured_workers("4", platform="darwin"), 4)
+        for invalid in ("", "0", "5", "-1", "two", "2.0", " 2"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaisesRegex(ValueError, "APATCH_TEST_WORKERS"):
+                    configured_workers(invalid, platform="darwin")
+
+    def test_many_concurrent_timeouts_have_bounded_serial_retries(self):
+        names = [f"tests.sample.SlowCases.test_{index}" for index in range(4)]
+        output = StringIO()
+        attempts = iter([IsolatedResult(name, "TIMEOUT", 0.2, "", "")
+                         for name in names] +
+                        [IsolatedResult(names[0], "OK", 0.1, "", "")])
+        with patch("tests.timeout_runner._run_test_in_process",
+                   side_effect=lambda *_: next(attempts)) as run:
+            results = run_isolated_test_ids(names, timeout_seconds=0.2,
+                                            workers=2, max_serial_retries=1,
+                                            stream=output)
+        self.assertEqual(run.call_count, 5)
+        self.assertEqual(sum(result.outcome == "TIMEOUT" for result in results), 3)
+        self.assertIn("RETRY SKIPPED", output.getvalue())
+        self.assertIn("not retried (retry cap reached)", output.getvalue())
+        self.assertIn("SERIAL RETRIES: 1 attempted, 3 skipped", output.getvalue())
+        self.assertIn("[4/4]", output.getvalue())
+
+    def test_invalid_runner_configuration_fails_before_any_test_runs(self):
+        with self.assertRaisesRegex(ValueError, "workers"):
+            run_isolated_test_ids([], workers=0)
+        with self.assertRaisesRegex(ValueError, "max_serial_retries"):
+            run_isolated_test_ids([], max_serial_retries=-1)
+
     def test_concurrent_timeout_recovers_on_one_serial_retry(self):
         test_id = "tests.sample.RetryableCase.test_work"
         output = StringIO()
