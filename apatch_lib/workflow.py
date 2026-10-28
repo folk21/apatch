@@ -49,6 +49,8 @@ class Workflow(OperationPresentation):
         self.zip_selected = zip_selected
         self.allow_followup_zip = allow_followup_zip
         self._session_continuation_id = None
+        self._goal_guarded_session_id = None
+        self._goal_guarded_continuation = False
         self.progress_recorder = progress_recorder
         self.progress_sequence = None
         self.operation_run_id = None
@@ -496,6 +498,11 @@ class Workflow(OperationPresentation):
         deprecated_bap = DEPRECATED_BAP_REASON if facts.zip_first else None
         if self.loose:
             actions = self.loose_actions
+            guarded_session_id = self._goal_guarded_session_id
+            check_action = ((lambda: actions.guarded_check(guarded_session_id))
+                            if guarded_session_id else actions.verify)
+            commit_action = ((lambda: actions.guarded_commit(guarded_session_id))
+                             if guarded_session_id else actions.commit)
             return [
                 ("Move applied patch to feature branch" if pending_branch else "Create/adopt a feature branch",
                  self.branch_patch.prepare_branch_after_apply if pending_branch else actions.prepare_branch,
@@ -505,8 +512,12 @@ class Workflow(OperationPresentation):
                  lambda: actions.prepare_branch(with_patch=True), unavailable(2)),
                 (f"Apply another patch to current branch ({branch or 'detached HEAD'})",
                  actions.apply_patch, unavailable(3)),
-                ("Run/re-run canonical checks (allow manual edits)", actions.verify, unavailable(4)),
-                ("Commit accumulated changes (do not push)", actions.commit, unavailable(5)),
+                ("Run guarded goal checks" if guarded_session_id
+                 else "Run/re-run canonical checks (allow manual edits)",
+                 check_action, unavailable(4)),
+                ("Commit verified goal scope" if guarded_session_id
+                 else "Commit accumulated changes (do not push)",
+                 commit_action, unavailable(5)),
                 ("Push committed changes on current branch", actions.push, unavailable(6)),
                 (f"Create/find PR for current patch branch -> {self.config.base}", actions.pr, unavailable(7)),
                 (f"Merge PR into {self.config.base}", actions.merge, unavailable(8)),
@@ -552,4 +563,3 @@ class Workflow(OperationPresentation):
             (f"Resume synchronization of local {self.config.base}", self.sync,
              unavailable(9)),
         ]
-

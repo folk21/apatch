@@ -47,8 +47,13 @@ Staging is a deliberate local mutation. If it is interrupted or checks fail,
 the staged index remains intact for inspection. No automatic unstaging,
 reset, push, PR creation or merge is attempted. Legacy direct LOOSE `CMT`
 is unchanged, including its supervised `git add -A` behavior. The stricter
-internal path is **not yet exposed by a public `goal=` CLI**; FS-05 must
-define explicit manual-path approval syntax and planner routing before
-enabling unattended commits.
+guarded path is available through LOOSE `goal=CHECKED|COMMITTED` only for
+a uniquely verified session and exact ZIP-owned changed paths. This first
+release has **no** manual-path approval flag: pre-existing staged or
+unclassified manual paths block unattended goal execution even with
+`skipApproves=true`. Use supervised direct LOOSE actions when a separate
+manual change needs review. `planOnly=true` reads local evidence without
+creating state or touching the Git index. Local goals do not authorize any
+push, PR, merge or sync.
 
 The project currently has no published license. Maintainers must select a license explicitly; its terms cannot be inferred from repository visibility.

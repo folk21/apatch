@@ -113,12 +113,14 @@ def _owned_paths(workflow, session_id: str) -> tuple[set[str], set[str]]:
             raise WaitingForUser(
                 "WAITING_FOR_USER: Pending patch ownership was not recorded; use "
                 "supervised LOOSE CMT or a later explicitly reviewed migration")
-        owned.update(footprint)
         staged = record.get("preexisting_staged_paths")
         if type(staged) is not list:
             raise WaitingForUser(
                 "WAITING_FOR_USER: Pre-application staged paths were not classified")
-        preexisting_staged.update(staged)
+        # Earlier session-owned ZIP changes may already be staged by guarded CHK.
+        # Only newly introduced staged paths need separate manual acceptance.
+        preexisting_staged.update(set(staged) - owned)
+        owned.update(footprint)
     if not owned or workflow.record.get("phase") not in {"patch_applied", "verified"}:
         raise Abort("Guarded commit requires an applied, uncommitted session patch")
     for key, record in state["workflows"].items():

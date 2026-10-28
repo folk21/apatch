@@ -6,6 +6,7 @@ import os
 import re
 import shlex
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -29,8 +30,41 @@ from apatch_lib.sequence import OperationSequence, execute_sequence
 from apatch_lib.workflow import outcome_label
 
 
+TEST_COMMAND_TIMEOUT_SECONDS = 30
+
+
+def run_bounded(argv, *, cwd, input=None, check=False,
+                timeout_seconds=TEST_COMMAND_TIMEOUT_SECONDS):
+    """Bound a test subprocess and its descendants without contacting real remotes."""
+    command_line = [str(item) for item in argv]
+    with subprocess.Popen(command_line, cwd=cwd,
+                          stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                          start_new_session=os.name == "posix") as process:
+        try:
+            stdout, stderr = process.communicate(input=input, timeout=timeout_seconds)
+        except subprocess.TimeoutExpired as exc:
+            if os.name == "posix":
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            else:
+                process.kill()
+            try:
+                stdout, stderr = process.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                stdout, stderr = exc.stdout, exc.stderr
+            raise subprocess.TimeoutExpired(command_line, timeout_seconds,
+                                            output=stdout, stderr=stderr) from exc
+    result = subprocess.CompletedProcess(command_line, process.returncode, stdout, stderr)
+    if check:
+        result.check_returncode()
+    return result
+
+
 def command(*args, cwd):
-    return subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=True)
+    return run_bounded(args, cwd=cwd, check=True)
 
 
 
@@ -112,8 +146,8 @@ class LocalGitFixture(unittest.TestCase):
     def invoke(self, text, *options):
         if not any(option in {"--strict", "--loose", "--force"} for option in options):
             options = ("--strict", *options)
-        return subprocess.run([sys.executable, str(self.bin / "apatch.py"), str(self.params), *options],
-                              cwd=self.root, input=text, capture_output=True, text=True)
+        return run_bounded([sys.executable, str(self.bin / "apatch.py"), str(self.params), *options],
+                           cwd=self.root, input=text)
 
     def invoke_force(self, text):
         return self.invoke(text, "--force")
@@ -122,8 +156,8 @@ class LocalGitFixture(unittest.TestCase):
         return self.invoke(text, "--loose")
 
     def invoke_cli(self, *options, text=""):
-        return subprocess.run([sys.executable, str(self.bin / "apatch.py"), str(self.params), *options],
-                              cwd=self.root, input=text, capture_output=True, text=True)
+        return run_bounded([sys.executable, str(self.bin / "apatch.py"), str(self.params), *options],
+                           cwd=self.root, input=text)
 
     def make_self_contained_zip(self, *, override=None, include_metadata=True):
         """Rebuild the test patch with the verified self-contained handoff member."""
@@ -154,8 +188,8 @@ class LocalGitFixture(unittest.TestCase):
 
     def invoke_zip(self, *options, selection=None, text=""):
         arguments = ([selection] if selection is not None else []) + list(options)
-        return subprocess.run([sys.executable, str(self.bin / "apatch.py"), *arguments],
-                              cwd=self.root, input=text, capture_output=True, text=True)
+        return run_bounded([sys.executable, str(self.bin / "apatch.py"), *arguments],
+                           cwd=self.root, input=text)
 
     def assert_self_contained_lifecycle(self, mode):
         stem = self.make_self_contained_zip()

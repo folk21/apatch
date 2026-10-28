@@ -79,8 +79,9 @@ successful application to the same session without modifying prior patch,
 commit, or PR records. Local changes overlapping the incoming ZIP are blocked
 before extraction; disjoint developer edits are preserved. The legacy
 `followup=true` path and direct CLI commands retain their previous behavior.
-The new internal API has no public CLI goal dispatcher or automatic commit,
-push, or PR publication; those remain later stages.
+The FS-05 local goal dispatcher exposes the verified internal continuation
+guard only for a uniquely linked committed session. Remote push and PR
+publication remain outside this dispatcher.
 
 FS-04 adds `apatch_lib/commit_scope.py`: the internal `CommitScope`
 captures the complete changed-path inventory, a staging-sensitive Git
@@ -99,8 +100,15 @@ partial Git mutations are not undone. The read-only
 `context.inspect_guarded_commit_readiness()` and
 `OperationPresentation.present_guarded_commit_readiness()` expose
 `READY`, `NEEDS_VERIFICATION`, `WAITING_FOR_USER` and `BLOCKED`.
-None of these internal methods is routed from the public CLI. Legacy
-direct LOOSE CMT remains unchanged.
+`apatch_lib/planner.py` routes `goal=CHECKED|COMMITTED` in LOOSE through
+immutable read-only plans and fresh per-step reconciliation. The first goal
+execution attaches a successfully applied ZIP to a uniquely identified local
+session before guarded verification. `Workflow.interactive()` still owns
+operation run journaling, including planner-selected guarded CHK/CMT; ordinary
+`op` and `opSeq` dispatch keep their existing LOOSE handlers. A read-only
+`planOnly=true` never takes a state lock, creates a progress record, selects
+a cache or changes Git. Unknown manual commit paths cannot be approved by the
+goal CLI in this first release. No remote publication action is planned.
 
 For an explicitly named, already applied self-contained ZIP, `zip_resume.py`
 checks the current archive digest, stable handoff signature, latest structured
@@ -210,6 +218,7 @@ reapplication, commit, or GitHub mutation follows the failure.
 | `apatch_lib/cli_request.py` | CLI aliases, argparse grammar, immutable request and option compatibility validation |
 | `apatch_lib/handoff_selection.py` | Read-only ZIP/JSON/cache selection, typed provenance and multi-handoff resolution |
 | `apatch_lib/application.py` | Single CLI dispatcher, repository bootstrap, admission gates and lifecycle coordination |
+| `apatch_lib/planner.py` | FS-05 immutable local-goal plans, read-only previews, bounded per-step reconciliation, guarded LOOSE execution |
 | `apatch_lib/cli_inspection.py` | Read-only status, audit and progress presentation before lifecycle mutations |
 | `apatch_lib/action_applicability.py` | Pure local policy shared by the action menu and status recommendations |
 | `apatch_lib/workflow.py` | Action dispatch, phase coordination, menu and progress summaries |

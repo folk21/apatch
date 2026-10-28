@@ -25,6 +25,9 @@ class CliRequest:
     verify_remote: bool
     skip_approves: bool
     normalized_arguments: tuple[str, ...]
+    goal: str | None = None
+    intent: str | None = None
+    plan_only: bool = False
 
     @property
     def audit_only(self) -> bool:
@@ -57,6 +60,8 @@ def normalize_arguments(arguments: Sequence[str]) -> list[str]:
         "followup=": "--followup=", "patch=": "--patch=",
         "skipApproves=": "--skip-approves=", "info=": "--info=",
         "verifyRemote=": "--verify-remote=",
+        "goal=": "--goal=", "intent=": "--intent=",
+        "planOnly=": "--plan-only=",
     }
     normalized: list[str] = []
     for argument in arguments:
@@ -95,6 +100,8 @@ def build_parser() -> argparse.ArgumentParser:
                 "  apatch.sh opSeq=APL,BRN,APL,CHK,CMT handoffSeq=first.zip,second.zip skipApproves=true\n"
                 "  apatch.sh repair-patch followup=true opSeq=APL,CHK,CMT skipApproves=true\n"
                 "  apatch.sh op=STS\n"
+                "  apatch.sh some-new-zip goal=CHECKED planOnly=true\n"
+                "  apatch.sh some-new-zip goal=COMMITTED skipApproves=true\n"
                 "  apatch.sh op=AUD\n"
                 "  apatch.sh op=11 verifyRemote=true\n"
                 "  apatch.sh info=PROGRESS\n"
@@ -126,6 +133,15 @@ def build_parser() -> argparse.ArgumentParser:
                          help="Run sequential actions; stop after any error or no-op; pair with skipApproves=true for unattended use")
     actions.add_argument("--info", choices=("PROGRESS",), metavar="PROGRESS",
                          help="Read-only global progress overview; no handoff or Git repository required")
+    actions.add_argument("--goal", choices=("CHECKED", "COMMITTED"),
+                         metavar="{CHECKED,COMMITTED}",
+                         help="Plan a guarded LOOSE local workflow; remote goals are not available yet")
+    parser.add_argument("--intent", choices=("auto", "new", "continue"),
+                        metavar="{auto,new,continue}",
+                        help="Goal-only session selection (default: auto)")
+    parser.add_argument("--plan-only", "--planOnly", type=parse_boolean,
+                        default=False, metavar="{true,false}",
+                        help="Show a read-only local goal plan; no state, refs or cache writes")
     parser.add_argument("--handoff-seq", "--handoffSeq", metavar="ZIP1,ZIP2,...",
                         help="Explicit ZIP per APL in opSeq; multi-ZIP accumulation requires LOOSE")
     parser.add_argument("--followup", type=parse_boolean, default=False, metavar="{true,false}",
@@ -148,13 +164,14 @@ def parse_request(argv: Sequence[str] | None = None) -> CliRequest:
         handoff=args.handoff, mode=args.mode, op=args.op, op_seq=args.op_seq,
         info=args.info, handoff_seq=args.handoff_seq, followup=args.followup,
         patch=args.patch, verify_remote=args.verify_remote,
-        skip_approves=args.skip_approves, normalized_arguments=tuple(normalized))
+        skip_approves=args.skip_approves, normalized_arguments=tuple(normalized),
+        goal=args.goal, intent=args.intent, plan_only=args.plan_only)
 
 
 def validate_progress_request(request: CliRequest) -> None:
     """Keep global read-only progress free from lifecycle intent."""
     lifecycle_flags = {"--loose", "--strict", "--force", "--skip-approves",
-                       "--followup", "--verify-remote"}
+                       "--followup", "--verify-remote", "--intent", "--plan-only"}
     if (request.handoff is not None or request.handoff_seq is not None
             or request.patch is not None
             or any(token.split("=", 1)[0] in lifecycle_flags
@@ -164,6 +181,16 @@ def validate_progress_request(request: CliRequest) -> None:
 
 def validate_repository_request(request: CliRequest) -> None:
     """Validate option combinations without touching Git or persisted state."""
+    if request.goal is not None:
+        if request.mode != "loose":
+            raise Abort("goal requires LOOSE mode; use explicit op/opSeq in STRICT or FORCE")
+        if (request.handoff_seq is not None or request.followup
+                or request.patch is not None or request.verify_remote):
+            raise Abort("goal cannot be combined with handoffSeq, followup, patch or verifyRemote")
+        if request.handoff is not None and request.handoff.endswith(".json"):
+            raise Abort("goal requires a self-contained ZIP, not legacy JSON")
+    elif request.intent is not None or request.plan_only:
+        raise Abort("intent and planOnly require goal=CHECKED or goal=COMMITTED")
     if request.patch is not None and not BASENAME_PATTERN.fullmatch(request.patch):
         raise Abort("--patch must be an ASCII-safe ZIP basename")
     if request.verify_remote and not request.audit_only:
