@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .core.contracts import StateDocument
-from .gitutil import current_branch, head, output, worktree_fingerprint
+from .gitutil import (current_branch, head, output, remote_head,
+                      status_paths, worktree_fingerprint)
 from .model import Abort, Config, Handoff
 from .patch_history import AppliedPatchHistory
 from .status import workflow_key
@@ -84,7 +85,11 @@ def verify_applied_zip(
                       and phase == "patch_applied"
                       and record.get("applied_branch") == config.base)
     branch = current_branch(root)
-    if branch != (config.base if pending_branch else handoff.branch):
+    merged_base_recovery = phase == "merged" and branch == config.base
+    expected_branch = (config.base if pending_branch or phase == "synced"
+                       or merged_base_recovery
+                       else handoff.branch)
+    if branch != expected_branch:
         raise Abort(f"{reason} Current branch {branch or 'DETACHED'} does not match the checkpoint.")
     remote_url = output(["git", "remote", "get-url", config.remote], root)
     if not record.get("remote_url") or remote_url != record["remote_url"]:
@@ -96,7 +101,17 @@ def verify_applied_zip(
         expected = record.get("changed_paths")
         if not isinstance(expected, list) or not expected or not set(expected).issubset(paths):
             raise Abort(f"{reason} Recorded patch paths are missing from the worktree.")
-    elif phase != "synced" and head(root) != record.get("commit_sha"):
+    elif phase == "synced":
+        if (not record.get("local_base_head")
+                or head(root) != record["local_base_head"]
+                or status_paths(root)
+                or remote_head(root, config, config.base) != head(root)):
+            raise Abort(f"{reason} Synchronized base revision is no longer verified.")
+    elif merged_base_recovery:
+        if (status_paths(root) or type(record.get("pr_number")) is not int
+                or type(record.get("pushed_sha")) is not str):
+            raise Abort(f"{reason} Partial base synchronization has no clean merge evidence.")
+    elif head(root) != record.get("commit_sha"):
         raise Abort(f"{reason} The local commit differs from the recorded revision.")
 
     return AppliedZipEvidence(handoff.patch, phase, branch, pending_branch)

@@ -447,12 +447,19 @@ class ForceActions:
             github.merge_pr(w.config, handoff, w.root, w.record, w.persist,
                             verified_repo=repo)
         if w.phase == "merged":
+            if getattr(w, "_goal_guarded_publication", False):
+                return True
             return github.sync_base(w.config, handoff, w.root, w.record, w.persist,
                                     verified_repo=repo)
         return None
 
     def sync(self):
         w = self.w
+        if getattr(w, "_goal_guarded_publication", False):
+            if w.phase != "merged":
+                raise Abort("Guarded goal synchronization requires a verified merged PR")
+            handoff = self._effective_handoff()
+            return github.sync_base(w.config, handoff, w.root, w.record, w.persist)
         local_base_head = github.sync_local_base(w.config, w.root)
         w.record["local_base_head"] = local_base_head
         w.persist()

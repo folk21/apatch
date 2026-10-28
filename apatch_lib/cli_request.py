@@ -102,6 +102,8 @@ def build_parser() -> argparse.ArgumentParser:
                 "  apatch.sh op=STS\n"
                 "  apatch.sh some-new-zip goal=CHECKED planOnly=true\n"
                 "  apatch.sh some-new-zip goal=COMMITTED skipApproves=true\n"
+                "  apatch.sh goal=PR_CREATED planOnly=true\n"
+                "  apatch.sh goal=MERGED skipApproves=true\n"
                 "  apatch.sh op=AUD\n"
                 "  apatch.sh op=11 verifyRemote=true\n"
                 "  apatch.sh info=PROGRESS\n"
@@ -133,9 +135,10 @@ def build_parser() -> argparse.ArgumentParser:
                          help="Run sequential actions; stop after any error or no-op; pair with skipApproves=true for unattended use")
     actions.add_argument("--info", choices=("PROGRESS",), metavar="PROGRESS",
                          help="Read-only global progress overview; no handoff or Git repository required")
-    actions.add_argument("--goal", choices=("CHECKED", "COMMITTED"),
-                         metavar="{CHECKED,COMMITTED}",
-                         help="Plan a guarded LOOSE local workflow; remote goals are not available yet")
+    actions.add_argument("--goal", choices=("CHECKED", "COMMITTED", "PUSHED",
+                                             "PR_CREATED", "MERGED"),
+                         metavar="{CHECKED,COMMITTED,PUSHED,PR_CREATED,MERGED}",
+                         help="Plan a guarded LOOSE workflow, including explicit remote publication")
     parser.add_argument("--intent", choices=("auto", "new", "continue"),
                         metavar="{auto,new,continue}",
                         help="Goal-only session selection (default: auto)")
@@ -190,7 +193,7 @@ def validate_repository_request(request: CliRequest) -> None:
         if request.handoff is not None and request.handoff.endswith(".json"):
             raise Abort("goal requires a self-contained ZIP, not legacy JSON")
     elif request.intent is not None or request.plan_only:
-        raise Abort("intent and planOnly require goal=CHECKED or goal=COMMITTED")
+        raise Abort("intent and planOnly require goal")
     if request.patch is not None and not BASENAME_PATTERN.fullmatch(request.patch):
         raise Abort("--patch must be an ASCII-safe ZIP basename")
     if request.verify_remote and not request.audit_only:

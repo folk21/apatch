@@ -28,6 +28,7 @@ case "${1:-regular}" in
             tests.test_session_continuation \
             tests.test_guarded_commit \
             tests.test_planner \
+            tests.test_publication_goals \
             tests.test_architecture_characterization \
             tests.test_explicit_action_results \
             tests.test_cli_boundaries \

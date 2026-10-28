@@ -175,10 +175,9 @@ class PlannerTests(LocalGitFixture):
         self.assertIn("config.yaml", denied.stdout)
         self.assertFalse((self.root / "new.txt").exists())
 
-    def test_goal_rejects_conflicts_and_remote_goals(self):
+    def test_goal_rejects_conflicting_options(self):
         stem = self.make_self_contained_zip()
         cases = (
-            ("goal=PUSHED",),
             ("goal=CHECKED", "op=CHK"),
             ("goal=CHECKED", "opSeq=APL,BRN"),
             ("goal=CHECKED", "handoffSeq=some.zip"),
