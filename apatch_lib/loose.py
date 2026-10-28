@@ -424,6 +424,15 @@ class LooseActions:
         w = self.w
         branch = self.branch()
         current_sha = head(w.root)
+        if getattr(w, "_goal_guarded_publication", False):
+            if (branch != w.handoff.branch or w.phase != "committed"
+                    or w.record.get("commit_sha") != current_sha):
+                raise Abort("PUBLICATION_COMMIT_DRIFT: Guarded push requires the exact feature commit")
+            if status_paths(w.root):
+                raise Abort("PUBLICATION_DIRTY_WORKTREE: Guarded push requires a clean checkout")
+            if w.record.get("remote_url") != output(
+                    ["git", "remote", "get-url", w.config.remote], w.root):
+                raise Abort("PUBLICATION_REMOTE_DRIFT: Recorded push remote differs from Git")
         if status_paths(w.root):
             print("WARNING: Uncommitted work remains. Only committed Git history will be pushed.")
         if branch != w.handoff.branch:

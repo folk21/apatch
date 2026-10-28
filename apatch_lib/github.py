@@ -70,6 +70,12 @@ def _validate_pr(value: object, source: str, *, require_url: bool,
         if field in value and value[field] is not None and (
                 type(value[field]) is not str or len(value[field]) > 256):
             raise Abort(f"Invalid {source}: {field} must be a string or null")
+    if "mergeCommit" in value and value["mergeCommit"] is not None:
+        merge_commit = value["mergeCommit"]
+        if (not isinstance(merge_commit, dict)
+                or type(merge_commit.get("oid")) is not str
+                or re.fullmatch(r"[a-f0-9]{40}", merge_commit["oid"]) is None):
+            raise Abort(f"Invalid {source}: mergeCommit must contain a full Git SHA")
     if "statusCheckRollup" in value and value["statusCheckRollup"] is not None:
         checks = value["statusCheckRollup"]
         if not isinstance(checks, list) or len(checks) > 500:
@@ -184,7 +190,7 @@ def pr_list(config: Config, root: Path, repo: str, branch: str, *,
 
 
 def pr_details(config: Config, root: Path, repo: str, number: int) -> GitHubPr:
-    fields = "number,state,headRefName,baseRefName,headRefOid,url,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,mergedAt"
+    fields = "number,state,headRefName,baseRefName,headRefOid,url,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,mergedAt,mergeCommit"
     raw = gh_output(config, root, ["gh", "pr", "view", str(number), "--repo", repo,
                                    "--json", fields])
     pr = decode_pr_details(raw, expected_repo=repo)
@@ -379,7 +385,11 @@ def sync_base(config, handoff, root, record, save_checkpoint, *, verified_repo=N
         raise Abort("Recorded PR number changed before synchronization")
     assert_pr_matches_revision(config, handoff, details,
                                record.get("pushed_sha") or record.get("commit_sha"), merged=True)
-    record["local_base_head"] = sync_local_base(config, root)
+    synchronized_sha = sync_local_base(config, root)
+    if (output(["git", "branch", "--show-current"], root) != config.base
+            or remote_head(root, config, config.base) != synchronized_sha):
+        raise Abort("Local base synchronization is unverified; checkpoint remains merged")
+    record["local_base_head"] = synchronized_sha
     record["phase"] = "synced"
     save_checkpoint()
     print(f"Local {config.base} is synchronized after GitHub PR merge.")

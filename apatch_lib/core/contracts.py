@@ -64,6 +64,7 @@ class GitHubPrIdentity(TypedDict):
 class GitHubPr(GitHubPrIdentity, total=False):
     url: str
     mergedAt: str | None
+    mergeCommit: dict[str, str] | None
     reviewDecision: str | None
     mergeable: str | None
     mergeStateStatus: str | None

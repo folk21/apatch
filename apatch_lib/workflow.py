@@ -51,6 +51,7 @@ class Workflow(OperationPresentation):
         self._session_continuation_id = None
         self._goal_guarded_session_id = None
         self._goal_guarded_continuation = False
+        self._goal_guarded_publication = False
         self.progress_recorder = progress_recorder
         self.progress_sequence = None
         self.operation_run_id = None
@@ -313,6 +314,8 @@ class Workflow(OperationPresentation):
         """Record a proven non-mutating APL/BRN satisfaction, never a new success."""
         if number not in {1, 3}:
             return None
+        if self.phase in {"merged", "synced"}:
+            raise Abort("Completed or merged ZIP cannot satisfy APL/BRN on the base branch")
         evidence = verify_applied_zip(self.root, self.config, self.handoff, self.state)
         if number == 1 and evidence.pending_branch:
             return None

@@ -38,12 +38,13 @@ The guard runs before the new Git ref and associated patch changes are created. 
 
 Use `apatch.sh --help` to see the modes, direct-action selection, and automation parameters. The interactive menu also displays the active mode and the other available modes. Replace `<zip-stem>` in examples with your ZIP filename without `.zip`.
 
-### Guarded local goals (`goal`, FS-05)
+### Guarded goals (`goal`, FS-05–FS-06)
 
-In LOOSE mode, `goal=CHECKED` and `goal=COMMITTED` plan a local feature
-workflow from current ZIP, Git, session and check evidence. Unlike `opSeq`,
-a goal derives its next safe action at each step. It never pushes, creates
-a PR, merges, or synchronizes a remote branch.
+In LOOSE mode, `goal=CHECKED` and `goal=COMMITTED` plan local feature
+work from current ZIP, Git, session and check evidence. The explicit
+`PUSHED`, `PR_CREATED` and `MERGED` goals extend the same guarded planner
+to remote publication. Unlike `opSeq`, goals derive their next safe action
+from freshly verified state after every operation.
 
 ```bash
 apatch.sh my-new-patch goal=CHECKED planOnly=true
@@ -51,6 +52,10 @@ apatch.sh my-new-patch goal=CHECKED skipApproves=true
 apatch.sh my-new-patch goal=COMMITTED skipApproves=true
 apatch.sh my-next-patch goal=CHECKED intent=continue planOnly=true
 apatch.sh my-next-patch goal=CHECKED intent=continue skipApproves=true
+apatch.sh my-new-patch goal=MERGED planOnly=true
+apatch.sh my-new-patch goal=PUSHED skipApproves=true
+apatch.sh goal=PR_CREATED skipApproves=true
+apatch.sh goal=MERGED skipApproves=true
 ```
 
 `intent=auto` (default) requires an unambiguous local scenario; `new`
@@ -74,8 +79,8 @@ conflicts, or stale check evidence. Such situations stop with an actionable
 `WAITING_FOR_USER` or verification message and preserve existing files/index.
 This first goal release does **not** provide a manual-path approval flag;
 review such changes using the supervised direct LOOSE actions. New ZIP
-continuation after an already committed patch requires a linked session;
-published/PR continuation and remote goals remain outside FS-05. `followup`,
+continuation after an already committed patch requires a linked session.
+`followup`,
 `handoffSeq`, STRICT/FORCE, legacy JSON, `op` and exact `opSeq` retain
 their existing behavior and cannot be combined with `goal`.
 
@@ -84,8 +89,26 @@ configured check executable cannot be found. Fix the check and resume using
 the verified selected ZIP. If source bytes or verification policy change,
 run guarded checks again before `COMMITTED`; an earlier success is not enough.
 
-`goal=PUSHED`, `goal=PR_CREATED` and `goal=MERGED` are not available
-until remote revision and review/CI safety gates have their own implementation.
+Remote goals require a uniquely linked feature-session commit, a clean
+working tree, exact recorded branch/HEAD/remote identity, and a non-forced
+fast-forward push. `PR_CREATED` verifies a unique current PR number, head
+SHA and base branch; `MERGED` additionally enforces configured GitHub
+review, required CI and mergeability checks. The planner splits merge and
+local base synchronization into separate journaled `MRG` and `SYN`
+operations. It accepts `MERGED` only after GitHub confirms the exact PR
+revision and the local configured base matches the remote base.
+
+An uncertain `PR` or `MRG` outcome is **never retried as a mutation** by
+the goal planner. A subsequent invocation first looks for unique, matching
+live PR evidence; if that proof is absent, it stops for manual reconciliation.
+A successful remote merge followed by failed `SYN` may be resumed using
+`goal=MERGED` without issuing the merge command again. `planOnly=true`
+performs no writes, though already-published states may require read-only
+GitHub queries. `skipApproves=true` suppresses prompts but does not weaken
+GitHub review/CI, revision or fast-forward protections.
+
+These goal semantics do not change standalone `op`, deterministic `opSeq`,
+or FORCE recovery behavior.
 
 ### Several operations in one invocation (`opSeq`)
 

@@ -569,10 +569,11 @@ class GithubGuardTest(unittest.TestCase):
                 patch.object(github, "gh_run"), \
                 patch.object(github, "confirm", return_value=True), \
                 patch.object(github, "sync_local_base", return_value=self.sha):
-            repo = github.merge_pr(self.config, self.handoff, self.root, self.record,
-                                   lambda: None, verified_repo="example/repo")
-            github.sync_base(self.config, self.handoff, self.root, self.record,
-                             lambda: None, verified_repo=repo)
+            with patch.object(github, "output", return_value="main"):
+                repo = github.merge_pr(self.config, self.handoff, self.root, self.record,
+                                       lambda: None, verified_repo="example/repo")
+                github.sync_base(self.config, self.handoff, self.root, self.record,
+                                 lambda: None, verified_repo=repo)
         api.assert_not_called()
         self.assertEqual(git.call_count, 2)
         self.assertEqual(self.record["phase"], "synced")

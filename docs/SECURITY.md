@@ -52,8 +52,12 @@ a uniquely verified session and exact ZIP-owned changed paths. This first
 release has **no** manual-path approval flag: pre-existing staged or
 unclassified manual paths block unattended goal execution even with
 `skipApproves=true`. Use supervised direct LOOSE actions when a separate
-manual change needs review. `planOnly=true` reads local evidence without
-creating state or touching the Git index. Local goals do not authorize any
-push, PR, merge or sync.
+manual change needs review. `planOnly=true` reads evidence without creating
+state or touching the Git index. Explicit `goal=PUSHED|PR_CREATED|MERGED`
+authorizes only guarded publication after a verified local commit. GitHub
+mutations require fresh branch/SHA/review/CI evidence and are never replayed
+following an unknown outcome. A confirmed merge and local base sync are
+separate, independently recoverable operations. Direct action semantics
+remain unchanged.
 
 The project currently has no published license. Maintainers must select a license explicitly; its terms cannot be inferred from repository visibility.
