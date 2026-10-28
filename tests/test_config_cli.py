@@ -44,6 +44,42 @@ class ConfigCliTests(LocalGitFixture):
         self.assertEqual(config.checks, (("./gradlew", "test"), ("python3", "-c", "print(42)")))
         self.assertEqual(config.log_directory, self.root / ".apatch" / "build" / "checks")
 
+    def test_stable_check_policy_defaults_and_explicit_argv_prepare(self):
+        default = load_project_config(self.root, load_config(self.bin))
+        self.assertEqual(default.prepare_checks, ())
+        self.assertEqual(default.check_worktree_policy, "stop")
+        self.project_config.write_text(
+            'schema_version: 1\nchecks:\n  - ["./run_checks.sh"]\n'
+            'prepare_checks:\n  - ["python3", "-m", "black", "."]\n'
+            '  - ["./format.sh"]\ncheck_worktree_policy: recheck_once\n')
+        configured = load_project_config(self.root, load_config(self.bin))
+        self.assertEqual(configured.prepare_checks,
+                         (("python3", "-m", "black", "."), ("./format.sh",)))
+        self.assertEqual(configured.check_worktree_policy, "recheck_once")
+
+    def test_invalid_stable_check_configuration_fails_before_git_mutation(self):
+        invalid = (
+            ("prepare_checks: null", "prepare_checks must be a list"),
+            ("prepare_checks: true", "prepare_checks must be a list"),
+            ("prepare_checks: [false]", "non-empty argv list"),
+            ("prepare_checks: [123]", "non-empty argv list"),
+            ("prepare_checks: [\"echo hi\"]", "non-empty argv list"),
+            ("prepare_checks: [[]]", "non-empty argv list"),
+            ("prepare_checks: [[\"echo\", false]]", "non-empty argv list"),
+            ("prepare_checks: [[\"echo\", \"\"]]", "non-empty argv list"),
+            ("check_worktree_policy: true", "check_worktree_policy must be"),
+            ("check_worktree_policy: 1", "check_worktree_policy must be"),
+            ("check_worktree_policy: invalid", "check_worktree_policy must be"),
+        )
+        for text, expected in invalid:
+            with self.subTest(text=text):
+                self.project_config.write_text(
+                    'schema_version: 1\nchecks:\n  - ["./run_checks.sh"]\n' + text + '\n')
+                result = self.invoke_cli("op=STS")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn(expected, result.stderr)
+                self.assertFalse(self.state_path.exists())
+
     def test_base_branch_inherits_global_and_accepts_project_override(self):
         global_config = load_config(self.bin)
         self.assertEqual(global_config.base, "main")
@@ -450,3 +486,4 @@ class ConfigCliTests(LocalGitFixture):
                 result = self.invoke("0\n")
                 self.assertEqual(result.returncode, 2)
                 self.assertIn(message, result.stderr)
+

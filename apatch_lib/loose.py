@@ -11,9 +11,12 @@ from .core.contracts import ActionResult
 from .branch_guard import assert_no_unfinished_feature_branches
 from .created_patches import persist_registry
 from .commit_scope import (NeedsVerification, WaitingForUser, assert_scope_unchanged,
-                           changed_contents_fingerprint, inspect_commit_scope)
+                           changed_contents_fingerprint, inspect_commit_scope,
+                           policy_fingerprint)
+from .console import check_result_label
 from .gitutil import (branch_exists, confirm, current_branch, head, output,
-                      remote_head, run, status_paths, worktree_fingerprint)
+                      remote_head, run, status_paths, worktree_fingerprint,
+                      worktree_inventory, worktree_change_details)
 from .model import Abort, CheckWorktreeChanged
 from .patch import apply, inspect
 from .patch_history import locked_history
@@ -220,35 +223,116 @@ class LooseActions:
         print("Patch applied. Keep editing, apply another ZIP, run checks, or commit when ready.")
         return True
 
-    def verify(self):
+    def _invalidate_verification(self):
+        w = self.w
+        for field in ("verified_fingerprint", "verified_head", "verified_branch",
+                      "verified_commit", "guarded_verification"):
+            w.record.pop(field, None)
+        if w.record.get("phase") == WorkflowPhase.VERIFIED.value:
+            w.record["phase"] = WorkflowPhase.PATCH_APPLIED.value
+        w.persist()
+
+    @staticmethod
+    def _report_check_changes(before, after, *, phase):
+        details = worktree_change_details(before, after)
+        print(check_result_label(f"==> {phase}: repository paths changed; "
+                                 "all edits were preserved. A concurrent editor "
+                                 "may have contributed.", stable=False))
+        for name, differences in details[:24]:
+            print(f"    {name!r}: {', '.join(differences)}")
+        if len(details) > 24:
+            print(f"    ... and {len(details) - 24} more changed paths")
+        return details
+
+    @staticmethod
+    def _symlink_identity_changed(before, after):
+        for name in before.keys() & after.keys():
+            old, new = before[name], after[name]
+            if (old.symlink_target != new.symlink_target
+                    or (old.kind != new.kind and "symlink" in {old.kind, new.kind})):
+                return True
+        return False
+
+    def _prepare_macro_checks(self):
+        """Run opt-in preparation before guarded staging, never in direct CHK."""
+        w = self.w
+        if not w.config.prepare_checks:
+            return
+        self._invalidate_verification()
+        before = worktree_inventory(w.root)
+        initial_policy = policy_fingerprint(w.root, w.config)
+        try:
+            for index, command in enumerate(w.config.prepare_checks, start=1):
+                print(f"==> PREPARE {index}/{len(w.config.prepare_checks)}", flush=True)
+                run(list(command), w.root, stream_output=True,
+                    timeout=w.config.check_timeout_seconds,
+                    idle_timeout=w.config.check_idle_timeout_seconds)
+        finally:
+            after = worktree_inventory(w.root)
+            if before != after:
+                self._report_check_changes(before, after, phase="PREPARE")
+        if self._symlink_identity_changed(before, after):
+            raise NeedsVerification("NEEDS_VERIFICATION: Symlink identity changed during "
+                                    "preparation; review it before staging")
+        if policy_fingerprint(w.root, w.config) != initial_policy:
+            raise Abort("CHECK_POLICY_DRIFT: Project configuration changed during preparation")
+
+    def verify(self, *, macro_policy=False, before_retry=None):
         w = self.w
         branch = self.branch()
         if not w.config.checks:
             raise Abort("No project verification commands configured")
-        before, paths = worktree_fingerprint(w.root)
-        for argument in (["git", "diff", "--check"],
-                         ["git", "diff", "--cached", "--check"]):
-            result = run(argument, w.root, check=False)
-            if result.returncode:
-                print("WARNING: Git whitespace check reported problems; "
-                      "the project verification commands will still run.")
-                print((result.stdout + result.stderr).strip())
-        for command in w.config.checks:
-            run(list(command), w.root, stream_output=True,
-                timeout=w.config.check_timeout_seconds,
-                idle_timeout=w.config.check_idle_timeout_seconds)
-        after, _ = worktree_fingerprint(w.root)
+        policy = w.config.check_worktree_policy if macro_policy else "stop"
+        self._invalidate_verification()
+        for attempt in range(1, 3 if policy == "recheck_once" else 2):
+            before, _ = worktree_fingerprint(w.root)
+            before_paths = worktree_inventory(w.root)
+            starting_head = head(w.root)
+            print(f"==> CANONICAL CHECK PASS {attempt}/"
+                  f"{2 if policy == 'recheck_once' else 1}", flush=True)
+            failure = None
+            try:
+                for argument in (["git", "diff", "--check"],
+                                 ["git", "diff", "--cached", "--check"]):
+                    result = run(argument, w.root, check=False)
+                    if result.returncode:
+                        print("WARNING: Git whitespace check reported problems; "
+                              "the project verification commands will still run.")
+                        print((result.stdout + result.stderr).strip())
+                for command in w.config.checks:
+                    run(list(command), w.root, stream_output=True,
+                        timeout=w.config.check_timeout_seconds,
+                        idle_timeout=w.config.check_idle_timeout_seconds)
+            except (Abort, KeyboardInterrupt) as exc:
+                failure = exc
+            after, _ = worktree_fingerprint(w.root)
+            after_paths = worktree_inventory(w.root)
+            changed = before != after or before_paths != after_paths
+            if changed:
+                self._invalidate_verification()
+                self._report_check_changes(before_paths, after_paths,
+                                           phase=f"CHECK PASS {attempt} UNSTABLE")
+            if current_branch(w.root) != branch or head(w.root) != starting_head:
+                self._invalidate_verification()
+                raise Abort("CHECK_HEAD_DRIFT: Branch or HEAD changed during verification")
+            if failure is not None:
+                raise failure
+            if changed:
+                if policy == "recheck_once" and attempt == 1:
+                    if before_retry is not None:
+                        before_retry(before_paths, after_paths)
+                    print("==> CHECKS: first pass changed bytes; running the full set once more")
+                    continue
+                raise CheckWorktreeChanged(
+                    "CHECKS_CHANGED_WORKTREE: Verification was not stable; "
+                    "review the preserved changes and rerun CHK explicitly.")
+            print(check_result_label(
+                f"==> CHECK PASS {attempt}: STABLE (Git index and worktree bytes)",
+                stable=True))
+            break
         if head(w.root) != (w.record.get("before_patch_head") or head(w.root)):
             print("WARNING: HEAD has changed since patch application.")
-        if before != after:
-            for field in ("verified_fingerprint", "verified_head", "verified_branch", "verified_commit"):
-                w.record.pop(field, None)
-            w.record["phase"] = WorkflowPhase.PATCH_APPLIED.value
-            w.persist()
-            raise CheckWorktreeChanged(
-                "CHECKS_CHANGED_WORKTREE: Checks completed but modified repository files; "
-                "review the changes and rerun CHK on the resulting bytes."
-            )
+        _, paths = worktree_fingerprint(w.root)
         if paths:
             w.record.update(phase="verified", verified_fingerprint=after,
                             verified_head=head(w.root), verified_branch=branch)
@@ -274,6 +358,9 @@ class LooseActions:
         """
         w = self.w
         w.record.pop("guarded_verification", None)
+        macro_policy = bool(getattr(w, "_macro_check_policy", False))
+        if macro_policy:
+            self._prepare_macro_checks()
         scope = inspect_commit_scope(w, session_id,
                                      accepted_manual_paths=accepted_manual_paths)
         assert_scope_unchanged(w, scope)
@@ -287,7 +374,28 @@ class LooseActions:
                 "the existing index is preserved")
         staged = inspect_commit_scope(w, session_id,
                                       accepted_manual_paths=scope.accepted_manual)
-        self.verify()
+
+        def restage_owned_changes(before, after):
+            nonlocal staged
+            if self._symlink_identity_changed(before, after):
+                raise NeedsVerification("NEEDS_VERIFICATION: Symlink identity changed during "
+                                        "checks; review it before staging")
+            if any(before.get(name) is not None and after.get(name) is not None
+                   and before[name].index != after[name].index
+                   for name in before.keys() & after.keys()):
+                raise NeedsVerification("NEEDS_VERIFICATION: Git index changed during checks; "
+                                        "inspect staged changes before retrying")
+            updated = inspect_commit_scope(w, session_id,
+                                           accepted_manual_paths=scope.accepted_manual)
+            if updated.paths != staged.paths:
+                raise NeedsVerification("NEEDS_VERIFICATION: Check output changed the authorized "
+                                        "commit path set; review the preserved files")
+            run(["git", "add", "-A", "--", *staged.paths], w.root)
+            staged = inspect_commit_scope(w, session_id,
+                                          accepted_manual_paths=scope.accepted_manual)
+
+        self.verify(macro_policy=macro_policy,
+                    before_retry=restage_owned_changes if macro_policy else None)
         stable = inspect_commit_scope(w, session_id,
                                       accepted_manual_paths=scope.accepted_manual)
         if stable != staged:
@@ -498,3 +606,4 @@ class LooseActions:
 
     def sync(self):
         return self.w.force_actions.sync()
+

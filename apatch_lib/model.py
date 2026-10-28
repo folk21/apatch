@@ -48,6 +48,8 @@ class Config:
     progress_global_limit: int = 8
     progress_project_limit: int = 3
     base_branch_source: str = "global"
+    prepare_checks: tuple[tuple[str, ...], ...] = ()
+    check_worktree_policy: str = "stop"
 
 
 @dataclass(frozen=True)
@@ -189,7 +191,7 @@ def load_project_config(root: Path, global_config: Config) -> Config:
     required = {"schema_version", "checks"}
     allowed = required | {"log_directory", "state_file", "applied_patches_file", "base_branch",
                           "require_review_approval", "require_required_checks", "check_timeout_seconds",
-                          "check_idle_timeout_seconds"}
+                          "check_idle_timeout_seconds", "prepare_checks", "check_worktree_policy"}
     if not isinstance(data, dict) or not required <= set(data) or set(data) - allowed:
         raise Abort("Project config must contain schema_version and checks, with supported optional settings")
     if type(data["schema_version"]) is not int or data["schema_version"] != 1:
@@ -228,6 +230,19 @@ def load_project_config(root: Path, global_config: Config) -> Config:
         if not argv or any(not isinstance(arg, str) or not arg or "\x00" in arg for arg in argv):
             raise Abort(f"Project check {index} contains invalid arguments")
         parsed.append(tuple(argv))
+    prepare = data.get("prepare_checks", [])
+    if not isinstance(prepare, list) or len(prepare) > 20:
+        raise Abort("Project prepare_checks must be a list of at most 20 argv commands")
+    prepared = []
+    for index, command in enumerate(prepare, start=1):
+        if (not isinstance(command, list) or not command or len(command) > 128
+                or any(type(arg) is not str or not arg or "\x00" in arg
+                       for arg in command)):
+            raise Abort(f"Project prepare_checks command {index} must be a non-empty argv list")
+        prepared.append(tuple(command))
+    policy = data.get("check_worktree_policy", "stop")
+    if type(policy) is not str or policy not in {"stop", "recheck_once"}:
+        raise Abort("Project check_worktree_policy must be stop or recheck_once")
     subdirectory = validate_log_subdirectory(data.get("log_directory", str(global_config.log_directory)))
     state = validate_runtime_filename(data.get("state_file", str(global_config.state_path)))
     history = validate_runtime_filename(data.get("applied_patches_file", str(global_config.applied_patches_path)))
@@ -248,7 +263,8 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                    check_idle_timeout_seconds=idle_timeout,
                    base=base, base_branch_source=base_source,
                    require_approval=require_approval, review_approval_source=approval_source,
-                   require_checks=require_checks, required_checks_source=checks_source)
+                   require_checks=require_checks, required_checks_source=checks_source,
+                   prepare_checks=tuple(prepared), check_worktree_policy=policy)
 
 
 def safe_relative(path: str) -> str:
@@ -301,3 +317,4 @@ def parse_handoff_payload(payload, *, embedded=False) -> Handoff:
         raise Abort("delete_paths must be a list of repository-relative paths")
     return Handoff(repo, branch, patch, msg.rstrip() + "\n", base, digest,
                    tuple(safe_relative(p) for p in paths))
+

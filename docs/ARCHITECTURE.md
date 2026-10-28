@@ -339,6 +339,11 @@ The remote `MERGED` goal records the confirmed PR merge, synchronizes the config
 
 Final status uses the ordinary repository-local `10 [STS]` reader. It is best effort, runs after the macro success or error path, and cannot override the original exception or exit status. The tool-wide progress entry for `STS` remains separate from target-repository mutation evidence. The remote `MERGE` and `RUN_ALL` macros are deliberately reserved until the guarded WM-05 implementation.
 
+### Stable macro checks (WM-04)
+
+The project YAML parser accepts optional `prepare_checks` argv lists and `check_worktree_policy`, defaulting to no preparation and `stop`. Only `APPLY_PATCH_CHECK` passes the macro-policy flag through the existing planner and guarded `CHK` action. Preparation occurs before guarded staging; direct atomic `CHK`, exact sequences, and other goals retain their original policy. `gitutil.worktree_inventory()` records status, index object/mode, file content digests, execute bits and symlink identity for changed/untracked paths. `LooseActions.verify()` compares each full pass against a fresh before/after inventory, reporting bounded path-level differences without assigning blame to the check process. It invalidates old evidence before any attempt and stops on failure, drift, or timeout. If explicitly enabled, one successful but mutating pass permits a single complete repeat after restaging only unchanged-scope, authorized session paths; changed index objects, symlink identities or an expanded commit scope block restaging. Verified fingerprints and guarded commit evidence are written only for the final stable result.
+
 ## Extension points
 
 Before adding an operation or changing a mode, inspect the owning helper, CLI parsing, status messages, state/history implications, and black-box tests. Update the public operation matrix in Usage and regression coverage together. For significant behavior changes, establish a normative SDD spec first; the initial spec will be introduced separately.
+

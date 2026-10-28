@@ -1,6 +1,6 @@
 # APATCH-SUB-004 — Operational Workflows, Activity Dashboard, and Stable Checks
 
-**Status:** DRAFT. WM-01 (read-only activity in `AUD`) and WM-02 (per-project base branch) have implementations in the inspected source; WM-03–WM-05 are proposed and WM-06 is deferred. Formal acceptance is not recorded.
+**Status:** DRAFT. WM-01–WM-04 implementations are present in the current source; WM-04 awaits developer review, WM-05 is proposed and WM-06 is deferred. Formal acceptance is not recorded.
 
 **Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Implementation plan:** [APATCH-PLAN-004](../subspec-04-operational-workflows-implementation-plan.md).
 
@@ -34,7 +34,7 @@ The tool-wide event ledger may be incomplete (new installation, independent tool
 
 ## 3. Four higher-level operations
 
-Introduce the following **proposed** named macro operations without assigning new numeric action IDs. They SHALL be available as `op=RUN_ALL`, `op=APPLY_PATCH`, `op=APPLY_PATCH_CHECK`, and `op=MERGE`. The current `op=MRG` remains the single existing PR merge action. These macro names are not implemented by WM-01.
+The local WM-03 macros `op=APPLY_PATCH` and `op=APPLY_PATCH_CHECK` are implemented without new numeric action IDs. The `op=MERGE` and `op=RUN_ALL` macros remain reserved for WM-05. The current `op=MRG` remains the single existing PR merge action.
 
 | Macro | Requested terminal state | Candidate atomic operations |
 | --- | --- | --- |
@@ -158,5 +158,8 @@ future implementation stage, not a currently available CLI capability.
 
 - **WM-01:** implementation and focused tests are in the inspected `efb94f7` source; formal acceptance is still pending.
 - **WM-02:** project-local base-branch override, validation and related tests are in the inspected source; formal acceptance is still pending.
-- **WM-03–WM-05:** advisory implementation stages only. No new macro CLI or automatic check rerun is claimed as installed.
+- **WM-03:** guarded `APPLY_PATCH` and `APPLY_PATCH_CHECK` local macros and best-effort final `STS` are implemented; developer acceptance is not inferred.
+- **WM-04:** optional macro preparation and bounded `recheck_once` stable-byte verification are implemented; developer review is pending. Direct `CHK` still uses stop-on-change.
+- **WM-05:** guarded remote `MERGE` and `RUN_ALL` macros remain proposed.
 - **WM-06:** deferred GitHub transient-read retry and safe mutation-result reconciliation design. The current single extra read-only retry remains the installed behavior; no new mutation retry or automatic recovery is claimed.
+

@@ -1,5 +1,7 @@
 """WM-03 local macro dispatch and best-effort terminal status regressions."""
 
+import shlex
+import threading
 from unittest.mock import patch
 
 from apatch_lib import macros
@@ -11,6 +13,217 @@ from tests._support import LocalGitFixture, command
 
 
 class LocalMacroTests(LocalGitFixture):
+    def run_stable_check_macro(self, script, *, policy="recheck_once", prepare=None,
+                               timeout=30, extra_scripts=None):
+        """Install check policy on a clean local base and run an isolated ZIP macro."""
+        runner = self.root / "run_checks.sh"
+        runner.write_text("#!/bin/sh\nset -eu\n" + script)
+        runner.chmod(0o755)
+        config = ("schema_version: 1\n"
+                  f"check_worktree_policy: {policy}\n"
+                  f"check_timeout_seconds: {timeout}\n"
+                  "checks:\n  - [\"./run_checks.sh\"]\n")
+        if prepare is not None:
+            config += "prepare_checks:\n  - [\"./prepare.sh\"]\n"
+            prep = self.root / "prepare.sh"
+            prep.write_text("#!/bin/sh\nset -eu\n" + prepare)
+            prep.chmod(0o755)
+        for name, content in (extra_scripts or {}).items():
+            (self.root / name).write_text(content)
+        self.project_config.write_text(config)
+        command("git", "add", "-A", cwd=self.root)
+        command("git", "commit", "-m", "Configure check policy", cwd=self.root)
+        command("git", "push", "origin", "main", cwd=self.root)
+        self.head = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        self.payload["base_commit"] = self.head
+        stem = self.make_self_contained_zip()
+        return self.invoke_zip("op=APPLY_PATCH_CHECK", "skipApproves=true", selection=stem)
+
+    def test_recheck_once_converges_and_freezes_the_final_index(self):
+        result = self.run_stable_check_macro(
+            "test -f new.txt\n"
+            "if ! grep -q '^formatted$' existing.txt; then\n"
+            "  printf 'formatted\\n' > existing.txt\nfi\n")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("CHECK PASS 1 UNSTABLE", result.stdout)
+        self.assertIn("existing.txt", result.stdout)
+        self.assertIn("file bytes", result.stdout)
+        self.assertIn("CANONICAL CHECK PASS 2/2", result.stdout)
+        self.assertIn("CHECK PASS 2: STABLE", result.stdout)
+        self.assertEqual((self.root / "existing.txt").read_text(), "formatted\n")
+        self.assertEqual(command("git", "show", ":existing.txt", cwd=self.root).stdout,
+                         "formatted\n")
+        self.assertEqual(next(iter(self._macro_records().values()))["phase"], "verified")
+
+    def _macro_records(self):
+        return read_state_snapshot(self.state_path)["workflows"]
+
+    def test_recheck_once_rejects_continual_mutation(self):
+        result = self.run_stable_check_macro(
+            "if grep -q '^alpha$' existing.txt; then\n"
+            "  printf 'beta\\n' > existing.txt\nelse\n"
+            "  printf 'alpha\\n' > existing.txt\nfi\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("CANONICAL CHECK PASS 2/2", result.stdout)
+        self.assertIn("CHECK PASS 2 UNSTABLE", result.stdout)
+        self.assertIn("CHECKS_CHANGED_WORKTREE", result.stderr)
+        self.assertNotIn("verified_fingerprint", next(iter(self._macro_records().values())))
+
+    def test_direct_chk_does_not_inherit_macro_recheck_policy(self):
+        result = self.run_stable_check_macro(
+            "if grep -q '^alpha$' existing.txt; then\n"
+            "  printf 'beta\\n' > existing.txt\nelse\n"
+            "  printf 'alpha\\n' > existing.txt\nfi\n")
+        self.assertEqual(result.returncode, 2)
+        direct = self.invoke_zip("op=CHK", "skipApproves=true")
+        self.assertEqual(direct.returncode, 2)
+        self.assertIn("CANONICAL CHECK PASS 1/1", direct.stdout)
+        self.assertNotIn("CANONICAL CHECK PASS 2/", direct.stdout)
+        self.assertIn("CHECKS_CHANGED_WORKTREE", direct.stderr)
+
+    def test_direct_chk_does_not_execute_macro_prepare_commands(self):
+        result = self.run_stable_check_macro(
+            "grep -q '^prepared$' existing.txt\n",
+            prepare="printf 'prepared\\n' > existing.txt\n")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        (self.root / "existing.txt").write_text("unprepared\n")
+        direct = self.invoke_zip("op=CHK", "skipApproves=true")
+        self.assertEqual(direct.returncode, 2)
+        self.assertNotIn("PREPARE 1/1", direct.stdout)
+        self.assertEqual((self.root / "existing.txt").read_text(), "unprepared\n")
+
+    def test_failed_second_pass_never_authorizes_verification(self):
+        result = self.run_stable_check_macro(
+            "if grep -q '^formatted$' existing.txt; then\n"
+            "  exit 17\nfi\nprintf 'formatted\\n' > existing.txt\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("CANONICAL CHECK PASS 2/2", result.stdout)
+        self.assertIn("Command failed (17)", result.stderr)
+        self.assertEqual((self.root / "existing.txt").read_text(), "formatted\n")
+        self.assertNotIn("verified_fingerprint", next(iter(self._macro_records().values())))
+
+    def test_prepare_runs_once_before_staging(self):
+        result = self.run_stable_check_macro(
+            "grep -q '^prepared$' existing.txt\n",
+            policy="stop",
+            prepare="printf 'prepared\\n' > existing.txt\n")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("PREPARE 1/1", result.stdout)
+        self.assertIn("PREPARE: repository paths changed", result.stdout)
+        self.assertIn("CANONICAL CHECK PASS 1/1", result.stdout)
+        self.assertNotIn("CANONICAL CHECK PASS 2/2", result.stdout)
+        self.assertEqual(command("git", "show", ":existing.txt", cwd=self.root).stdout,
+                         "prepared\n")
+
+    def test_failed_prepare_stops_and_preserves_its_edits(self):
+        result = self.run_stable_check_macro(
+            "test -f new.txt\n",
+            prepare="printf 'prepared\\n' > existing.txt\nexit 19\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("PREPARE 1/1", result.stdout)
+        self.assertIn("Command failed (19)", result.stderr)
+        self.assertNotIn("CANONICAL CHECK PASS", result.stdout)
+        self.assertEqual((self.root / "existing.txt").read_text(), "prepared\n")
+
+    def test_untracked_output_stops_without_deleting_files(self):
+        result = self.run_stable_check_macro("printf 'generated\\n' > report.txt\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("report.txt", result.stdout)
+        self.assertIn("new changed/untracked path", result.stdout)
+        self.assertIn("Unclassified commit paths", result.stderr)
+        self.assertEqual((self.root / "report.txt").read_text(), "generated\n")
+
+    def test_index_only_drift_is_preserved_and_blocking(self):
+        result = self.run_stable_check_macro("git update-index --chmod=+x existing.txt\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Git index entry/mode", result.stdout)
+        self.assertIn("Git index changed during checks", result.stderr)
+        self.assertTrue(command("git", "ls-files", "--stage", "existing.txt",
+                                cwd=self.root).stdout.startswith("100755 "))
+
+    def test_executable_bit_convergence_is_reported(self):
+        result = self.run_stable_check_macro("chmod +x existing.txt\n")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("executable bit", result.stdout)
+        self.assertIn("CHECK PASS 2: STABLE", result.stdout)
+
+    def test_symlink_replacement_requires_manual_review(self):
+        result = self.run_stable_check_macro(
+            "if ! test -L existing.txt; then\n"
+            "  rm existing.txt\n  ln -s new.txt existing.txt\nfi\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("file type", result.stdout)
+        self.assertIn("Symlink identity changed during checks", result.stderr)
+        self.assertEqual((self.root / "existing.txt").readlink().as_posix(), "new.txt")
+
+    def test_symlink_change_is_blocked_before_recheck(self):
+        result = self.run_stable_check_macro(
+            "if ! test -L existing.txt; then\n"
+            "  rm existing.txt\n  ln -s new.txt existing.txt\n"
+            "else\n  ln -sf run_checks.sh existing.txt\nfi\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("file type", result.stdout)
+        self.assertIn("Symlink identity changed during checks", result.stderr)
+        self.assertEqual((self.root / "existing.txt").readlink().as_posix(), "new.txt")
+
+    def test_symlink_target_change_has_path_specific_diagnostic(self):
+        from apatch_lib.gitutil import WorktreeEntry, worktree_change_details
+
+        before = {"existing.txt": WorktreeEntry(" M", (), "symlink",
+                                                symlink_target="first.txt")}
+        after = {"existing.txt": WorktreeEntry(" M", (), "symlink",
+                                               symlink_target="second.txt")}
+        self.assertEqual(worktree_change_details(before, after),
+                         (("existing.txt", ("symlink target",)),))
+
+    def test_second_pass_timeout_does_not_trigger_third_attempt(self):
+        result = self.run_stable_check_macro(
+            "if grep -q '^formatted$' existing.txt; then\n"
+            "  sleep 3\nelse\n  printf 'formatted\\n' > existing.txt\nfi\n",
+            timeout=1)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("CANONICAL CHECK PASS 2/2", result.stdout)
+        self.assertNotIn("CANONICAL CHECK PASS 3/", result.stdout)
+        self.assertIn("timed out", result.stderr)
+        self.assertNotIn("verified_fingerprint", next(iter(self._macro_records().values())))
+
+    def test_concurrent_manual_edit_is_not_reclassified_as_formatter_output(self):
+        marker = self.base / "check-ready"
+        edited = self.base / "edit-done"
+        stop_waiting = threading.Event()
+        editor_finished = threading.Event()
+
+        def edit_while_check_runs():
+            while not stop_waiting.is_set():
+                if marker.exists():
+                    runner = self.root / "run_checks.sh"
+                    runner.write_text(runner.read_text() + "# external user edit\n")
+                    edited.touch()
+                    editor_finished.set()
+                    return
+                stop_waiting.wait(0.05)
+
+        thread = threading.Thread(target=edit_while_check_runs)
+        thread.start()
+        try:
+            result = self.run_stable_check_macro(
+                f"touch {shlex.quote(str(marker))}\n"
+                "attempts=0\n"
+                f"while test ! -f {shlex.quote(str(edited))}; do\n"
+                "  attempts=$((attempts + 1))\n"
+                "  test \"$attempts\" -le 5 || exit 41\n"
+                "  sleep 1\n"
+                "done\n")
+        finally:
+            stop_waiting.set()
+            thread.join(timeout=5)
+        self.assertFalse(thread.is_alive())
+        self.assertTrue(editor_finished.is_set(), "The external edit did not occur during CHK")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("run_checks.sh", result.stdout)
+        self.assertIn("Unclassified commit paths", result.stderr)
+        self.assertIn("external user edit", (self.root / "run_checks.sh").read_text())
+
     def test_apply_patch_stops_after_verified_branch_transfer(self):
         stem = self.make_self_contained_zip()
         result = self.invoke_zip("op=APPLY_PATCH", "skipApproves=true", selection=stem)
@@ -171,3 +384,4 @@ class LocalMacroTests(LocalGitFixture):
             status.assert_called_once()
         self.assertEqual(next(iter(read_state_snapshot(self.state_path)["workflows"].values()))
                          ["phase"], "patch_applied")
+

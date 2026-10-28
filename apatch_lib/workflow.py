@@ -50,6 +50,7 @@ class Workflow(OperationPresentation):
         self.allow_followup_zip = allow_followup_zip
         self._session_continuation_id = None
         self._goal_guarded_session_id = None
+        self._macro_check_policy = False
         self._goal_guarded_continuation = False
         self._goal_guarded_publication = False
         self.progress_recorder = progress_recorder
@@ -566,3 +567,4 @@ class Workflow(OperationPresentation):
             (f"Resume synchronization of local {self.config.base}", self.sync,
              unavailable(9)),
         ]
+

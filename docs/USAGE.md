@@ -600,7 +600,7 @@ checks:
   - ["./gradlew", "check"]
 ```
 
-`base_branch`, `log_directory`, `state_file`, `applied_patches_file`, `require_review_approval`, `require_required_checks`, `check_timeout_seconds`, and `check_idle_timeout_seconds` are optional and override their global counterparts. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. Separate lock files named `<state_file>.lock` and `<applied_patches_file>.lock` are created automatically in `.apatch/`. Omit these settings to inherit the global defaults.
+`base_branch`, `log_directory`, `state_file`, `applied_patches_file`, `require_review_approval`, `require_required_checks`, `check_timeout_seconds`, and `check_idle_timeout_seconds` are optional and override their global counterparts. The optional macro-only `prepare_checks` and `check_worktree_policy` settings are explained below. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. Separate lock files named `<state_file>.lock` and `<applied_patches_file>.lock` are created automatically in `.apatch/`. Omit these settings to inherit the global defaults.
 
 The effective base branch is selected in this order: project `.apatch/config.yaml:base_branch`, installation-wide `apatch.conf:base_branch`, then `main`. Values must be nonempty, valid Git branch names (for example `develop` or `release/2026-q4`). Invalid or malformed explicit values are rejected before any workflow action; `apatch` does not fall back to a different branch. The configured branch must exist on the selected remote for branch creation. The action header and `STS` identify the effective base branch and its `project` or `global` source. Set the override in the target project that actually uses the alternative base; changing it mid-workflow does not automatically retarget an existing PR.
 
@@ -628,6 +628,26 @@ checks:
 ```
 
 Commands run sequentially from the target repository root; execution stops on the first failure. Standard output and standard error from these project checks are displayed live in the terminal, but successful checks do not write their output to the project log. Each command is executed directly **without a shell**, so pipelines, redirections, environment-variable expansion, and `&&` are not interpreted. Put compound shell logic in a project-owned script and call that script from `checks`.
+
+### Optional macro preparation and stable-check retry (WM-04)
+
+The `APPLY_PATCH_CHECK` macro alone may enable explicit preparation and one bounded retry when checks normalize repository files:
+
+```yaml
+schema_version: 1
+checks:
+  - ["./run_tests.sh"]
+  - ["./run_quality.sh", "lint"]
+prepare_checks:
+  - ["./format_sources.sh"]
+check_worktree_policy: recheck_once
+```
+
+`prepare_checks` defaults to an empty list and accepts **argv lists only**, with no shell expansion; a maximum of 20 commands of 128 arguments each is supported. These are user-trusted executable commands, run once before guarded commit-scope staging and before the first check pass. They use the same per-command total/idle timeouts and live console output as canonical checks. A failed or timed-out preparation stops the macro without rolling back file edits. Preparation commands never run during `op=CHK`, `opSeq=CHK`, or other direct atomic operations.
+
+`check_worktree_policy` defaults to `stop`; its only other value is `recheck_once`. Both apply **only to macro-controlled verification**, and direct `CHK` always retains its existing stop-on-change behavior. If every canonical check succeeds but Git index entries, statuses, executable bits, symlink identity, or changed file bytes differ before versus after the first pass, `recheck_once` allows exactly one complete repeat. The macro re-stages only the previously authorized session-owned paths if the index and commit-path set remain safe. It does not silently accept new untracked outputs, altered index entries, symlink replacements, or unrelated/manual changes as additional commit scope. When the final pass is stable, verification records the final index and worktree fingerprint. A second change, failed check, timeout, branch/HEAD drift, or unclassified path stops the macro with preserved files and no publication.
+
+Console diagnostics show the specific changed paths and types of differences; the modifying process cannot be identified from a filesystem snapshot, so concurrent editor activity is treated as possible. After a stop, inspect the changed paths, Git index, and `op=STS`; correct the problem and explicitly retry verification. No implicit cleanup, reset, or ZIP replay occurs. Full successful check output remains console-only rather than being copied into the application log.
 
 `check_timeout_seconds` bounds the **total duration** of each canonical check (integer 1–3600, default `900`). `check_idle_timeout_seconds` bounds the time **without a complete output line** (integer 1–3600, default `30`). Both settings may be overridden in `.apatch/config.yaml`; for example, a silent build taking longer than 30 seconds can set `check_idle_timeout_seconds: 120`. On either timeout, `apatch` terminates the check's process group and stops the sequence before commit or publication. The idle limit prevents a hung check from consuming the entire total deadline when it stops reporting progress.
 
@@ -712,3 +732,4 @@ To keep runtime files out of patches and commits, `apatch` checks the repository
 `apatch` checks actual Git and GitHub state before important actions; its saved progress is not treated as authorization or proof of approval. It stops on an unexpected working-tree change, source or remote drift, unsafe archive content, conflicting branch, ambiguous pull request, or failed verification.
 
 Branch creation, committing, publishing, and merging require deliberate user actions. The tool does not force-push, bypass required checks, approve pull requests, or perform an unguarded direct merge. A partial extraction must be inspected before continuing; do not repeat extraction over an unexpectedly modified working tree.
+
