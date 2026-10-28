@@ -40,10 +40,11 @@ class Config:
     merge_method: str
     max_bytes: int
     require_patch_feature_branch: bool = False
-    github_timeout_seconds: int = 45
+    github_timeout_seconds: int = 30
     review_approval_source: str = "global"
     required_checks_source: str = "global"
     check_timeout_seconds: int = 900
+    check_idle_timeout_seconds: int = 30
     progress_global_limit: int = 8
     progress_project_limit: int = 3
     base_branch_source: str = "global"
@@ -86,7 +87,7 @@ def load_config(script_dir: Path) -> Config:
     if method not in {"merge", "squash", "rebase"}:
         raise Abort("merge_method must be merge, squash or rebase")
     try:
-        github_timeout_seconds = section.getint("github_timeout_seconds", 45)
+        github_timeout_seconds = section.getint("github_timeout_seconds", 30)
     except ValueError as exc:
         raise Abort("github_timeout_seconds must be an integer from 5 to 300") from exc
     if not 5 <= github_timeout_seconds <= 300:
@@ -97,6 +98,12 @@ def load_config(script_dir: Path) -> Config:
         raise Abort("check_timeout_seconds must be an integer from 1 to 3600") from exc
     if not 1 <= check_timeout_seconds <= 3600:
         raise Abort("check_timeout_seconds must be an integer from 1 to 3600")
+    try:
+        check_idle_timeout_seconds = section.getint("check_idle_timeout_seconds", 30)
+    except ValueError as exc:
+        raise Abort("check_idle_timeout_seconds must be an integer from 1 to 3600") from exc
+    if not 1 <= check_idle_timeout_seconds <= 3600:
+        raise Abort("check_idle_timeout_seconds must be an integer from 1 to 3600")
     progress_limits = (("progress_global_limit", 8, 100),
                        ("progress_project_limit", 3, 50))
     validated_limits = {}
@@ -123,6 +130,7 @@ def load_config(script_dir: Path) -> Config:
         require_patch_feature_branch=section.getboolean("require_patch_feature_branch", False),
         github_timeout_seconds=github_timeout_seconds,
         check_timeout_seconds=check_timeout_seconds,
+        check_idle_timeout_seconds=check_idle_timeout_seconds,
         **validated_limits,
     )
 
@@ -180,7 +188,8 @@ def load_project_config(root: Path, global_config: Config) -> Config:
 
     required = {"schema_version", "checks"}
     allowed = required | {"log_directory", "state_file", "applied_patches_file", "base_branch",
-                          "require_review_approval", "require_required_checks", "check_timeout_seconds"}
+                          "require_review_approval", "require_required_checks", "check_timeout_seconds",
+                          "check_idle_timeout_seconds"}
     if not isinstance(data, dict) or not required <= set(data) or set(data) - allowed:
         raise Abort("Project config must contain schema_version and checks, with supported optional settings")
     if type(data["schema_version"]) is not int or data["schema_version"] != 1:
@@ -202,6 +211,9 @@ def load_project_config(root: Path, global_config: Config) -> Config:
     check_timeout_seconds = data.get("check_timeout_seconds", global_config.check_timeout_seconds)
     if type(check_timeout_seconds) is not int or not 1 <= check_timeout_seconds <= 3600:
         raise Abort("Project check_timeout_seconds must be an integer from 1 to 3600")
+    idle_timeout = data.get("check_idle_timeout_seconds", global_config.check_idle_timeout_seconds)
+    if type(idle_timeout) is not int or not 1 <= idle_timeout <= 3600:
+        raise Abort("Project check_idle_timeout_seconds must be an integer from 1 to 3600")
     parsed = []
     for index, command in enumerate(commands, start=1):
         if isinstance(command, str):
@@ -233,6 +245,7 @@ def load_project_config(root: Path, global_config: Config) -> Config:
     return replace(global_config, checks=tuple(parsed), log_directory=location,
                    state_path=config_dir / state, applied_patches_path=config_dir / history,
                    check_timeout_seconds=check_timeout_seconds,
+                   check_idle_timeout_seconds=idle_timeout,
                    base=base, base_branch_source=base_source,
                    require_approval=require_approval, review_approval_source=approval_source,
                    require_checks=require_checks, required_checks_source=checks_source)

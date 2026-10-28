@@ -379,7 +379,8 @@ class Workflow(OperationPresentation):
             raise Abort("No project verification commands configured")
         for command in self.config.checks:
             run(list(command), self.root, stream_output=True,
-                timeout=self.config.check_timeout_seconds)
+                timeout=self.config.check_timeout_seconds,
+                idle_timeout=self.config.check_idle_timeout_seconds)
         after, _ = self.assert_expected_paths()
         if before != after:
             self.record["phase"] = WorkflowPhase.PATCH_APPLIED.value
@@ -446,7 +447,8 @@ class Workflow(OperationPresentation):
         allowed = {self.record.get("remote_before_patch_head"), self.record.get("commit_sha")}
         if remote not in allowed:
             raise Abort("Remote feature branch has unexpected history; refusing push")
-        run(["git", "push", "-u", self.config.remote, self.handoff.branch], self.root)
+        run(["git", "push", "-u", self.config.remote, self.handoff.branch],
+            self.root, timeout=self.config.github_timeout_seconds)
         if remote_head(self.root, self.config, self.handoff.branch) != head(self.root):
             raise Abort("Push returned but remote HEAD could not be verified")
         self.record.update(phase="pushed", pushed_sha=head(self.root))

@@ -64,8 +64,33 @@ def display_command(argv):
     return shlex.join(visible).replace("\n", "\\n").replace("\r", "\\r")
 
 
+def _run_captured_with_deadline(argv, cwd, *, input_text, text, timeout):
+    """Kill the full command process group when a network command exceeds its deadline."""
+    with subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE if input_text is not None else None,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=text,
+                          start_new_session=True) as process:
+        try:
+            stdout, stderr = process.communicate(input=input_text, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                if process.poll() is None:
+                    process.kill()
+            try:
+                process.communicate(timeout=2)
+            except subprocess.TimeoutExpired:
+                for pipe in (process.stdout, process.stderr):
+                    if pipe is not None:
+                        pipe.close()
+                if process.poll() is None:
+                    process.kill()
+            raise
+    return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+
+
 def run(argv, cwd: Path, *, input_text=None, check=True, text=True, log_commit_message=None,
-        stream_output=False, timeout=None):
+        stream_output=False, timeout=None, idle_timeout=None):
     command = display_command(argv)
     print("+", command, flush=True)
     if log_commit_message is not None:
@@ -84,39 +109,59 @@ def run(argv, cwd: Path, *, input_text=None, check=True, text=True, log_commit_m
             with subprocess.Popen(argv, cwd=cwd, stdout=subprocess.PIPE,
                                   stderr=subprocess.STDOUT, text=True, errors="replace",
                                   bufsize=1, start_new_session=True) as process:
-                timed_out = threading.Event()
+                last_output = [time.monotonic()]
+                expired = []
+                stop_monitor = threading.Event()
 
-                def cancel_process_group():
-                    if process.poll() is None:
-                        timed_out.set()
+                def enforce_deadlines():
+                    while not stop_monitor.wait(0.1):
+                        now = time.monotonic()
+                        if timeout is not None and now - start >= timeout:
+                            expired.append(("total", timeout))
+                        elif idle_timeout is not None and now - last_output[0] >= idle_timeout:
+                            expired.append(("idle", idle_timeout))
+                        else:
+                            continue
                         try:
                             os.killpg(process.pid, signal.SIGKILL)
                         except ProcessLookupError:
                             pass
+                        return
 
-                timer = threading.Timer(timeout, cancel_process_group) if timeout else None
-                if timer is not None:
-                    timer.daemon = True
-                    timer.start()
+                monitor = None
+                if timeout is not None or idle_timeout is not None:
+                    monitor = threading.Thread(target=enforce_deadlines, daemon=True)
+                    monitor.start()
                 try:
                     assert process.stdout is not None
                     for line in process.stdout:
                         sys.stdout.write(line)
                         sys.stdout.flush()
                         failure_tail.append(line.rstrip("\r\n")[-FAILURE_TAIL_LINE_CHARS:])
+                        last_output[0] = time.monotonic()
                     returncode = process.wait()
                 finally:
-                    if timer is not None:
-                        timer.cancel()
-                if timed_out.is_set():
-                    LOGGER.error("canonical check timed out duration_s=%.3f limit_s=%s argv=%s recent_output=%s",
-                                 time.monotonic() - start, timeout, command,
+                    stop_monitor.set()
+                    if monitor is not None:
+                        monitor.join(timeout=1)
+                if expired:
+                    reason, limit = expired[0]
+                    LOGGER.error("canonical check timeout reason=%s duration_s=%.3f limit_s=%s argv=%s recent_output=%s",
+                                 reason, time.monotonic() - start, limit, command,
                                  json.dumps("\n".join(failure_tail), ensure_ascii=False))
-                    raise Abort(f"Canonical check timed out after {timeout:g}s: {command}")
+                    print(f"[TIMEOUT] {command} ({time.monotonic() - start:.2f}s)",
+                          file=sys.stderr, flush=True)
+                    if reason == "idle":
+                        raise Abort(f"Canonical check stalled with no output for {limit:g}s: {command}")
+                    raise Abort(f"Canonical check timed out after {limit:g}s: {command}")
             result = subprocess.CompletedProcess(argv, returncode, "", "")
         else:
-            result = subprocess.run(argv, cwd=cwd, text=text, input=input_text,
-                                    capture_output=True, check=False, timeout=timeout)
+            if timeout is None:
+                result = subprocess.run(argv, cwd=cwd, text=text, input=input_text,
+                                        capture_output=True, check=False)
+            else:
+                result = _run_captured_with_deadline(argv, cwd, input_text=input_text,
+                                                     text=text, timeout=timeout)
     except subprocess.TimeoutExpired as exc:
         duration = time.monotonic() - start
         LOGGER.error("command timed out duration_s=%.3f limit_s=%s argv=%s",
@@ -191,7 +236,8 @@ def branch_exists(root, branch):
 
 
 def remote_head(root, config, branch):
-    result = run(["git", "ls-remote", "--heads", config.remote, f"refs/heads/{branch}"], root)
+    result = run(["git", "ls-remote", "--heads", config.remote, f"refs/heads/{branch}"],
+                 root, timeout=config.github_timeout_seconds)
     lines = result.stdout.splitlines()
     if not lines:
         return None

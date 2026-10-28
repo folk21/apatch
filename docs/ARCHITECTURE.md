@@ -82,6 +82,26 @@ before extraction; disjoint developer edits are preserved. The legacy
 The new internal API has no public CLI goal dispatcher or automatic commit,
 push, or PR publication; those remain later stages.
 
+FS-04 adds `apatch_lib/commit_scope.py`: the internal `CommitScope`
+captures the complete changed-path inventory, a staging-sensitive Git
+fingerprint, a staging-independent content fingerprint, and the revision of
+the effective check policy plus its project YAML bytes. New LOOSE ZIP
+applications record only the ZIP's actual file/deletion footprint and
+pre-existing staged paths; older records with missing provenance remain
+ineligible for unattended staging. `LooseActions.guarded_check()` classifies
+all paths against an active session, stages only the exact accepted paths,
+runs canonical checks and persists the frozen successful scope. Formatter
+changes invalidate the snapshot. `guarded_commit()` rechecks the scope,
+branch, HEAD, policy and staged-tree identity before one local commit. It
+compares the resulting commit tree with the expected staged tree and appends
+session commit evidence only after successful verification. Failed or
+partial Git mutations are not undone. The read-only
+`context.inspect_guarded_commit_readiness()` and
+`OperationPresentation.present_guarded_commit_readiness()` expose
+`READY`, `NEEDS_VERIFICATION`, `WAITING_FOR_USER` and `BLOCKED`.
+None of these internal methods is routed from the public CLI. Legacy
+direct LOOSE CMT remains unchanged.
+
 For an explicitly named, already applied self-contained ZIP, `zip_resume.py`
 checks the current archive digest, stable handoff signature, latest structured
 applied-history entry, matching successful `APL` operation run and live local

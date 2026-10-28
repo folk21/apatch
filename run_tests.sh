@@ -21,11 +21,12 @@ fi
 cd "$SCRIPT_DIR"
 case "${1:-regular}" in
     regular|quick)
-        exec "$TEST_PYTHON" -B -m unittest -v \
+        exec "$TEST_PYTHON" -B -m tests.timeout_runner -v \
             tests.test_spec_state \
             tests.test_feature_sessions \
             tests.test_context \
             tests.test_session_continuation \
+            tests.test_guarded_commit \
             tests.test_architecture_characterization \
             tests.test_explicit_action_results \
             tests.test_cli_boundaries \
@@ -33,6 +34,7 @@ case "${1:-regular}" in
             tests.test_audit_rules \
             tests.test_zip_resume \
             tests.test_runner_scripts \
+            tests.test_timeout_reporting \
             tests.test_validation \
             tests.test_audit.AuditTests.test_audit_without_handoff_is_read_only_and_offline \
             tests.test_audit.AuditTests.test_missing_and_out_of_order_patch \
@@ -67,7 +69,7 @@ case "${1:-regular}" in
             tests.test_progress.ProgressCliTests.test_cli_sequence_records_each_attempt_and_identity
         ;;
     full)
-        exec "$TEST_PYTHON" -B -m unittest discover -s tests -v
+        exec "$TEST_PYTHON" -B -m tests.timeout_runner --full
         ;;
     *)
         printf '%s\n' "Usage: sh ./run_tests.sh [regular|quick|full]" >&2
