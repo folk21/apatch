@@ -60,4 +60,13 @@ following an unknown outcome. A confirmed merge and local base sync are
 separate, independently recoverable operations. Direct action semantics
 remain unchanged.
 
+WM-03 local macros are separately named, LOOSE-only entry points to the same
+guarded application and verification planner. `APPLY_PATCH` cannot commit or
+publish; `APPLY_PATCH_CHECK` may stage exact authorized paths for canonical
+verification, but cannot commit or publish. They never convert an ordinary
+`NO_OP` into success without proven existing application/branch evidence.
+Both attempt final read-only repository status after any outcome, without
+concealing the original failure. Remote `MERGE`/`RUN_ALL` macro dispatch is
+not enabled until WM-05.
+
 The project currently has no published license. Maintainers must select a license explicitly; its terms cannot be inferred from repository visibility.

@@ -10,6 +10,9 @@ from .model import Abort, BASENAME_PATTERN
 from .sequence import OperationSequence
 
 
+MACRO_OPERATIONS = frozenset({"APPLY_PATCH", "APPLY_PATCH_CHECK", "MERGE", "RUN_ALL"})
+
+
 @dataclass(frozen=True)
 class CliRequest:
     """Validated syntax and immutable user intent, before repository resolution."""
@@ -73,6 +76,8 @@ def normalize_arguments(arguments: Sequence[str]) -> list[str]:
 
 
 def parse_operation(value: str) -> str:
+    if value.upper() in MACRO_OPERATIONS:
+        return value.upper()
     try:
         action_number(value)
     except ValueError as exc:
@@ -104,6 +109,8 @@ def build_parser() -> argparse.ArgumentParser:
                 "  apatch.sh some-new-zip goal=COMMITTED skipApproves=true\n"
                 "  apatch.sh goal=PR_CREATED planOnly=true\n"
                 "  apatch.sh goal=MERGED skipApproves=true\n"
+                "  apatch.sh some-new-zip op=APPLY_PATCH skipApproves=true\n"
+                "  apatch.sh some-new-zip op=APPLY_PATCH_CHECK skipApproves=true\n"
                 "  apatch.sh op=AUD\n"
                 "  apatch.sh op=11 verifyRemote=true\n"
                 "  apatch.sh info=PROGRESS\n"
@@ -113,7 +120,8 @@ def build_parser() -> argparse.ArgumentParser:
                 "Action codes: " + ", ".join(f"{i}={code}" for i, code in enumerate(ACTION_CODES)) + "\n"
                 "Select an exact ZIP stem for initial APL, or omit it for cached continuation. "
                 "Explicit legacy .json paths remain supported. "
-                "Without op=NUMBER, op=CODE, or opSeq=CODE,CODE, the action menu is displayed. "
+                "Without op=NUMBER, op=CODE, op=MACRO, or opSeq=CODE,CODE, "
+                "the action menu is displayed. "
                 "skipApproves defaults to false and only skips confirmation prompts; "
                 "Git/archive safety checks remain active."),
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -128,8 +136,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="FORCE: reconcile manual Git operations without skipping safety checks")
     parser.set_defaults(mode="loose")
     actions = parser.add_mutually_exclusive_group()
-    actions.add_argument("--op", type=parse_operation, metavar="NUMBER|CODE",
-                         help="Run one action by number (0-11) or code (e.g. APL, STS, AUD)")
+    actions.add_argument("--op", type=parse_operation, metavar="NUMBER|CODE|MACRO",
+                         help="Run one action (0-11, APL/STS/AUD) or a named workflow macro")
     actions.add_argument("--op-seq", "--opSeq", type=parse_operation_sequence,
                          metavar="CODE,CODE,...",
                          help="Run sequential actions; stop after any error or no-op; pair with skipApproves=true for unattended use")
@@ -184,6 +192,10 @@ def validate_progress_request(request: CliRequest) -> None:
 
 def validate_repository_request(request: CliRequest) -> None:
     """Validate option combinations without touching Git or persisted state."""
+    if request.op in MACRO_OPERATIONS and (
+            request.handoff_seq is not None or request.followup
+            or request.patch is not None or request.verify_remote):
+        raise Abort("Macros cannot be combined with handoffSeq, followup, patch or verifyRemote")
     if request.goal is not None:
         if request.mode != "loose":
             raise Abort("goal requires LOOSE mode; use explicit op/opSeq in STRICT or FORCE")

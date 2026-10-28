@@ -23,51 +23,33 @@ case "${1:-regular}" in
     regular|quick)
         exec "$TEST_PYTHON" -B -m tests.timeout_runner -v \
             tests.test_spec_state \
-            tests.test_feature_sessions \
-            tests.test_context \
-            tests.test_session_continuation \
-            tests.test_guarded_commit \
-            tests.test_planner \
-            tests.test_publication_goals \
             tests.test_architecture_characterization \
             tests.test_explicit_action_results \
             tests.test_cli_boundaries \
             tests.test_action_applicability \
             tests.test_audit_rules \
-            tests.test_zip_resume \
             tests.test_runner_scripts \
             tests.test_timeout_reporting \
             tests.test_validation \
-            tests.test_audit.AuditTests.test_audit_without_handoff_is_read_only_and_offline \
-            tests.test_audit.AuditTests.test_missing_and_out_of_order_patch \
-            tests.test_audit.AuditTests.test_v1_state_missing_commit_and_branch_are_reported_without_upgrade \
-            tests.test_handoffs.HandoffsTests.test_multi_zip_sequence_combines_patches_and_final_status \
-            tests.test_handoffs.HandoffsTests.test_explicit_followup_zip_after_previous_invocation_combines_uncommitted_changes \
-            tests.test_handoffs.HandoffsTests.test_followup_refuses_dirty_feature_branch_without_an_applied_predecessor \
-            tests.test_handoffs.HandoffsTests.test_repeated_followup_sequence_preserves_manual_repairs_without_archive_replay \
-            tests.test_handoffs.HandoffsTests.test_explicit_interactive_reapplication_with_same_path_set_reports_success \
-            tests.test_config_cli.ConfigCliTests.test_direct_action_reapply_duplicate_is_blocked_with_skip_approves \
-            tests.test_modes.ModesTests.test_force_repeated_adoption_is_successful_with_unchanged_path_set \
-            tests.test_handoffs.HandoffsTests.test_self_contained_lifecycle_strict \
-            tests.test_handoffs.HandoffsTests.test_self_contained_lifecycle_loose \
-            tests.test_safety.SafetyTests.test_untrusted_zip_cannot_change_project_policy_or_runtime_state \
-            tests.test_safety.SafetyTests.test_zip_file_directory_prefix_conflict_aborts_before_extraction \
-            tests.test_safety.SafetyTests.test_git_fingerprint_includes_executable_bit_and_index_state \
-            tests.test_sequences.SequencesTests.test_formatter_changes_existing_bytes_without_changing_paths_stops_sequence_and_recovers \
-            tests.test_sequences.SequencesTests.test_direct_check_invalidated_after_prior_success_clears_stale_evidence \
-            tests.test_safety.SafetyTests.test_canonical_check_timeout_stops_batch_and_preserves_commit \
-            tests.test_status.StatusTests.test_status_uses_unique_stored_workflow_when_cache_is_absent \
-            tests.test_history.HistoryTests.test_history_lock_rejects_concurrent_use \
-            tests.test_github.GithubGuardTest.test_github_mutating_commands_are_not_retried \
-            tests.test_github.GithubGuardTest.test_pending_check_blocks_merge \
-            tests.test_github.GithubGuardTest.test_pr_head_drift_blocks_merge \
-            tests.test_github.GithubGuardTest.test_pr_create_timeout_can_be_reconciled_on_next_run_without_duplicate \
-            tests.test_progress.ProgressStorageTests.test_two_subprocesses_append_without_lost_updates \
-            tests.test_progress.ProgressStorageTests.test_master_and_derived_symlinks_are_refused \
+            tests.test_feature_sessions.SessionStateTests \
+            tests.test_context.ContextTests.test_new_base_is_local_candidate_not_unverified_remote_authorization \
+            tests.test_context.ContextTests.test_missing_check_executable_detected_before_running_any_check \
+            tests.test_session_continuation.SessionContinuationTests.test_modified_collision_blocks_before_history_or_source_writes \
+            tests.test_guarded_commit.GuardedCommitTests.test_guarded_check_and_commit_exact_patch_scope \
+            tests.test_guarded_commit.GuardedCommitTests.test_unknown_staged_path_blocks_even_with_skip_approves \
+            tests.test_planner.PlannerTests.test_preview_is_read_only_on_new_zip \
+            tests.test_planner.PlannerTests.test_goal_checked_stops_without_commit_or_remote_publication \
+            tests.test_publication_goals.PublicationGoalTests.test_stale_pr_head_blocks_merge_before_mutation \
+            tests.test_publication_goals.PublicationGoalTests.test_unknown_pr_creation_adopts_exact_open_pr_without_recreating \
+            tests.test_macros \
+            tests.test_zip_resume.ExplicitZipResumeTests.test_apl_and_brn_prefix_are_satisfied_without_replaying_archive \
+            tests.test_zip_resume.ExplicitZipResumeTests.test_symlinked_cache_refuses_reselection_without_touching_target \
+            tests.test_operation_journal.OperationJournalStorageTests.test_invalid_v2_fails_without_overwriting_bytes \
+            tests.test_operation_journal.OperationJournalCliTests.test_failed_action_still_creates_run_with_bounded_error \
             tests.test_progress.ProgressStorageTests.test_corrupted_master_is_never_replaced \
-            tests.test_progress.ProgressOverviewTests \
-            tests.test_operation_journal \
-            tests.test_progress.ProgressCliTests.test_cli_sequence_records_each_attempt_and_identity
+            tests.test_safety.SafetyTests.test_canonical_check_timeout_stops_batch_and_preserves_commit \
+            tests.test_handoffs.HandoffsTests.test_self_contained_lifecycle_loose \
+            tests.test_github.GithubGuardTest.test_pr_head_drift_blocks_merge
         ;;
     full)
         exec "$TEST_PYTHON" -B -m tests.timeout_runner --full

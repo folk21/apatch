@@ -15,6 +15,7 @@ from .handoff_selection import (HandoffSelection, resolve_handoffs,
                                 SelectionKind)
 from .local_ignore import ensure_runtime_ignored
 from .logging_setup import LOG_FILENAME, configure, set_context
+from .macros import MACRO_NAMES, execute_macro
 from .migration import migrate_legacy_artifacts
 from .model import Abort, Config, load_config, load_project_config
 from .params_cache import save_cached_handoff
@@ -199,6 +200,9 @@ def execute_request(request: CliRequest, tool_dir: Path) -> int:
     root, config = context.root, context.config
     if request.audit_only:
         show_audit_with_activity(root, config, tool_dir, verify_remote=request.verify_remote)
+        return 0
+    if request.op in MACRO_NAMES:
+        execute_macro(request, root, config, tool_dir)
         return 0
     if (request.op is None and request.op_seq is None and request.handoff is None
             and not (root / ".apatch" / "params.json").exists()):

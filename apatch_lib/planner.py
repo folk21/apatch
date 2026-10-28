@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from . import github
 from .commit_scope import WaitingForUser
@@ -25,7 +26,7 @@ from .workflow import Workflow
 from .zip_resume import verify_applied_zip
 
 
-LOCAL_GOALS = frozenset({"CHECKED", "COMMITTED"})
+LOCAL_GOALS = frozenset({"APPLIED", "CHECKED", "COMMITTED"})
 REMOTE_GOALS = frozenset({"PUSHED", "PR_CREATED", "MERGED"})
 MAX_LOCAL_STEPS = 4
 MAX_GOAL_STEPS = 8
@@ -128,7 +129,9 @@ def _build_local_plan(root: Path, config: Config, selection: HandoffSelection,
                 blockers.append(str(exc))
             else:
                 published_continuation = True
-                steps.extend(("APL", "CHK"))
+                steps.append("APL")
+                if goal != "APPLIED":
+                    steps.append("CHK")
                 if goal == "COMMITTED":
                     steps.append("CMT")
     elif context.scenario in {Scenario.UNKNOWN_REMOTE, Scenario.AMBIGUOUS,
@@ -147,7 +150,7 @@ def _build_local_plan(root: Path, config: Config, selection: HandoffSelection,
         else:
             phase = record.get("phase")
             if phase in {"committed", "pushed", "pr_created", "merged", "synced"}:
-                if (goal == "COMMITTED" and branch == handoff.branch
+                if (goal in {"APPLIED", "COMMITTED"} and branch == handoff.branch
                         and head(root) == record.get("commit_sha")
                         and not status_paths(root)):
                     pass
@@ -163,7 +166,9 @@ def _build_local_plan(root: Path, config: Config, selection: HandoffSelection,
                     steps.append("BRN")
                 elif branch != handoff.branch:
                     blockers.append("FEATURE_BRANCH_DRIFT: Select the intended feature branch")
-                if not pending_branch:
+                if goal == "APPLIED":
+                    pass
+                elif not pending_branch:
                     if session_id is not None:
                         workflow = Workflow(root, config, handoff, state, loose=True,
                                             skip_previous_cycles=True)
@@ -193,7 +198,9 @@ def _build_local_plan(root: Path, config: Config, selection: HandoffSelection,
         elif selection.kind == SelectionKind.CACHED_WORKFLOW:
             blockers.append("GOAL_ZIP_REQUIRED: New application needs an explicit ZIP")
         else:
-            steps.extend(("APL", "BRN", "CHK"))
+            steps.extend(("APL", "BRN"))
+            if goal != "APPLIED":
+                steps.append("CHK")
             if goal == "COMMITTED":
                 steps.append("CMT")
     elif context.scenario in {Scenario.ACTIVE_UNCOMMITTED, Scenario.COMMITTED}:
@@ -206,7 +213,9 @@ def _build_local_plan(root: Path, config: Config, selection: HandoffSelection,
                 _check_new_continuation(root, config, handoff, context, state)
             except Abort as exc:
                 blockers.append(str(exc))
-            steps.extend(("APL", "CHK"))
+            steps.append("APL")
+            if goal != "APPLIED":
+                steps.append("CHK")
             if goal == "COMMITTED":
                 steps.append("CMT")
     else:
@@ -496,7 +505,8 @@ def _execute_publication_step(workflow: Workflow, step: str) -> None:
 
 def execute_goal(root: Path, config: Config, tool_dir: Path,
                  selection: HandoffSelection, *, goal: str, intent: str,
-                 plan_only: bool, skip_approves: bool) -> None:
+                 plan_only: bool, skip_approves: bool,
+                 step_completed: Callable[[str], None] | None = None) -> None:
     """Replan before every step; never promote recorded facts to live authority."""
     first = build_plan(root, config, selection, goal, intent)
     show_plan(first, preview=plan_only)
@@ -567,6 +577,8 @@ def execute_goal(root: Path, config: Config, tool_dir: Path,
                     _complete_merged_session(workflow)
                 else:
                     raise Abort(f"GOAL_UNSUPPORTED_STEP: {step}")
+                if step_completed is not None:
+                    step_completed(step)
             final = build_plan(root, config, selection, goal, intent)
             if final.blockers:
                 raise Abort("GOAL_BLOCKED: " + final.blockers[0])
