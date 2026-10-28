@@ -93,7 +93,8 @@ def execute_macro(request: CliRequest, root: Path, config: Config,
         execute_goal(root, config, tool_dir, selected, goal=plan.goal,
                      intent="auto", plan_only=False,
                      skip_approves=request.skip_approves,
-                     step_completed=executed.append)
+                     step_completed=executed.append,
+                     macro_check_policy=name == "APPLY_PATCH_CHECK")
     except BaseException as exc:
         original_error = exc
         raise
@@ -110,3 +111,4 @@ def execute_macro(request: CliRequest, root: Path, config: Config,
         except (Exception, KeyboardInterrupt) as exc:
             print(f"WARNING: MACRO_FINAL_STS_UNAVAILABLE ({type(exc).__name__}): "
                   "the original macro outcome is unchanged")
+

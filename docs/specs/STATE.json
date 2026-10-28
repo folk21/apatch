@@ -12,8 +12,9 @@
     {
       "id": "operational-workflows",
       "specPath": "docs/specs/active/subspecs/subspec-04-operational-workflows.md",
-      "stageId": "WM-03",
+      "stageId": "WM-04",
       "phase": "READY_FOR_REVIEW"
     }
   ]
 }
+

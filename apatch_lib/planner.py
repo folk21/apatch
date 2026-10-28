@@ -506,7 +506,8 @@ def _execute_publication_step(workflow: Workflow, step: str) -> None:
 def execute_goal(root: Path, config: Config, tool_dir: Path,
                  selection: HandoffSelection, *, goal: str, intent: str,
                  plan_only: bool, skip_approves: bool,
-                 step_completed: Callable[[str], None] | None = None) -> None:
+                 step_completed: Callable[[str], None] | None = None,
+                 macro_check_policy: bool = False) -> None:
     """Replan before every step; never promote recorded facts to live authority."""
     first = build_plan(root, config, selection, goal, intent)
     show_plan(first, preview=plan_only)
@@ -565,10 +566,12 @@ def execute_goal(root: Path, config: Config, tool_dir: Path,
                     else:
                         session_id = fresh.session_id
                     workflow._goal_guarded_session_id = session_id
+                    workflow._macro_check_policy = macro_check_policy and step == "CHK"
                     try:
                         outcome = workflow.interactive(step, show_header=False)
                     finally:
                         workflow._goal_guarded_session_id = None
+                        workflow._macro_check_policy = False
                     if outcome != "SUCCESS":
                         raise Abort(f"GOAL_STOPPED: {step} returned {outcome}")
                 elif step in PUBLICATION_STEPS:
@@ -599,3 +602,4 @@ def execute_goal(root: Path, config: Config, tool_dir: Path,
     finally:
         reset_skip_approvals(token)
         recorder.flush(tool_dir)
+

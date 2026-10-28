@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from .model import Abort
@@ -292,6 +293,93 @@ def worktree_fingerprint(root):
     return digest.hexdigest(), paths
 
 
+@dataclass(frozen=True)
+class WorktreeEntry:
+    """An exact changed-path snapshot, including Git index and filesystem identity."""
+
+    status: str
+    index: tuple[tuple[str, str, str], ...]
+    kind: str
+    bytes_sha256: str | None = None
+    executable: bool | None = None
+    symlink_target: str | None = None
+
+
+def worktree_inventory(root: Path) -> dict[str, WorktreeEntry]:
+    """Inventory changed and untracked paths without reading ignored private files."""
+    statuses = status_paths(root)
+    if not statuses:
+        return {}
+    raw_index = run(["git", "--literal-pathspecs", "ls-files", "--stage", "-z",
+                     "--", *sorted(statuses)], root, text=False).stdout
+    index: dict[str, list[tuple[str, str, str]]] = {}
+    for item in raw_index.split(b"\x00"):
+        if not item:
+            continue
+        try:
+            entry, name = item.split(b"\t", 1)
+            mode, oid, stage = entry.decode("ascii").split()
+        except (ValueError, UnicodeError) as exc:
+            raise Abort("Malformed Git index entry during worktree inspection") from exc
+        index.setdefault(os.fsdecode(name), []).append((mode, oid, stage))
+    observed = {}
+    for name, status in sorted(statuses.items()):
+        path = root / name
+        try:
+            if path.is_symlink():
+                observed[name] = WorktreeEntry(
+                    status, tuple(sorted(index.get(name, ()))), "symlink",
+                    symlink_target=os.readlink(path))
+            elif path.is_file():
+                digest = hashlib.sha256()
+                with path.open("rb") as stream:
+                    for part in iter(lambda: stream.read(1024 * 1024), b""):
+                        digest.update(part)
+                observed[name] = WorktreeEntry(
+                    status, tuple(sorted(index.get(name, ()))), "file",
+                    bytes_sha256=digest.hexdigest(),
+                    executable=bool(path.stat().st_mode & 0o111))
+            elif not path.exists():
+                observed[name] = WorktreeEntry(
+                    status, tuple(sorted(index.get(name, ()))), "missing")
+            else:
+                raise Abort(f"Unsupported changed path: {name!r}")
+        except OSError as exc:
+            raise Abort(f"Cannot inspect changed path {name!r}: {exc}") from exc
+    return observed
+
+
+def worktree_change_details(before: dict[str, WorktreeEntry],
+                            after: dict[str, WorktreeEntry]
+                            ) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Explain changed path identity without displaying project file contents."""
+    result = []
+    for name in sorted(before.keys() | after.keys()):
+        old, new = before.get(name), after.get(name)
+        if old == new:
+            continue
+        if old is None:
+            details = ["new changed/untracked path"]
+        elif new is None:
+            details = ["no longer changed"]
+        else:
+            details = []
+            if old.status != new.status:
+                details.append("Git status")
+            if old.index != new.index:
+                details.append("Git index entry/mode")
+            if old.kind != new.kind:
+                details.append("file type")
+            if old.bytes_sha256 != new.bytes_sha256:
+                details.append("file bytes")
+            if old.executable != new.executable:
+                details.append("executable bit")
+            if old.symlink_target != new.symlink_target:
+                details.append("symlink target")
+        result.append((name, tuple(details)))
+    return tuple(result)
+
+
 def set_skip_approvals(enabled):
     return _SKIP_APPROVALS.set(enabled)
 
@@ -325,3 +413,4 @@ def clear_confirmation_declined():
 
 def confirmation_was_declined():
     return _CONFIRMATION_DECLINED.get()
+

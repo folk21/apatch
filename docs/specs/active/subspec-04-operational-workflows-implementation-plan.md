@@ -1,6 +1,6 @@
 # APATCH-PLAN-004 — Operational Workflow Macros and Diagnostics
 
-**Status:** Advisory plan. WM-01 and WM-02 implementations are present in the inspected `efb94f7` source, pending formal review. WM-03–WM-05 remain proposed; WM-06 is explicitly deferred.
+**Status:** Advisory plan. WM-01–WM-04 implementations are present in the current source, pending developer stage acceptance. WM-05 remains proposed; WM-06 is explicitly deferred.
 
 **Normative owner:** [APATCH-SUB-004](subspecs/subspec-04-operational-workflows.md). **Dependencies:** [SUB-001](../archive/subspecs/subspec-01-workflow-control.md), [SUB-002](../archive/subspecs/subspec-02-state-history-audit.md), and [SUB-003](subspecs/subspec-03-feature-session-planning.md). The original design baseline is `9f256d7`; a newer inspected clean `main` snapshot is `efb94f794b06489c3d4898ffd42218f7b16e69fd` (2026-10-27 11:25 UTC). Installation-local `apatch.conf` and target `.apatch/config.yaml` are excluded from the snapshot; use isolated config fixtures and never package private settings.
 
@@ -104,7 +104,7 @@ def execute_macro(name, selected_zip):
 
 ## WM-04 — Explicit prepare commands and stable-check policy
 
-**Status:** Proposed. **Dependencies:** WM-03 and existing `CheckWorktreeChanged` handling. **Non-goals:** executing arbitrary shell strings outside existing configured argv validation, hiding repeated source modifications, modifying direct `CHK` defaults.
+**Status:** Implementation present; developer review pending. **Dependencies:** WM-03 and existing `CheckWorktreeChanged` handling. **Non-goals:** executing arbitrary shell strings outside existing configured argv validation, hiding repeated source modifications, modifying direct `CHK` defaults.
 
 | Path | Ordered work |
 | --- | --- |
@@ -203,3 +203,4 @@ complete canonical suites and terminal behavior review on target platforms.
 3. Verify CLI alias compatibility, status/progress immutability, terminal and redirected output, and behavior when activity/history is missing or malicious.
 4. Verify the one-ZIP handoff has only modified source/docs/tests plus embedded `.apatch/params.json`, correct repository and new feature-branch metadata, and externally computed final digest.
 5. Mark a stage implemented only after review of the resulting code and passing acceptance evidence. Keep later CLI options documented as **proposed** until shipped.
+
