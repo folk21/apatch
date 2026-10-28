@@ -19,6 +19,24 @@ LOGGER = logging.getLogger("apatch.workflow")
 
 
 class OperationPresentation:
+    def present_guarded_commit_readiness(self, session_id: str, *,
+                                         accepted_manual_paths=()):
+        """Show the future goal planner's commit gate without mutating state."""
+        from ..context import inspect_guarded_commit_readiness
+
+        readiness = inspect_guarded_commit_readiness(
+            self, session_id, accepted_manual_paths=accepted_manual_paths)
+        print(f"==> COMMIT GUARD {readiness.status}: {readiness.detail}")
+        if readiness.paths:
+            preview = ", ".join(readiness.paths[:10])
+            extra = len(readiness.paths) - min(10, len(readiness.paths))
+            print(f"    Scope: {preview}" + (f" (+{extra} more)" if extra else ""))
+        if readiness.status == "NEEDS_VERIFICATION":
+            print("    Recovery: Run guarded CHK on the exact scoped bytes before CMT.")
+        elif readiness.status == "WAITING_FOR_USER":
+            print("    Recovery: Review and explicitly accept each manual path.")
+        return readiness
+
     def _record_progress(self, number, started_at, elapsed, result, before_phase,
                          before_branch, after_branch, *, error=None):
         recorder = getattr(self, "progress_recorder", None)

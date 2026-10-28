@@ -43,7 +43,7 @@ class RunnerScriptsTests(unittest.TestCase):
             with self.subTest(options=options):
                 result, args = self.invoke("run_tests.sh", *options)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(args[:4], ["-B", "-m", "unittest", "-v"])
+                self.assertEqual(args[:4], ["-B", "-m", "tests.timeout_runner", "-v"])
                 self.assertNotIn("discover", args)
                 self.assertIn("tests.test_runner_scripts", args)
                 self.assertIn("tests.test_context", args)
@@ -55,7 +55,7 @@ class RunnerScriptsTests(unittest.TestCase):
             with self.subTest(script=script):
                 result, args = self.invoke(script, *options)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(args, ["-B", "-m", "unittest", "discover", "-s", "tests", "-v"])
+                self.assertEqual(args, ["-B", "-m", "tests.timeout_runner", "--full"])
 
     def test_invalid_mode_fails_without_launching_checks(self):
         result, args = self.invoke("run_tests.sh", "unknown")

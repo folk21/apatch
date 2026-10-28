@@ -92,7 +92,8 @@ class ForceActions:
                 if not confirm(f"FORCE: Fetch and track existing {w.config.remote}/{target} at {remote_commit}?"):
                     return
                 run(["git", "fetch", "--no-tags", w.config.remote,
-                     f"refs/heads/{target}:refs/remotes/{w.config.remote}/{target}"], w.root)
+                     f"refs/heads/{target}:refs/remotes/{w.config.remote}/{target}"],
+                    w.root, timeout=w.config.github_timeout_seconds)
                 run(["git", "switch", "--track", "-c", target,
                      f"{w.config.remote}/{target}"], w.root)
             else:
@@ -271,7 +272,8 @@ class ForceActions:
             raise Abort("No project verification commands configured")
         for command in w.config.checks:
             run(list(command), w.root, stream_output=True,
-                timeout=w.config.check_timeout_seconds)
+                timeout=w.config.check_timeout_seconds,
+                idle_timeout=w.config.check_idle_timeout_seconds)
         if head(w.root) != expected_head:
             raise Abort("HEAD changed while running project verification")
         if dirty is not None:
@@ -339,14 +341,16 @@ class ForceActions:
             print(f"Remote {w.config.remote}/{branch} already matches {current}.")
             return True
         if remote:
-            run(["git", "fetch", "--no-tags", w.config.remote, f"refs/heads/{branch}"], w.root)
+            run(["git", "fetch", "--no-tags", w.config.remote, f"refs/heads/{branch}"],
+                w.root, timeout=w.config.github_timeout_seconds)
             result = run(["git", "merge-base", "--is-ancestor", remote, current], w.root,
                          check=False)
             if result.returncode != 0:
                 raise Abort("Remote branch has diverged; FORCE never rewrites remote history")
         if not confirm(f"FORCE: Push {current} to {w.config.remote}/{branch} (fast-forward only)?"):
             return
-        run(["git", "push", "-u", w.config.remote, f"HEAD:refs/heads/{branch}"], w.root)
+        run(["git", "push", "-u", w.config.remote, f"HEAD:refs/heads/{branch}"],
+            w.root, timeout=w.config.github_timeout_seconds)
         if remote_head(w.root, w.config, branch) != current:
             raise Abort("Remote HEAD does not match local HEAD after push")
         self.checkpoint("pushed", "push completed", pushed_sha=current,

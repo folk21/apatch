@@ -1,5 +1,7 @@
 """Regression tests for github contracts."""
 
+import time
+
 from tests._support import (
     LocalGitFixture, command, TOOL, hashlib,
     json, os, re, shlex,
@@ -577,17 +579,44 @@ class GithubGuardTest(unittest.TestCase):
 
     def test_timeout_raises_abort_without_waiting_indefinitely(self):
         from apatch_lib.gitutil import run
-        with patch("apatch_lib.gitutil.subprocess.run",
-                   side_effect=subprocess.TimeoutExpired(["gh", "pr", "list"], 0.1)):
-            with self.assertRaisesRegex(Abort, "timed out after 0.1s"):
-                run(["gh", "pr", "list"], self.root, timeout=0.1)
+        with self.assertRaisesRegex(Abort, "timed out after 0.1s"):
+            run([sys.executable, "-c", "import time; time.sleep(20)"],
+                self.root, timeout=0.1)
+
+    def test_network_timeout_kills_descendants_holding_output_pipes(self):
+        from apatch_lib.gitutil import run
+        started = time.monotonic()
+        child = "import subprocess, sys, time; " \
+                "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)']); " \
+                "time.sleep(20)"
+        with self.assertRaisesRegex(Abort, "timed out after 0.2s"):
+            run([sys.executable, "-c", child], self.root, timeout=0.2)
+        self.assertLess(time.monotonic() - started, 3)
+
+    def test_network_timeout_when_parent_exits_but_child_holds_pipe(self):
+        from apatch_lib.gitutil import run
+
+        script = "import subprocess, sys; " \
+                 "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)'])"
+        started = time.monotonic()
+        with self.assertRaisesRegex(Abort, "timed out after 0.2s"):
+            run([sys.executable, "-c", script], self.root, timeout=0.2)
+        self.assertLess(time.monotonic() - started, 3)
+
+    def test_remote_git_head_uses_configured_timeout(self):
+        from apatch_lib import gitutil
+        from unittest.mock import Mock
+
+        with patch.object(gitutil, "run", return_value=Mock(stdout="")) as read:
+            self.assertIsNone(gitutil.remote_head(self.root, self.config, "feature/a"))
+        self.assertEqual(read.call_args.kwargs["timeout"], 30)
 
     def test_global_github_timeout_is_validated(self):
         original = (TOOL / "apatch.conf").read_text()
         for value in ("0", "4", "301", "one-minute"):
             with self.subTest(value=value), tempfile.TemporaryDirectory() as folder:
                 path = Path(folder)
-                (path / "apatch.conf").write_text(original.replace("github_timeout_seconds = 45",
+                (path / "apatch.conf").write_text(original.replace("github_timeout_seconds = 30",
                                                                    f"github_timeout_seconds = {value}"))
                 with self.assertRaisesRegex(Abort, "github_timeout_seconds"):
                     load_config(path)

@@ -218,6 +218,21 @@ The console highlights the failed result and the next safe operation on TTYs,
 while redirected output retains plain-text diagnostic markers. Prefer
 non-mutating formatter check modes in canonical verification commands.
 
+### Planned goal-based commit safety
+
+FS-04 introduces an **internal-only** guarded commit implementation for
+feature sessions. It classifies ZIP-owned paths, pre-existing staged work
+and explicitly accepted manual files; it binds checks to exact Git bytes and
+project policy, and never stages additional paths at commit time. If a
+formatter rewrites source, review its output and run a stable second check.
+Unknown paths require separate path-specific authorization.
+
+No public `goal=COMMITTED` or `commitScope=` argument is implemented yet;
+do not put those options in current commands. Existing `op=CMT` and
+`opSeq=...,CMT` remain the supervised operations described above.
+FS-05 will provide the planner interface and manual-path approval contract.
+See [Security](SECURITY.md) for the internal safety boundary.
+
 Terminal output presents `SUCCESS` in green, `ERROR` in red, uncertainty in
 yellow, and `==> Next suggested: N [CODE]` in bold cyan when supported. The
 same labels appear without ANSI escapes in redirected output, CI, `NO_COLOR`
@@ -412,7 +427,7 @@ For action `PR`, `apatch` first queries GitHub for existing pull requests from t
 
 **Recovering a false historical `synced` checkpoint:** Retain the feature branch and its unique commits; do not delete or reset anything. When the current commit is published and still missing from the base, check out that existing feature branch and deliberately run `PR` for the same handoff. After verifying/creating an open PR for the current SHA, `apatch` replaces the stale PR association, clears prior local-sync evidence, and returns the workflow to `pr_created`. Review and merge that new PR separately. If GitHub refuses another PR from the same head branch, stop and arrange a separate reviewed recovery branch; do not retry `MRG` on the old PR. Retrying `SYN` on an older `synced` checkpoint will verify the PR revision again and print a warning if its purported merge cannot be confirmed, without silently rewriting the checkpoint.
 
-Every `gh` CLI invocation has a configurable timeout (45 seconds by default). Recognized transient network failures in explicitly read-only GitHub requests (`gh auth status`, `gh repo view`, `gh pr list`, `gh pr view`, and `gh pr checks`) trigger **one** additional bounded attempt after a short console-reported delay. Other failures do not retry. Within one `MRG` operation, `apatch` reuses the already verified repository identity rather than repeating authenticated `gh repo view` calls, and checks the local Git remote before reusing that identity. Each independent invocation starts with fresh GitHub verification.
+Every `gh` CLI invocation has a configurable timeout (30 seconds by default). Networked `git ls-remote`, `git fetch`, `git push`, and `git pull` calls use the same per-command deadline. Recognized transient network failures in explicitly read-only GitHub requests (`gh auth status`, `gh repo view`, `gh pr list`, `gh pr view`, and `gh pr checks`) trigger **one** additional bounded attempt after a short console-reported delay. Other failures do not retry. Within one `MRG` operation, `apatch` reuses the already verified repository identity rather than repeating authenticated `gh repo view` calls, and checks the local Git remote before reusing that identity. Each independent invocation starts with fresh GitHub verification.
 
 `gh pr create` and `gh pr merge` are **never automatically retried**: an interrupted request may already have caused a remote change. If PR creation times out or the verification lookup fails, GitHub may already have created the PR even if `apatch` has not persisted the `pr_created` phase. **Re-run `op=PR` when the connection recovers.** The operation searches for an existing PR before attempting creation, preventing an automatic duplicate in that recovery path. After an uncertain merge or a merge performed manually in GitHub, use explicit `MRG` reconciliation or `SYN` in LOOSE/FORCE to confirm the correct merged revision and synchronize the base. A timeout never counts as evidence of creation, review approval, or merge.
 
@@ -454,7 +469,7 @@ In LOOSE mode the new cycle is acknowledged automatically. Pending patches on th
 | `require_review_approval` | Require an approved PR review before merging; defaults to `true` and may be overridden by the target repository's `.apatch/config.yaml`. |
 | `require_required_checks` | Require published, passing GitHub CI checks before merging; defaults to `true` and may be overridden per repository. |
 | `merge_method` | GitHub merge strategy: `merge`, `squash`, or `rebase`. |
-| `github_timeout_seconds` | Maximum wait for each `gh` CLI call, including PR discovery, creation, and verification; default `45`, allowed `5`–`300`. Does not limit project tests. |
+| `github_timeout_seconds` | Maximum wait for each `gh` and networked `git` command, including PR discovery, creation, and verification; default `30`, allowed `5`–`300`. Does not limit project tests. |
 | `max_uncompressed_patch_bytes` | Maximum total extracted archive size. |
 
 All three runtime settings—`state_file`, `applied_patches_file`, and `log_directory`—are now resolved relative to the target repository's `.apatch/` directory. State and history settings must be plain filenames; the log setting may be a relative subdirectory. Absolute paths, `..` traversal, and symlinked destinations are rejected. The global configuration does not define project verification commands.
@@ -479,7 +494,7 @@ checks:
   - ["./gradlew", "check"]
 ```
 
-`base_branch`, `log_directory`, `state_file`, `applied_patches_file`, `require_review_approval`, `require_required_checks`, and `check_timeout_seconds` are optional and override their global counterparts. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. Separate lock files named `<state_file>.lock` and `<applied_patches_file>.lock` are created automatically in `.apatch/`. Omit these settings to inherit the global defaults.
+`base_branch`, `log_directory`, `state_file`, `applied_patches_file`, `require_review_approval`, `require_required_checks`, `check_timeout_seconds`, and `check_idle_timeout_seconds` are optional and override their global counterparts. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. Separate lock files named `<state_file>.lock` and `<applied_patches_file>.lock` are created automatically in `.apatch/`. Omit these settings to inherit the global defaults.
 
 The effective base branch is selected in this order: project `.apatch/config.yaml:base_branch`, installation-wide `apatch.conf:base_branch`, then `main`. Values must be nonempty, valid Git branch names (for example `develop` or `release/2026-q4`). Invalid or malformed explicit values are rejected before any workflow action; `apatch` does not fall back to a different branch. The configured branch must exist on the selected remote for branch creation. The action header and `STS` identify the effective base branch and its `project` or `global` source. Set the override in the target project that actually uses the alternative base; changing it mid-workflow does not automatically retarget an existing PR.
 
@@ -508,7 +523,7 @@ checks:
 
 Commands run sequentially from the target repository root; execution stops on the first failure. Standard output and standard error from these project checks are displayed live in the terminal, but successful checks do not write their output to the project log. Each command is executed directly **without a shell**, so pipelines, redirections, environment-variable expansion, and `&&` are not interpreted. Put compound shell logic in a project-owned script and call that script from `checks`.
 
-`check_timeout_seconds` bounds each canonical check (integer 1–3600, default `900`). On timeout, `apatch` terminates the check's process group and stops the sequence before commit or publication. Choose a project-specific value that accommodates the full integration suite.
+`check_timeout_seconds` bounds the **total duration** of each canonical check (integer 1–3600, default `900`). `check_idle_timeout_seconds` bounds the time **without a complete output line** (integer 1–3600, default `30`). Both settings may be overridden in `.apatch/config.yaml`; for example, a silent build taking longer than 30 seconds can set `check_idle_timeout_seconds: 120`. On either timeout, `apatch` terminates the check's process group and stops the sequence before commit or publication. The idle limit prevents a hung check from consuming the entire total deadline when it stops reporting progress.
 
 For the `apatch` tool's own repository, `./run_tests.sh` runs the fast regular safety suite by default, and `./run_rare_checks.sh` runs the complete regression suite. `CHK` executes only the checks explicitly listed in the target repository's `.apatch/config.yaml`; it does not automatically run the extended suite. GitHub Actions is manual-only and publishes no automatic push/PR test results. Run the extended suite locally before merging, even when `require_required_checks: false` is configured. GitHub branch-protection rules may independently require checks; verify those rules before relying on manual-only testing. See [Development](DEVELOPMENT.md).
 

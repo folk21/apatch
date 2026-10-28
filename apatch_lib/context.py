@@ -61,6 +61,49 @@ class ContextReport:
     findings: tuple[GuardFinding, ...]
 
 
+@dataclass(frozen=True)
+class GuardedCommitReadiness:
+    """Read-only decision for the internal FS-04 commit gate."""
+
+    status: str
+    detail: str
+    paths: tuple[str, ...] = ()
+
+
+def inspect_guarded_commit_readiness(workflow, session_id: str, *,
+                                     accepted_manual_paths=()) -> GuardedCommitReadiness:
+    """Classify exact scope/evidence without staging, locking or persisting."""
+    from .commit_scope import (NeedsVerification, WaitingForUser,
+                               inspect_commit_scope)
+
+    try:
+        scope = inspect_commit_scope(workflow, session_id,
+                                     accepted_manual_paths=accepted_manual_paths)
+    except WaitingForUser as exc:
+        return GuardedCommitReadiness("WAITING_FOR_USER", str(exc))
+    except NeedsVerification as exc:
+        return GuardedCommitReadiness("NEEDS_VERIFICATION", str(exc))
+    except Abort as exc:
+        return GuardedCommitReadiness("BLOCKED", str(exc))
+
+    record = workflow.record
+    expected = {
+        "session_id": scope.session_id, "branch": scope.branch, "head": scope.head,
+        "fingerprint": scope.fingerprint, "policy_fingerprint": scope.policy_fingerprint,
+        "paths": list(scope.paths), "accepted_manual": list(scope.accepted_manual),
+    }
+    verified = record.get("guarded_verification")
+    if (verified != expected or record.get("verified_fingerprint") != scope.fingerprint
+            or record.get("verified_head") != scope.head
+            or record.get("verified_branch") != scope.branch):
+        return GuardedCommitReadiness(
+            "NEEDS_VERIFICATION", "Stage only authorized paths and run canonical checks",
+            scope.paths)
+    return GuardedCommitReadiness(
+        "READY", "The recorded guarded CHK matches current bytes and policy",
+        scope.paths)
+
+
 def _changed_paths(root: Path) -> tuple[str, ...]:
     raw = local_git(root, "-c", "core.quotePath=false", "status", "--porcelain=v1",
                     "--untracked-files=all", "-z")

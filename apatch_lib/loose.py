@@ -10,12 +10,15 @@ from .core.enums import WorkflowPhase
 from .core.contracts import ActionResult
 from .branch_guard import assert_no_unfinished_feature_branches
 from .created_patches import persist_registry
+from .commit_scope import (NeedsVerification, assert_scope_unchanged,
+                           changed_contents_fingerprint, inspect_commit_scope)
 from .gitutil import (branch_exists, confirm, current_branch, head, output,
                       remote_head, run, status_paths, worktree_fingerprint)
 from .model import Abort, CheckWorktreeChanged
 from .patch import apply, inspect
 from .patch_history import locked_history
 from .session_continuation import require_session_continuation
+from .session import record_session_commit
 from .state import save
 
 
@@ -56,7 +59,8 @@ class LooseActions:
                 if not confirm(f"LOOSE: Track existing remote branch {target}?"):
                     return
                 run(["git", "fetch", "--no-tags", w.config.remote,
-                     f"refs/heads/{target}:refs/remotes/{w.config.remote}/{target}"], w.root)
+                     f"refs/heads/{target}:refs/remotes/{w.config.remote}/{target}"],
+                    w.root, timeout=w.config.github_timeout_seconds)
                 run(["git", "switch", "--track", "-c", target,
                      f"{w.config.remote}/{target}"], w.root)
             else:
@@ -195,8 +199,12 @@ class LooseActions:
             )
             w.record.setdefault("branch_origin", "REUSED")
             for field in ("verified_fingerprint", "verified_head", "verified_branch",
-                          "commit_sha", "pushed_sha"):
+                          "guarded_verification", "commit_sha", "pushed_sha"):
                 w.record.pop(field, None)
+            w.record["patch_footprint"] = sorted(
+                set(archive.changed) | set(w.handoff.delete_paths))
+            w.record["preexisting_staged_paths"] = sorted(
+                path for path, code in before.items() if code[0] not in {" ", "?"})
             w.persist()
             apply(w.config, w.handoff, w.root, archive)
             _, paths = worktree_fingerprint(w.root)
@@ -222,7 +230,8 @@ class LooseActions:
                 print((result.stdout + result.stderr).strip())
         for command in w.config.checks:
             run(list(command), w.root, stream_output=True,
-                timeout=w.config.check_timeout_seconds)
+                timeout=w.config.check_timeout_seconds,
+                idle_timeout=w.config.check_idle_timeout_seconds)
         after, _ = worktree_fingerprint(w.root)
         if head(w.root) != (w.record.get("before_patch_head") or head(w.root)):
             print("WARNING: HEAD has changed since patch application.")
@@ -251,6 +260,100 @@ class LooseActions:
                 and record.get("repository") == str(w.root.resolve())
                 and record.get("phase") in PENDING_PHASES
                 and (record.get("applied_branch") == branch or key == w.key)]
+
+    def guarded_check(self, session_id: str, *, accepted_manual_paths=()):
+        """Stage only explicitly owned paths, then freeze a successful CHK snapshot.
+
+        This internal API is not a legacy CLI action. A future goal planner
+        must obtain path-specific manual acceptance outside skipApproves.
+        """
+        w = self.w
+        w.record.pop("guarded_verification", None)
+        scope = inspect_commit_scope(w, session_id,
+                                     accepted_manual_paths=accepted_manual_paths)
+        assert_scope_unchanged(w, scope)
+        run(["git", "add", "-A", "--", *scope.paths], w.root)
+        staged_paths = status_paths(w.root)
+        if (set(staged_paths) != set(scope.paths)
+                or changed_contents_fingerprint(w.root, staged_paths)
+                != scope.contents_fingerprint):
+            raise NeedsVerification(
+                "NEEDS_VERIFICATION: Files changed while staging the authorized scope; "
+                "the existing index is preserved")
+        staged = inspect_commit_scope(w, session_id,
+                                      accepted_manual_paths=scope.accepted_manual)
+        self.verify()
+        stable = inspect_commit_scope(w, session_id,
+                                      accepted_manual_paths=scope.accepted_manual)
+        if stable != staged:
+            raise NeedsVerification(
+                "NEEDS_VERIFICATION: Commit scope changed during canonical checks")
+        if run(["git", "diff", "--quiet"], w.root, check=False).returncode:
+            raise NeedsVerification(
+                "NEEDS_VERIFICATION: Checked working-tree bytes differ from the staged index")
+        w.record["guarded_verification"] = {
+            "session_id": session_id, "branch": stable.branch, "head": stable.head,
+            "fingerprint": stable.fingerprint, "policy_fingerprint": stable.policy_fingerprint,
+            "paths": list(stable.paths), "accepted_manual": list(stable.accepted_manual),
+        }
+        w.persist()
+        print(f"Guarded CHK verified {len(stable.paths)} explicitly scoped path(s).")
+        return True
+
+    def guarded_commit(self, session_id: str):
+        """Commit the exact verified index; never stage additional files at CMT."""
+        w = self.w
+        evidence = w.record.get("guarded_verification")
+        if not isinstance(evidence, dict) or evidence.get("session_id") != session_id:
+            raise NeedsVerification(
+                "NEEDS_VERIFICATION: Run internal guarded CHK before a planned commit")
+        scope = inspect_commit_scope(w, session_id,
+                                     accepted_manual_paths=evidence.get("accepted_manual", ()))
+        expected = {
+            "session_id": scope.session_id, "branch": scope.branch, "head": scope.head,
+            "fingerprint": scope.fingerprint, "policy_fingerprint": scope.policy_fingerprint,
+            "paths": list(scope.paths), "accepted_manual": list(scope.accepted_manual),
+        }
+        if evidence != expected or (w.record.get("verified_fingerprint") != scope.fingerprint
+                                    or w.record.get("verified_head") != scope.head
+                                    or w.record.get("verified_branch") != scope.branch):
+            raise NeedsVerification(
+                "NEEDS_VERIFICATION: Verified Git bytes, branch, HEAD, or check policy are stale")
+        if run(["git", "diff", "--quiet"], w.root, check=False).returncode:
+            raise NeedsVerification(
+                "NEEDS_VERIFICATION: Unstaged edits remain after guarded CHK")
+        staged_data = run(["git", "diff", "--cached", "--name-only", "-z"],
+                          w.root, text=False).stdout
+        staged_paths = {os.fsdecode(item) for item in staged_data.split(b"\x00") if item}
+        if staged_paths != set(scope.paths):
+            raise NeedsVerification(
+                "NEEDS_VERIFICATION: The staged commit scope differs from verified paths")
+        run(["git", "diff", "--cached", "--check"], w.root)
+        assert_scope_unchanged(w, scope)
+        expected_tree = output(["git", "write-tree"], w.root)
+        assert_scope_unchanged(w, scope)
+        run(["git", "commit", "-F", "-"], w.root, input_text=w.handoff.message,
+            log_commit_message=w.handoff.message)
+        committed_sha = head(w.root)
+        if output(["git", "rev-parse", "HEAD^{tree}"], w.root) != expected_tree:
+            raise Abort(
+                "COMMIT_CONTENT_DRIFT: Git hooks changed the committed tree; "
+                "inspect the new commit before recording successful publication")
+        pending = self._pending(scope.branch)
+        for key, record in pending:
+            if record.get("session_id") != session_id:
+                raise Abort("Committed session contains an unexpected pending workflow")
+            record.update(phase="committed", commit_sha=committed_sha,
+                          applied_branch=scope.branch, combined_commit=True)
+            record.pop("guarded_verification", None)
+        record_session_commit(w.state, session_id, committed_sha)
+        w.persist()
+        with locked_history(w.config.applied_patches_path) as history:
+            for _, record in pending:
+                history.record_commit_branch(record["patch_file"],
+                                             record["branch"], scope.branch)
+        print(f"Guarded commit {committed_sha}; no push or PR operation was requested.")
+        return True
 
     def commit(self):
         w = self.w
@@ -331,7 +434,8 @@ class LooseActions:
         print(f"Push destination: {w.config.remote} ({remote_url})")
         remote = remote_head(w.root, w.config, branch)
         if remote and remote != current_sha:
-            run(["git", "fetch", "--no-tags", w.config.remote, f"refs/heads/{branch}"], w.root)
+            run(["git", "fetch", "--no-tags", w.config.remote, f"refs/heads/{branch}"],
+                w.root, timeout=w.config.github_timeout_seconds)
             ancestor = run(["git", "merge-base", "--is-ancestor", remote, current_sha],
                            w.root, check=False)
             if ancestor.returncode != 0:
@@ -339,7 +443,8 @@ class LooseActions:
         if remote != current_sha:
             if not confirm(f"Push committed HEAD {current_sha} to {w.config.remote}/{branch}?"):
                 return
-            run(["git", "push", "-u", w.config.remote, f"HEAD:refs/heads/{branch}"], w.root)
+            run(["git", "push", "-u", w.config.remote, f"HEAD:refs/heads/{branch}"],
+                w.root, timeout=w.config.github_timeout_seconds)
             if remote_head(w.root, w.config, branch) != current_sha:
                 raise Abort("Remote HEAD differs after push; inspect remote history")
         else:

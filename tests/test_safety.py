@@ -16,6 +16,25 @@ from tests._support import (
 
 
 class SafetyTests(LocalGitFixture):
+    def test_streaming_idle_timeout_kills_child_after_parent_exits(self):
+        from apatch_lib.gitutil import run
+
+        child = "import subprocess, sys; " \
+                "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)'])"
+        started = time.monotonic()
+        with self.assertRaisesRegex(Abort, "stalled with no output for 0.3s"):
+            run([sys.executable, "-c", child], self.root, stream_output=True,
+                timeout=5, idle_timeout=0.3)
+        self.assertLess(time.monotonic() - started, 3)
+
+    def test_streaming_check_with_periodic_output_survives_idle_deadline(self):
+        from apatch_lib.gitutil import run
+
+        script = "import time; [(print('tick', flush=True), time.sleep(0.2)) for _ in range(7)]"
+        result = run([sys.executable, "-c", script], self.root, stream_output=True,
+                     timeout=5, idle_timeout=1)
+        self.assertEqual(result.returncode, 0)
+
     def test_log_records_patch_identity_and_commit_body_only_on_commit(self):
         self.payload["commit_message"] += "\nSecret-in-commit-body-should-not-be-logged"
         self.params.write_text(json.dumps(self.payload))
@@ -334,6 +353,27 @@ class SafetyTests(LocalGitFixture):
         self.assertLess(elapsed, 8)
         self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(), current_head)
 
+    def test_canonical_check_idle_timeout_stops_batch_and_preserves_commit(self):
+        self.project_config.write_text('schema_version: 1\ncheck_timeout_seconds: 60\n'
+                                       'check_idle_timeout_seconds: 1\n'
+                                       'checks:\n  - ["./run_checks.sh"]\n')
+        command("git", "add", ".apatch/config.yaml", cwd=self.root)
+        command("git", "commit", "-m", "Set canonical check idle timeout", cwd=self.root)
+        command("git", "push", "origin", "main", cwd=self.root)
+        current_head = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        self.payload["base_commit"] = current_head
+        stem = self.make_self_contained_zip()
+        with zipfile.ZipFile(self.zip, "a") as archive:
+            archive.writestr(f"{self.root.name}/run_checks.sh", "#!/bin/sh\nsleep 30\n")
+        started = time.monotonic()
+        result = self.invoke_zip("opSeq=APL,BRN,CHK,CMT", "skipApproves=true", selection=stem)
+        self.assertEqual(result.returncode, 2)
+        self.assertLess(time.monotonic() - started, 8)
+        self.assertIn("Canonical check stalled with no output for 1s", result.stderr)
+        self.assertIn("SEQUENCE STOP: 4 [CHK]", result.stdout)
+        self.assertNotIn("SEQUENCE ACTION 5 [CMT]", result.stdout)
+        self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(), current_head)
+
     def test_invalid_project_check_timeout_is_rejected(self):
         for value in ("0", "3601", "true", "-1", "abc"):
             with self.subTest(value=value):
@@ -343,3 +383,13 @@ class SafetyTests(LocalGitFixture):
                 result = self.invoke_zip("op=STS")
                 self.assertEqual(result.returncode, 2)
                 self.assertIn("check_timeout_seconds", result.stderr)
+
+    def test_invalid_project_check_idle_timeout_is_rejected(self):
+        for value in ("0", "3601", "true", "-1", "abc"):
+            with self.subTest(value=value):
+                self.project_config.write_text(
+                    f'schema_version: 1\ncheck_idle_timeout_seconds: {value}\n'
+                    'checks:\n  - ["./run_checks.sh"]\n')
+                result = self.invoke_zip("op=STS")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("check_idle_timeout_seconds", result.stderr)

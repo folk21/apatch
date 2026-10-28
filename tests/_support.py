@@ -80,6 +80,7 @@ class LocalGitFixture(unittest.TestCase):
         self.project_config = config_dir / "config.yaml"
         self.project_config.write_text(
             'schema_version: 1\nlog_directory: logs\n'
+            'check_timeout_seconds: 30\ncheck_idle_timeout_seconds: 30\n'
             'checks:\n  - ["./run_checks.sh"]\n')
         command("git", "add", "-A", cwd=self.root)
         command("git", "commit", "-m", "base", cwd=self.root)

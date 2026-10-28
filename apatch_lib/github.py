@@ -336,13 +336,15 @@ def sync_local_base(config, root):
     if local_branch:
         run(["git", "switch", config.base], root)
         try:
-            run(["git", "pull", "--ff-only", config.remote, config.base], root)
+            run(["git", "pull", "--ff-only", config.remote, config.base],
+                root, timeout=config.github_timeout_seconds)
         except Abort:
             print(f"WARNING: Switched to {config.base}, but remote synchronization is incomplete.")
             raise
     else:
         run(["git", "fetch", "--no-tags", config.remote,
-             f"refs/heads/{config.base}:refs/remotes/{config.remote}/{config.base}"], root)
+             f"refs/heads/{config.base}:refs/remotes/{config.remote}/{config.base}"],
+            root, timeout=config.github_timeout_seconds)
         run(["git", "switch", "--track", "-c", config.base, f"{config.remote}/{config.base}"], root)
     print(f"Local {config.base} synchronized with {config.remote}/{config.base}.")
     return head(root)
