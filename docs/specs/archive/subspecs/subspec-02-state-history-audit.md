@@ -1,8 +1,8 @@
 # APATCH-SUB-002 — Operation Execution History and Global Patch Reconciliation
 
-**Status:** DRAFT — second-priority P1 requirements; no implementation authorized.
+**Status:** ACCEPTED / ARCHIVED — developer confirmed completed P1.1–P1.2 work on 2026-10-28. Historical proposals are retained as originally written.
 
-**Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Advisory stages:** [Implementation plan](../../plans/apatch-orchestrator-implementation-plan.md).
+**Parent:** [APATCH-SPEC-001](../../active/spec-apatch-orchestrator.md). **Advisory stages:** [archived implementation plan](subspec-02-state-history-audit-implementation-plan.md).
 
 ## 1. Purpose and dependencies
 

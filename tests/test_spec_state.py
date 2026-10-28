@@ -2,6 +2,7 @@
 
 import copy
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -28,12 +29,18 @@ class SpecStateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, message):
             self.verify_payload(payload)
 
+    @staticmethod
+    def record(payload: dict, identifier: str) -> dict:
+        return next(item for item in payload["workstreams"] if item["id"] == identifier)
+
     def test_current_state_is_valid_read_only_and_focus_is_explicit(self) -> None:
         before = STATE_PATH.read_bytes()
         result = validate_state()
         self.assertEqual(result["selectedWorkstreamId"], "feature-sessions")
         self.assertEqual(next(w for w in result["workstreams"]
                               if w["id"] == "feature-sessions")["stageId"], "FS-04")
+        self.assertEqual({item["id"] for item in result["workstreams"]},
+                         {"feature-sessions", "operational-workflows"})
         self.assertEqual(STATE_PATH.read_bytes(), before)
 
     def test_cli_reports_selected_focus_without_mutating_source(self) -> None:
@@ -67,7 +74,7 @@ class SpecStateTests(unittest.TestCase):
         data["selectedWorkstreamId"] = "missing-focus"
         self.assert_invalid(data, "Selected workstream does not exist")
         data = copy.deepcopy(self.original)
-        data["workstreams"][2]["phase"] = "ON_HOLD"
+        self.record(data, "feature-sessions")["phase"] = "ON_HOLD"
         self.assert_invalid(data, "Selected workstream cannot be paused")
 
     def test_rejects_duplicate_ids_or_spec_paths(self) -> None:
@@ -90,8 +97,42 @@ class SpecStateTests(unittest.TestCase):
                 data["workstreams"][0][key] = value
                 self.assert_invalid(data, expected)
         data = copy.deepcopy(self.original)
-        data["workstreams"][0]["phase"] = "READY_FOR_IMPLEMENTATION"
+        self.record(data, "operational-workflows")["phase"] = "READY_FOR_IMPLEMENTATION"
         self.assert_invalid(data, "Only the selected SINGLE")
+
+    def test_spec_lifecycle_has_one_canonical_spec_and_plan_per_owner(self) -> None:
+        specs = ROOT / "docs/specs"
+        active = specs / "active"
+        archived = specs / "archive/subspecs"
+        self.assertFalse(any((specs / "plans").glob("*.md")))
+        for stem in ("subspec-01-workflow-control",
+                     "subspec-02-state-history-audit",
+                     "subspec-05-architectural-simplification"):
+            with self.subTest(archived=stem):
+                self.assertTrue((archived / f"{stem}.md").is_file())
+                self.assertTrue((archived / f"{stem}-implementation-plan.md").is_file())
+                self.assertFalse((active / "subspecs" / f"{stem}.md").exists())
+                self.assertFalse((active / f"{stem}-implementation-plan.md").exists())
+        for stem in ("subspec-03-feature-session-planning",
+                     "subspec-04-operational-workflows"):
+            with self.subTest(active=stem):
+                self.assertTrue((active / "subspecs" / f"{stem}.md").is_file())
+                self.assertTrue((active / f"{stem}-implementation-plan.md").is_file())
+                self.assertFalse((archived / f"{stem}.md").exists())
+                self.assertFalse((archived / f"{stem}-implementation-plan.md").exists())
+        self.assertTrue((specs / "AGENTS.md").is_file())
+
+    def test_sdd_markdown_relative_links_resolve_after_archival(self) -> None:
+        specs = ROOT / "docs/specs"
+        broken = []
+        for document in specs.rglob("*.md"):
+            for match in re.finditer(r"\]\(([^)]+)\)", document.read_text(encoding="utf-8")):
+                link = match.group(1).split("#", 1)[0]
+                if not link or "://" in link or link.startswith(("mailto:", "/")):
+                    continue
+                if not (document.parent / link).exists():
+                    broken.append(f"{document.relative_to(ROOT)} -> {link}")
+        self.assertEqual(broken, [])
 
     def test_rejects_unsafe_missing_and_invalid_spec_paths(self) -> None:
         for path in ("../outside.md", "docs/specs/archive/subspecs/example.md",

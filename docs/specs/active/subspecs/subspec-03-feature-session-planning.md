@@ -2,7 +2,7 @@
 
 **Status:** DRAFT (GENSPEC). FS-00 checkpoint-linkage correction and FS-00R deterministic ZIP resume are present in the inspected source; FS-01–FS-06 context-aware behavior remains proposed. Implementation evidence does not constitute final developer acceptance.
 
-**Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Implementation plan:** [APATCH-PLAN-003](../../plans/feature-session-context-aware-implementation-plan.md).
+**Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Implementation plan:** [APATCH-PLAN-003](../subspec-03-feature-session-planning-implementation-plan.md).
 
 ## 1. Purpose and boundaries
 
@@ -196,4 +196,4 @@ Color capable TTYs SHOULD use green for verified success, cyan for plan/next act
 4. Whether automatic stable-format reruns default off and how a project config opts in with a maximum count.
 5. Whether later STRICT/FORCE planner support is valuable; it is out of the first implementation.
 
-The [implementation plan](../../plans/feature-session-context-aware-implementation-plan.md) identifies the design gate and incremental code/test work for every criterion.
+The [implementation plan](../subspec-03-feature-session-planning-implementation-plan.md) identifies the design gate and incremental code/test work for every criterion.

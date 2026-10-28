@@ -76,9 +76,9 @@ A baseline Ruff inventory of `apatch.py`, `apatch_lib/`, and `tests/` found 272 
 
 ## SDD documentation lifecycle
 
-The [specification index](specs/README.md) owns the developer-controlled lifecycle of active **DRAFT** specifications, their advisory plans, stage evidence, final review and explicit acceptance. The tracked [SDD checkpoint](specs/STATE.json) records only processing focus, distinct from the tool's runtime state. Validate it directly with `python3 tools/specs/validate_state.py`; both test suites also cover it through `tests/test_spec_state.py`. Implemented slices are not automatically accepted normative requirements.
+The [SDD agent rules](specs/AGENTS.md) define the developer-controlled lifecycle, evidence requirements, plan pairing, and acceptance/archival transition. The [human-facing index](specs/README.md) distinguishes accepted archived SUB-001/SUB-002/SUB-005 from active SUB-003/SUB-004 and the draft umbrella. The tracked [SDD checkpoint](specs/STATE.json) records only active processing focus, distinct from the tool's runtime state. Validate it directly with `python3 tools/specs/validate_state.py`; both test suites also cover it through `tests/test_spec_state.py`.
 
-When the developer explicitly requests specification work, add one owning active spec with scope, invariants, acceptance criteria, and verifiable increments. Keep implementation plans advisory and separate from normative requirements. Use an existing convention before introducing new files. Do not infer completion or invent future stage IDs.
+For specification changes, follow the file layout and lifecycle in [SDD agent rules](specs/AGENTS.md); keep normative contracts and advisory plans separate. Do not invent future stage IDs or infer acceptance from implementation evidence.
 
 ## Documentation ownership
 
@@ -90,6 +90,7 @@ When the developer explicitly requests specification work, add one owning active
 | `docs/USAGE.md` | User-facing CLI reference, configuration, safety, and recovery |
 | `docs/ARCHITECTURE.md` | Component boundaries and runtime design |
 | `docs/DEVELOPMENT.md` | Tests, development workflow, and documentation ownership |
-| `docs/specs/README.md` | Active specification index, advisory plan mapping, SDD checkpoint rules and acceptance/archival lifecycle |
+| `docs/specs/README.md` | Human-facing active/archived specification index and processing checkpoint navigation |
+| `docs/specs/AGENTS.md` | Agent-facing SDD lifecycle, plan ownership and paired-archiving rules |
 
 Write changes in the owning document and cross-link it. Avoid duplicating README sections across multiple files.

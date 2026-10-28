@@ -1,10 +1,10 @@
-# APATCH-PLAN-001 — Orchestrator Implementation Plan
+# APATCH-PLAN-001-P0 — Workflow Control Implementation Plan
 
-**Status:** ADVISORY DRAFT. This plan does not authorize implementation.
+**Status:** ARCHIVED / ADVISORY — SUB-001 completed and accepted by the developer on 2026-10-28.
 
-**Specification:** [APATCH-SPEC-001](../active/spec-apatch-orchestrator.md).
+**Normative owner:** [APATCH-SUB-001](subspec-01-workflow-control.md). **Parent:** [APATCH-SPEC-001](../../active/spec-apatch-orchestrator.md).
 
-**P0 requirements:** [APATCH-SUB-001](../active/subspecs/subspec-01-workflow-control.md). **P1 history/audit requirements:** [APATCH-SUB-002](../active/subspecs/subspec-02-state-history-audit.md).
+This is the original P0 implementation plan split out of the former shared PLAN-001. Historical source references are retained for traceability; this archived plan does not authorize additional implementation.
 
 ## Principles
 
@@ -29,7 +29,7 @@ Complete small independently tested increments. Preserve existing CLI, handoff J
 | **P0.5a — Tool-wide progress event storage** | Append redacted structured events to `.apatch/progress/progress.json` under one interprocess lock; regenerate collision-safe per-project JSON views; handle partial updates and unavailable storage. | AC-39/42–45; concurrent local processes, crash recovery, storage permission and identity tests. |
 | **P0.5b — Progress query and configurable summaries** | Add read-only `info=PROGRESS` without handoff or target repository, global `progress_global_limit=8` and `progress_project_limit=3`, and project/global console summaries. | AC-40/41/43; CLI parser, non-Git invocation, display limits and no-side-effects tests. |
 
-Stages P0.4b and the final progress storage location depend on developer acceptance of [open decisions](../active/subspecs/subspec-01-workflow-control.md#8-open-decisions). P0.3c additionally needs the stable-numbering migration decision recorded there before its irreversible CLI contract is finalized. The user-facing P0 features remain in the **first sub-spec** even when delivered over multiple safe increments.
+Historically, stages P0.4b and the final progress storage location depended on developer acceptance of [open decisions](subspec-01-workflow-control.md#8-open-decisions). P0.3c also required a stable-numbering migration decision before its irreversible CLI contract could be finalized. The user-facing P0 features were part of the first sub-spec even when delivered over multiple safe increments; this historical planning text does not reopen the accepted scope.
 
 ### P0.1 — File-level implementation: current status and suggestions
 
@@ -699,125 +699,3 @@ def show_progress(global_config, tool_dir):
 ```
 
 **Acceptance checkpoint:** SUB-001 AC-40/41/43 and all P0.5a persistence tests. Display of a previous `MERGED` or `synced` result is explicitly a **recorded** historical fact; it does not replace `STS`, `SYN`, or live Git/GitHub confirmation. Future optional filters `info=PROGRESS project=<id>`, `info=PROJECTS`, and `--json` can be separately specified after the initial overview is validated.
-
-## P1 — Execution history, global audit, and scheduled quality checks
-
-### P1.1 — File-level implementation: execution journal (APATCH-SUB-002)
-
-**Dependency:** stable standalone and sequence dispatch; exact lock acquisition order confirmed in `state.py` and `workflow.py`. If P0.5 is already implemented, its tool-wide progress ledger remains a concise **cross-project projection**; the P1 journal is a richer **per-target evidence log**, not a second independent writer of the same progress event. Reuse/correlate stable event IDs where possible. Do not change real Git side effects as part of the journaling stage. Existing `apply_patch.state.json` stays the single durable state file.
-
-| File | Exact planned change |
-| --- | --- |
-| `apatch_lib/operation_events.py` (**new**) | Define `OperationRun`, outcome enum, sequence linkage, bounded error snapshot, and event serialization/validation. |
-| `apatch_lib/state.py` | Add schema-v2 migration and atomic `start_run`/`finish_run` transactions under existing locks; retain all workflow records and unknown forward-compatible fields. |
-| `apatch_lib/migration.py` | Extend actual version migration if that is its verified responsibility; never overwrite generic current state from older legacy sources. |
-| `apatch_lib/workflow.py` | Wrap numbered lifecycle operations with start/result journal updates exactly once per attempt. Exclude read-only `STS` and future `AUD`. |
-| `apatch_lib/sequence.py` | Supply sequence ID and one-based index to the shared operation wrapper; avoid writing a second duplicate event. |
-| `apatch_lib/gitutil.py`, `apatch_lib/github.py` | Expose evidence/uncertain remote side-effect classifications where current results cannot reliably distinguish failure from ambiguity. |
-| `apatch_lib/model.py` | Define persisted event schema/validation and safe error/identity bounds. |
-| `tests/test_apatch.py` | v1-to-v2 migration, malformed v2 rejection, parallel writers, interrupted process, retries, no-op, cancellation, timeout, multiple handoffs, and secret redaction. |
-| `docs/ARCHITECTURE.md`, `docs/USAGE.md` | Describe journal facts versus workflow checkpoints, schema evolution, and inspection semantics. |
-
-```python
-def run_numbered_workflow_operation(action, context):
-    if action.code in ("STS", "AUD"):
-        return execute_read_only_inspection(action, context)
-
-    run_id = state.atomic_append_run(
-        operation=action.identity, context=context, outcome="STARTED"
-    )
-    try:
-        result = workflow.execute_without_journal_recursion(action, context)
-        state.atomic_finish_run(
-            run_id, classify_outcome(result), verified_facts(result)
-        )
-        return result
-    except RemoteOutcomeUnknown as error:
-        state.atomic_finish_run(run_id, "INDETERMINATE", safe_error(error))
-        raise
-    except UserCancelled as error:
-        state.atomic_finish_run(run_id, "CANCELLED", safe_error(error))
-        raise
-    except Exception as error:
-        state.atomic_finish_run(run_id, "FAILED", safe_error(error))
-        raise
-
-def recover_unfinished_runs(records, observed_repository):
-    for record in records.where(outcome="STARTED"):
-        if owner_process_is_confirmed_alive(record):
-            continue
-        mark_unresolved_without_inventing_git_effects(record)
-        offer_external_reconciliation_if_needed(record)
-```
-
-Use distinct atomic lock windows for `STARTED` and terminal writes; release them before calling the underlying operation to avoid a nested state lock or deadlock. If persisting a completion result itself fails, preserve an explicit error and rely on subsequent factual reconciliation; do not claim the journal is complete. A retry creates a *new* run and checks externally observable idempotence before repeating remote side effects. Do not infer a patch/commit one-to-one relationship when several ZIPs were batched into one commit.
-
-**Acceptance checkpoint:** SUB-002 AC-H01–H07; synthetic concurrent writers show no lost events; old state reads and round-trips unchanged existing fields; never persist test output or credentials.
-
-### P1.2 — File-level implementation: global patch audit (APATCH-SUB-002)
-
-**Dependency:** status evidence semantics in P0.1 and operation history from P1.1. Register `11 [AUD]` without renumbering other operations. The default audit is offline and read-only.
-
-| File | Exact planned change |
-| --- | --- |
-| `apatch_lib/reconciliation.py` (**new**) | Build cross-source patch identity index, confidence/severity findings, stable ordering, and remediation suggestions; share fact comparison logic with `status.py`. |
-| `apatch_lib/created_patches.py`, `apatch_lib/patch_history.py` | Provide strictly parsed generation/application ordering and legacy-compatible history lookups. |
-| `apatch_lib/state.py`, `apatch_lib/operation_events.py` | Provide immutable snapshots of workflows and runs; never mutate state on audit. |
-| `apatch_lib/status.py`, `apatch_lib/gitutil.py` | Reuse verified/local/recorded/conflicting fact classification and Git evidence across all patch identities. |
-| `apatch_lib/github.py` | Optional bounded remote branch/PR reconciliation with explicit unknown results on network failure. |
-| `apatch_lib/workflow.py`, `apatch.py`, `apatch.sh` | Register `11 [AUD]`, direct acronym/number/interactive parity, and optional remote-query switch after the sub-spec resolves spelling. |
-| `tests/test_apatch.py` | Missing/duplicate/out-of-order patches, shared branches, manual operations, unknown remote, v1 history, and strict immutability tests. |
-| `docs/USAGE.md`, `docs/ARCHITECTURE.md` | Document audit coverage limitations, health/findings output, and read-only safety. |
-
-```python
-def audit_all_known_patches(repository, verify_remote=False):
-    generated = registry.read_optional_created_list(repository)
-    applied = patch_history.read_legacy_compatible(repository)
-    workflows = state.read_all_workflows(repository)
-    runs = state.read_operation_runs(repository)
-    local = gitutil.inspect_local_git_repository(repository)
-    remote = github.inspect_with_timeout(repository) if verify_remote else None
-
-    patch_ids = union_of_known_patch_ids(generated, applied, workflows, runs)
-    findings = []
-    for patch_id in patch_ids:
-        facts = reconcile_one_patch(patch_id, generated, applied,
-                                    workflows, runs, local, remote)
-        findings += detect_missing_skipped_stale_or_conflicting_steps(facts)
-    findings += detect_global_duplicates_and_ordering_problems(generated, applied)
-    return AuditReport(
-        findings=sorted_by_severity_then_patch(findings),
-        coverage=describe_unknown_or_unavailable_sources(remote, generated),
-        recommendations=derive_non_mutating_recovery_steps(findings),
-    )
-```
-
-**Acceptance checkpoint:** SUB-002 AC-A01–A05; compare state JSON bytes, applied/generated registries, HEAD, Git refs, staged and unstaged paths before/after `AUD`. When GitHub is unreachable, an offline report must still complete with explicit `UNKNOWN` remote facts.
-
-**Additional P1 format-adapter work (separate future sub-spec):** design and implement secure Git-native patch ingestion without changing the existing ZIP contract. Inspect the current archive/application modules, define a format-aware handoff validator, preflight via safe Git patch applicability checks, preserve manual worktree changes and deferred commits, and add cases for renames, deletions, binaries, malicious paths, conflicts, retries, and both `git diff` and `git format-patch` input forms. Do not implement until its dedicated sub-spec establishes accepted syntax and safety policy.
-
-### P1.3 — Scheduled check adapters (future dedicated sub-spec required)
-
-1. Define check contract and argv adapter; migrate configured canonical checks behind a compatibility facade without changing their behavior.
-2. Add trigger policies for each action, after every N patches, accumulated file/byte thresholds, and elapsed intervals. Persist last-run evidence and skip reasons.
-3. Add targeted/unit, lint/static, security, integration/E2E/UI/load check classes, with project-configured timeouts and blocking rules.
-
-**Verification:** tests for scheduling thresholds, stale evidence, mandatory versus advisory failures, command failures/timeouts, and output redaction.
-
-## P2 — Repository health and SDD stage tracking
-
-1. Introduce a versioned evidence record keyed by repository/branch/HEAD, with `UNKNOWN`, `HEALTHY`, `DEGRADED`, and `BLOCKED` states.
-2. Define optional spec/stage identity metadata and explicit completion criteria; trigger expanded checks at declared final milestones.
-
-**Verification:** drift/revision invalidation, unknown-check semantics, stage completion guard, migration and concurrency tests.
-
-## P3 — Independent review and plugin extensions
-
-1. Add an external-review adapter with explicit endpoint/CLI choice, budget, cooldown, patch-size thresholds, and data redaction.
-2. Add registration of independent check adapters and structured reports without growing the core `Workflow` class.
-
-**Verification:** mocked HTTP/CLI adapters, timeout/rate-limit/retry behavior, budget enforcement, opt-out defaults, and no covert network calls.
-
-## Progress and rollback policy
-
-The current stage remains `GENSPEC / DRAFT` until the developer approves it. Each implementation stage SHALL leave a separately testable handoff. A failed or partial Git/GitHub action is reconciled against live state; no automated force-push, hard reset, or rollback of user work is permitted.
