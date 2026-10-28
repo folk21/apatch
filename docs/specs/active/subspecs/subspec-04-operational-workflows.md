@@ -2,11 +2,11 @@
 
 **Status:** DRAFT. WM-01 (read-only activity in `AUD`) and WM-02 (per-project base branch) have implementations in the inspected source; WM-03–WM-05 are proposed and WM-06 is deferred. Formal acceptance is not recorded.
 
-**Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Implementation plan:** [APATCH-PLAN-004](../../plans/operational-workflows-implementation-plan.md).
+**Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Implementation plan:** [APATCH-PLAN-004](../subspec-04-operational-workflows-implementation-plan.md).
 
 ## 1. Scope and existing contracts
 
-This sub-spec reduces the number of developer commands needed to complete or resume a safe patch workflow. It owns four high-level workflow macros, cross-project activity presentation in `11 [AUD]`, project-specific base-branch selection, and bounded recovery from check-produced edits. It complements [SUB-001](subspec-01-workflow-control.md), [SUB-002](subspec-02-state-history-audit.md), and [SUB-003](subspec-03-feature-session-planning.md).
+This sub-spec reduces the number of developer commands needed to complete or resume a safe patch workflow. It owns four high-level workflow macros, cross-project activity presentation in `11 [AUD]`, project-specific base-branch selection, and bounded recovery from check-produced edits. It complements [SUB-001](../../archive/subspecs/subspec-01-workflow-control.md), [SUB-002](../../archive/subspecs/subspec-02-state-history-audit.md), and [SUB-003](subspec-03-feature-session-planning.md).
 
 The existing implementation already provides:
 

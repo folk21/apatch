@@ -4,7 +4,7 @@
 
 **Owner:** `apatch` CLI and target-repository `.apatch/` integration.
 
-**Sub-specifications:** [SUB-001 — Workflow Control](subspecs/subspec-01-workflow-control.md), [SUB-002 — Execution History and Reconciliation](subspecs/subspec-02-state-history-audit.md), [SUB-003 — Feature Sessions](subspecs/subspec-03-feature-session-planning.md), [SUB-004 — Operational Workflows](subspecs/subspec-04-operational-workflows.md), and [SUB-005 — Architectural Simplification](subspecs/subspec-05-architectural-simplification.md). **Plans:** [PLAN-001](../plans/apatch-orchestrator-implementation-plan.md), [PLAN-003](../plans/feature-session-context-aware-implementation-plan.md), [PLAN-004](../plans/operational-workflows-implementation-plan.md), [PLAN-005](../plans/architectural-simplification-implementation-plan.md).
+**Active sub-specifications:** [SUB-003 — Feature Sessions](subspecs/subspec-03-feature-session-planning.md) and [SUB-004 — Operational Workflows](subspecs/subspec-04-operational-workflows.md). **Accepted archives:** [SUB-001 — Workflow Control](../archive/subspecs/subspec-01-workflow-control.md), [SUB-002 — Execution History and Audit](../archive/subspecs/subspec-02-state-history-audit.md), and [SUB-005 — Architectural Simplification](../archive/subspecs/subspec-05-architectural-simplification.md). **Active plans:** [umbrella future stages](apatch-orchestrator-implementation-plan.md), [PLAN-003](subspec-03-feature-session-planning-implementation-plan.md), and [PLAN-004](subspec-04-operational-workflows-implementation-plan.md). **Archived plans:** [SUB-001 P0](../archive/subspecs/subspec-01-workflow-control-implementation-plan.md), [SUB-002 P1.1–P1.2](../archive/subspecs/subspec-02-state-history-audit-implementation-plan.md), and [PLAN-005](../archive/subspecs/subspec-05-architectural-simplification-implementation-plan.md).
 
 ## 1. Purpose
 
@@ -49,7 +49,7 @@ Current behavior is documented in [Usage](../../USAGE.md) and [Architecture](../
 | Independent model review | Invoke Codex/API reviewers with budget and policy limits | P3 |
 | Extension contracts | Add new check adapters without changing core Git orchestration | P3 |
 
-The P0 behavior, including lightweight cross-project progress summaries, is owned by [APATCH-SUB-001](subspecs/subspec-01-workflow-control.md). The richer per-target execution evidence journal and historical reconciliation audit are owned by [APATCH-SUB-002](subspecs/subspec-02-state-history-audit.md); they SHALL correlate with P0 progress events instead of creating conflicting independent histories. Other future capabilities require subordinate specs before implementation.
+The completed P0 behavior, including lightweight cross-project progress summaries, is documented by [APATCH-SUB-001](../archive/subspecs/subspec-01-workflow-control.md). The completed per-target execution evidence journal and historical reconciliation audit are documented by [APATCH-SUB-002](../archive/subspecs/subspec-02-state-history-audit.md); they correlate with P0 progress events instead of creating conflicting independent histories. Other future capabilities require subordinate specs before implementation.
 
 ### Git-format patch support (future scope)
 
@@ -96,4 +96,4 @@ Do not implement the future plugin framework, model reviews, scanner integration
 
 ## 9. Approval gate
 
-This is a proposed first specification, not an accepted implementation baseline. Resolve the explicit open decisions in [SUB-001](subspecs/subspec-01-workflow-control.md#8-open-decisions) before marking it `ACCEPTED` and beginning P0 implementation.
+This umbrella remains an active draft for future capabilities; acceptance of [SUB-001](../archive/subspecs/subspec-01-workflow-control.md) and the other completed sub-specifications does not accept the umbrella or authorize its remaining future stages. Historical open decisions in the archived records are preserved for traceability.

@@ -1,6 +1,6 @@
 # APATCH-PLAN-003 — Feature Session and Context-Aware Workflow Implementation
 
-**Status:** ADVISORY / DRAFT (GENSPEC). **Normative contract:** [APATCH-SUB-003](../active/subspecs/subspec-03-feature-session-planning.md). **Parent:** [APATCH-SPEC-001](../active/spec-apatch-orchestrator.md).
+**Status:** ADVISORY / DRAFT (GENSPEC). **Normative contract:** [APATCH-SUB-003](subspecs/subspec-03-feature-session-planning.md). **Parent:** [APATCH-SPEC-001](spec-apatch-orchestrator.md).
 
 No stage below authorizes product implementation without a subsequent DEFAULT request. The clean `efb94f794b06489c3d4898ffd42218f7b16e69fd` snapshot contains P1.2 `AUD`, typed `CheckWorktreeChanged` recovery, FS-00 linkage and FS-00R ZIP resume implementation and tests. This source evidence does not prove developer installation, formal acceptance or verification on every platform. Reinspect the actual repository HEAD before further work.
 

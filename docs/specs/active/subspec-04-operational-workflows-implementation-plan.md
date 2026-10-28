@@ -2,7 +2,7 @@
 
 **Status:** Advisory plan. WM-01 and WM-02 implementations are present in the inspected `efb94f7` source, pending formal review. WM-03–WM-05 remain proposed; WM-06 is explicitly deferred.
 
-**Normative owner:** [APATCH-SUB-004](../active/subspecs/subspec-04-operational-workflows.md). **Dependencies:** [SUB-001](../active/subspecs/subspec-01-workflow-control.md), [SUB-002](../active/subspecs/subspec-02-state-history-audit.md), and [SUB-003](../active/subspecs/subspec-03-feature-session-planning.md). The original design baseline is `9f256d7`; a newer inspected clean `main` snapshot is `efb94f794b06489c3d4898ffd42218f7b16e69fd` (2026-10-27 11:25 UTC). Installation-local `apatch.conf` and target `.apatch/config.yaml` are excluded from the snapshot; use isolated config fixtures and never package private settings.
+**Normative owner:** [APATCH-SUB-004](subspecs/subspec-04-operational-workflows.md). **Dependencies:** [SUB-001](../archive/subspecs/subspec-01-workflow-control.md), [SUB-002](../archive/subspecs/subspec-02-state-history-audit.md), and [SUB-003](subspecs/subspec-03-feature-session-planning.md). The original design baseline is `9f256d7`; a newer inspected clean `main` snapshot is `efb94f794b06489c3d4898ffd42218f7b16e69fd` (2026-10-27 11:25 UTC). Installation-local `apatch.conf` and target `.apatch/config.yaml` are excluded from the snapshot; use isolated config fixtures and never package private settings.
 
 ## 1. Sequencing and cross-cutting rules
 

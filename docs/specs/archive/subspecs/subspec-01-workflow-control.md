@@ -1,8 +1,8 @@
 # APATCH-SUB-001 — Workflow Control, Patch Ordering, and Sequences
 
-**Status:** DRAFT — first-priority P0 requirements.
+**Status:** ACCEPTED / ARCHIVED — developer confirmed the completed P0 work on 2026-10-28. Historical requirements and open questions are retained as the original scope record.
 
-**Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Implementation stages:** [P0 plan](../../plans/apatch-orchestrator-implementation-plan.md#p0--first-priority).
+**Parent:** [APATCH-SPEC-001](../../active/spec-apatch-orchestrator.md). **Implementation stages:** [archived P0 plan](subspec-01-workflow-control-implementation-plan.md#p0--first-priority).
 
 ## 1. Scope
 
@@ -421,4 +421,4 @@ There is no automatic knowledge of target projects used **before** this feature 
 4. Confirm the suggested default `<apatch_installation>/.apatch/progress/` and whether a future override for read-only installations should follow an OS-specific user-data directory.
 5. Confirm retaining the numeric operation aliases (`3 [APL]`, `1 [BRN]`, reserved `2 [BAP]`) during the ZIP-only migration rather than renumbering and breaking existing scripts.
 
-Mark this sub-spec `ACCEPTED` only after these choices are resolved. No implementation is authorized by this DRAFT.
+These original design questions are retained for historical traceability. The developer confirmed completion of the implemented P0 scope and accepted this sub-specification on 2026-10-28. The archived record is not a new implementation authorization.

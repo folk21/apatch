@@ -1,8 +1,8 @@
 # APATCH-SUB-005 — Architectural Simplification, Typed Boundaries, and Explicit Outcomes
 
-**Status:** DRAFT (GENSPEC). AS-01–AS-07 have corresponding implementation/test or optional quality-tooling surfaces in the inspected source. Previously recorded expected failures have regression coverage without `expectedFailure` markers. Independent final review and developer acceptance are still required.
+**Status:** ACCEPTED / ARCHIVED — developer confirmed the completed AS-01–AS-07 work on 2026-10-28. Previously recorded expected failures have regression coverage without `expectedFailure` markers.
 
-**Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Implementation plan:** [APATCH-PLAN-005](../../plans/architectural-simplification-implementation-plan.md).
+**Parent:** [APATCH-SPEC-001](../../active/spec-apatch-orchestrator.md). **Implementation plan:** [APATCH-PLAN-005](subspec-05-architectural-simplification-implementation-plan.md).
 
 **Original design baseline:** snapshot `9f256d786d29d4121ea0116758af85a903d9636a` (2026-10-26 17:21 UTC). **Reconciled source:** clean `main` snapshot `efb94f794b06489c3d4898ffd42218f7b16e69fd` (2026-10-27 11:25 UTC). The later snapshot contains AS-01–AS-07 implementation surfaces, but source presence is not acceptance or independent platform verification. Revalidate against actual HEAD before any further stage.
 
@@ -74,8 +74,8 @@ The names `OperationRequest`, `WorkflowContext`, `ActionResult` and `WorkflowRec
 1. Each atomic action SHALL have one authoritative set of **live** safety predicates: selected handoff identity, repository and configured base, active feature/session, branch/HEAD/remote ancestry, changed paths, check evidence, operation phase, and publication/review/CI policy where relevant. The presenter may show unavailable reasons, but cannot override predicates.
 2. The policy SHALL distinguish *applicability* (can this action be started?) from *already satisfied* (is its exact intended effect independently proven?). A previous journal success is only evidence and must be checked against current Git, archive and, for publication, remote PR facts.
 3. For a newly selected self-contained ZIP on a safe configured base, `STS` MUST recommend `APL` before `BRN`; after an initial ZIP-first `APL` on the base, pending `BRN` MUST be recommended. Legacy JSON and STRICT flows retain their actual existing valid order. Recommendations SHALL not list an action that deterministic CLI admission would reject in the same context.
-4. The ZIP-resume, last-applied requirement and exact-sequence `ALREADY_SATISFIED` rules belong to [SUB-003](subspec-03-feature-session-planning.md), not this document. The FS-00R ZIP-resume behavior now exists; any future session planner SHALL reuse its proven resolver instead of replacing the verified semantics.
-5. Workflow macros, base overrides, stable-check reruns and deferred bounded GitHub retry belong to [SUB-004](subspec-04-operational-workflows.md). This refactor SHALL provide explicit result/evidence boundaries useful to those features but SHALL NOT quietly deliver them as part of a structural stage.
+4. The ZIP-resume, last-applied requirement and exact-sequence `ALREADY_SATISFIED` rules belong to [SUB-003](../../active/subspecs/subspec-03-feature-session-planning.md), not this document. The FS-00R ZIP-resume behavior now exists; any future session planner SHALL reuse its proven resolver instead of replacing the verified semantics.
+5. Workflow macros, base overrides, stable-check reruns and deferred bounded GitHub retry belong to [SUB-004](../../active/subspecs/subspec-04-operational-workflows.md). This refactor SHALL provide explicit result/evidence boundaries useful to those features but SHALL NOT quietly deliver them as part of a structural stage.
 6. `LOOSE` manual edits and deferred commits, `STRICT` phase restrictions and `FORCE` recovery semantics SHALL remain independently represented. Shared checks may be factored only if regression tests prove identical mandatory guards. `FORCE` never means force-push or unreviewed overwrite; `skipApproves=true` continues to bypass confirmation prompts only.
 7. Preserve IDs `0..11` (`EXT, BRN, BAP, APL, CHK, CMT, PSH, PR, MRG, SYN, STS, AUD`), `op`, `opSeq`, `handoffSeq`, `followup`, handoff ZIP/legacy JSON, configured base precedence, read-only `info=PROGRESS`, and published exit-code/diagnostic contracts. New macro names remain separate from numeric actions.
 
@@ -126,12 +126,12 @@ The names `OperationRequest`, `WorkflowContext`, `ActionResult` and `WorkflowRec
 
 ## 11. Integration gates and open design decisions
 
-The [implementation plan](../../plans/architectural-simplification-implementation-plan.md) sequences **AS-01 through AS-07** into independently reversible/tested increments. Historically, AS-01 recorded four expected failures; the inspected later source contains their corresponding fixes and normal regression tests. AS-03 explicit-result contracts now exist and SHOULD be reused by WM-03–WM-05 macro orchestration; macro planning MUST not fork a second executor. A separate final evidence review and developer acceptance are still required.
+The [archived implementation plan](subspec-05-architectural-simplification-implementation-plan.md) sequences **AS-01 through AS-07** into independently reversible/tested increments. Historically, AS-01 recorded four expected failures; the inspected later source contains their corresponding fixes and normal regression tests. AS-03 explicit-result contracts now exist and SHOULD be reused by WM-03–WM-05 macro orchestration; macro planning MUST not fork a second executor. The developer accepted the completed scope on 2026-10-28.
 
-Resolve before implementing the affected stage:
+Historical questions considered during implementation of the accepted AS stages:
 
 1. Exact initial result-model API and its mapping to `RunOutcome`/historical progress strings; especially `BLOCKED` versus legacy `FAILED`.
 2. Field-by-field validation and pass-through policy for historical `WorkflowRecord` variants; confirm all legacy fixture shapes before making validation stricter.
 3. Ownership of the source-of-truth operation preconditions between existing `Workflow.options()` and SUB-003's proposed session planner.
 4. Ruff initial rule set, baseline-exception strategy, first type-checked modules and choice of type checker, without silently adding mandatory dependencies.
-5. Which documentation describes the accepted implemented stages after their tests pass. Do not mark this DRAFT as completed merely because an implementation ZIP was generated.
+5. Which documentation describes accepted implemented stages after their tests pass. Acceptance was confirmed by the developer on 2026-10-28, not inferred from an implementation ZIP.

@@ -13,8 +13,8 @@ It supports interactive and direct actions with three execution modes: **LOOSE (
 | [Architecture](docs/ARCHITECTURE.md) | Modules, state management, safety boundaries, and external operations |
 | [Development and Testing](docs/DEVELOPMENT.md) | Running tests, contributing, and documentation ownership |
 | [Security and Recovery](docs/SECURITY.md) | ZIP trust boundaries, checks, partial failures, and platform support |
-| [SDD Specification Index](docs/specs/README.md) | Active sub-specifications, advisory plans, processing checkpoint, review and archival lifecycle |
-| [Agent Guidance](AGENTS.md) | Repository conventions for maintainers and coding agents |
+| [SDD Specification Index](docs/specs/README.md) | Active and accepted sub-specifications, plans, and processing checkpoint |
+| [Agent Guidance](AGENTS.md) | Repository-wide coding-agent conventions; [SDD-specific agent rules](docs/specs/AGENTS.md) |
 
 ## Quick start
 
@@ -41,10 +41,10 @@ Examples of direct actions:
 
 ## Development status
 
-The implementation and regression tests are available in this repository. The [orchestrator specification](docs/specs/active/spec-apatch-orchestrator.md), its [first-priority sub-specification](docs/specs/active/subspecs/subspec-01-workflow-control.md), and [implementation plan](docs/specs/plans/apatch-orchestrator-implementation-plan.md) remain **DRAFT** documents. Created-patch ordering and ZIP metadata transport (P0.3a/b), self-contained ZIPs with cached handoffs and an apply-first path (P0.3c), sequenced operations with console outcomes (P0.4a), and explicit multi-ZIP LOOSE sequences (P0.4b) are implemented. Numeric `2 [BAP]` is deprecated for self-contained workflows but remains available for explicit legacy JSON handoffs until their migration is complete.
+The implementation and regression tests are available in this repository. The [orchestrator umbrella](docs/specs/active/spec-apatch-orchestrator.md) remains a DRAFT for future capabilities; [SUB-001 — Workflow Control](docs/specs/archive/subspecs/subspec-01-workflow-control.md) and its [P0 implementation plan](docs/specs/archive/subspecs/subspec-01-workflow-control-implementation-plan.md) were accepted and archived on 2026-10-28. Created-patch ordering and ZIP metadata transport (P0.3a/b), self-contained ZIPs with cached handoffs and an apply-first path (P0.3c), sequenced operations with console outcomes (P0.4a), and explicit multi-ZIP LOOSE sequences (P0.4b) are implemented. Numeric `2 [BAP]` is deprecated for self-contained workflows but remains available for explicit legacy JSON handoffs until their migration is complete.
 
 P0.5a records cross-project operation summaries in the installed tool's private `.apatch/progress/` directory; P0.5b adds the read-only `info=PROGRESS` overview. P1.1 adds a durable project-local operation journal with explicit attempts and outcomes. Recorded evidence is not a substitute for live GitHub status.
 
 P1.2 adds `11 [AUD]`, an offline-by-default, read-only audit of known patch history, with explicit `verifyRemote=true` for optional remote verification. Later source increments include FS-00R deterministic ZIP resume, WM-01/WM-02 activity and base-branch improvements, and architectural separation with optional quality tooling. See [Usage](docs/USAGE.md#repository-wide-patch-audit-11-aud) for operational details.
 
-The five subordinate specifications remain DRAFT even where code exists. The [SDD index](docs/specs/README.md) defines their lifecycle; [STATE.json](docs/specs/STATE.json) records the developer-controlled processing focus and can be checked using `python3 tools/specs/validate_state.py`. Code presence, passing checks and Git merges do not constitute formal sub-specification acceptance.
+On 2026-10-28 the developer also accepted and archived [SUB-002 — Execution History and Audit](docs/specs/archive/subspecs/subspec-02-state-history-audit.md) and [SUB-005 — Architectural Simplification](docs/specs/archive/subspecs/subspec-05-architectural-simplification.md), together with their plans. [SUB-003 — Feature Sessions](docs/specs/active/subspecs/subspec-03-feature-session-planning.md) and [SUB-004 — Operational Workflows](docs/specs/active/subspecs/subspec-04-operational-workflows.md) remain active. See the [SDD index](docs/specs/README.md) for the plan mapping and the [SDD agent rules](docs/specs/AGENTS.md) for lifecycle and archiving policy. [STATE.json](docs/specs/STATE.json) records only the developer-controlled processing focus and can be checked with `python3 tools/specs/validate_state.py`.

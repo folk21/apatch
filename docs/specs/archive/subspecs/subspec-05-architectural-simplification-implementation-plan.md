@@ -1,8 +1,8 @@
 # APATCH-PLAN-005 — Incremental Architectural Simplification
 
-**Status:** Advisory GENSPEC implementation plan. AS-01–AS-07 implementation, regression, or optional quality-tooling surfaces are present in the inspected `efb94f7` source. Their formal completion and acceptance still require evidence-based developer review. This plan alone does not authorize product changes.
+**Status:** ARCHIVED / ADVISORY. AS-01–AS-07 implementation, regression, and optional quality-tooling work was accepted by the developer on 2026-10-28. The plan remains a historical implementation record and does not authorize new product changes.
 
-**Normative owner:** [APATCH-SUB-005](../active/subspecs/subspec-05-architectural-simplification.md). **Related owners:** [SUB-001](../active/subspecs/subspec-01-workflow-control.md), [SUB-002](../active/subspecs/subspec-02-state-history-audit.md), [SUB-003](../active/subspecs/subspec-03-feature-session-planning.md), and [SUB-004](../active/subspecs/subspec-04-operational-workflows.md).
+**Normative owner:** [APATCH-SUB-005](subspec-05-architectural-simplification.md). **Related owners:** [SUB-001](subspec-01-workflow-control.md), [SUB-002](subspec-02-state-history-audit.md), [SUB-003](../../active/subspecs/subspec-03-feature-session-planning.md), and [SUB-004](../../active/subspecs/subspec-04-operational-workflows.md).
 
 **Inspected baseline:** original design snapshot `9f256d786d29d4121ea0116758af85a903d9636a` (2026-10-26) and newer clean source snapshot `efb94f794b06489c3d4898ffd42218f7b16e69fd` (2026-10-27 11:25 UTC). Implementation MUST re-read the installed source and tests before editing. Any already implemented stage is verification-only until independent review; do not introduce replacement modules simply because an older plan still says proposed.
 
@@ -61,7 +61,7 @@ apatch_lib/
 
 ## AS-01 — Baseline characterization and controlled defect cases
 
-**Status:** Characterization tests present in inspected source; formal acceptance pending. **Purpose:** stop the refactor from changing operational semantics accidentally. **No production rewrite** in this stage unless a tiny independent defect fix is separately approved.
+**Status:** Characterization tests present in inspected source; developer acceptance recorded on 2026-10-28. **Purpose:** stop the refactor from changing operational semantics accidentally. **No production rewrite** in this stage unless a tiny independent defect fix is separately approved.
 
 | Exact path / function | Ordered work |
 | --- | --- |
@@ -81,7 +81,7 @@ Review checklist before refactoring: all expected **green** tests pass on the un
 
 ## AS-02 — Typed models and validated external boundaries
 
-**Status:** Validated boundary source/tests present; formal acceptance pending. **Dependencies:** AS-01. **Non-goals:** rewriting journal history, changing CLI grammar, mandatory Pydantic, or making remote retries.
+**Status:** Validated boundary source/tests present; developer acceptance recorded on 2026-10-28. **Dependencies:** AS-01. **Non-goals:** rewriting journal history, changing CLI grammar, mandatory Pydantic, or making remote retries.
 
 | Exact path / function | Ordered work |
 | --- | --- |
@@ -122,7 +122,7 @@ def decode_pr_list(raw: str) -> tuple[PullRequestInfo, ...]:
 
 ## AS-03 — Explicit outcomes and separation of action execution from presentation
 
-**Status:** Explicit-result source/tests present; formal acceptance pending. **Dependencies:** AS-01/AS-02. **Non-goals:** a new workflow DSL, altering exact sequence order, inventing new GitHub retry behavior.
+**Status:** Explicit-result source/tests present; developer acceptance recorded on 2026-10-28. **Dependencies:** AS-01/AS-02. **Non-goals:** a new workflow DSL, altering exact sequence order, inventing new GitHub retry behavior.
 
 | Exact path / function | Ordered work |
 | --- | --- |
@@ -152,7 +152,7 @@ This is **conceptual pseudocode**; do not create `ActionResult.blocked` or the r
 
 ## AS-04 — Split CLI parsing, resolution and application coordination
 
-**Status:** CLI decomposition source/tests present; formal acceptance pending. **Dependencies:** AS-03. **Non-goals:** introducing still-unimplemented `goal=`/macro syntax, weakening ZIP admission, or changing `followup=true` semantics.
+**Status:** CLI decomposition source/tests present; developer acceptance recorded on 2026-10-28. **Dependencies:** AS-03. **Non-goals:** introducing still-unimplemented `goal=`/macro syntax, weakening ZIP admission, or changing `followup=true` semantics.
 
 | Exact path / function | Ordered work |
 | --- | --- |
@@ -184,7 +184,7 @@ Keep Python's `if __name__ == "__main__":` entry-point guard. Names in this sket
 
 ## AS-05 — One tested precondition source for executor and `STS`
 
-**Status:** Shared applicability and status-policy source/tests present; formal acceptance pending. **Dependencies:** AS-03, AS-04 and alignment with SUB-003 context resolver. **Non-goals:** auto-performing a recommended action or merging LOOSE/STRICT/FORCE into one permissive policy.
+**Status:** Shared applicability and status-policy source/tests present; developer acceptance recorded on 2026-10-28. **Dependencies:** AS-03, AS-04 and alignment with SUB-003 context resolver. **Non-goals:** auto-performing a recommended action or merging LOOSE/STRICT/FORCE into one permissive policy.
 
 | Exact path / function | Ordered work |
 | --- | --- |
@@ -209,7 +209,7 @@ Example decision table (normative semantics remain in SUB-003/SUB-005):
 
 ## AS-06 — Decompose the read-only audit into evidence and pure rules
 
-**Status:** Audit collector/rule source/tests present; formal acceptance pending. **Dependencies:** AS-02; independent of AS-04/AS-05 after stable shared DTO boundaries. **Non-goals:** network scanning of every recorded project, state repairs, changing `AUD` into a mutation command.
+**Status:** Audit collector/rule source/tests present; developer acceptance recorded on 2026-10-28. **Dependencies:** AS-02; independent of AS-04/AS-05 after stable shared DTO boundaries. **Non-goals:** network scanning of every recorded project, state repairs, changing `AUD` into a mutation command.
 
 | Exact path / function | Ordered work |
 | --- | --- |
@@ -295,7 +295,7 @@ Each future implementation response MUST state:
 1. Exact source commit used, integrated previous candidate stages, changed paths and approved architectural stage.
 2. Focused tests added, observed defects fixed, regular and extended test results and platform/tool gaps.
 3. Precise persistence/schema/result compatibility changes, if any; example safe resume commands for stopped operations.
-4. Which AS acceptance criteria and cross-spec dependencies are now verified, and which remain DRAFT.
+4. Which AS acceptance criteria and cross-spec dependencies are now verified, and which remain open in other active scopes.
 5. Independent ZIP inventory, embedded handoff metadata and final SHA-256; no real GitHub action performed by the generator.
 
 Only after integration and verification may the documentation index mark that particular stage as implemented. A completed ZIP artifact, a passing mock test or a user-confirmed plan does not establish installation or acceptance of the entire architecture sub-spec.
