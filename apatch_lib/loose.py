@@ -10,7 +10,7 @@ from .core.enums import WorkflowPhase
 from .core.contracts import ActionResult
 from .branch_guard import assert_no_unfinished_feature_branches
 from .created_patches import persist_registry
-from .commit_scope import (NeedsVerification, assert_scope_unchanged,
+from .commit_scope import (NeedsVerification, WaitingForUser, assert_scope_unchanged,
                            changed_contents_fingerprint, inspect_commit_scope)
 from .gitutil import (branch_exists, confirm, current_branch, head, output,
                       remote_head, run, status_paths, worktree_fingerprint)
@@ -164,6 +164,11 @@ class LooseActions:
             if remote_head(w.root, w.config, w.config.base) != head(w.root):
                 raise Abort("Base branch differs from remote; cannot start an apply-first ZIP workflow")
         overlap = set(before) & (set(archive.changed) | set(w.handoff.delete_paths))
+        if overlap and getattr(w, "_goal_guarded_continuation", False):
+            raise WaitingForUser(
+                "WAITING_FOR_USER: The selected ZIP overlaps changed paths: "
+                + ", ".join(sorted(overlap)[:8])
+                + "; this goal cannot authorize replacing developer edits")
         if w.handoff.base_commit and head(w.root) != w.handoff.base_commit:
             print("WARNING: Current HEAD differs from the handoff base_commit. "
                   "This may be intentional for a subsequent patch.")

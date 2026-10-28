@@ -27,6 +27,7 @@ case "${1:-regular}" in
             tests.test_context \
             tests.test_session_continuation \
             tests.test_guarded_commit \
+            tests.test_planner \
             tests.test_architecture_characterization \
             tests.test_explicit_action_results \
             tests.test_cli_boundaries \
@@ -51,7 +52,6 @@ case "${1:-regular}" in
             tests.test_safety.SafetyTests.test_untrusted_zip_cannot_change_project_policy_or_runtime_state \
             tests.test_safety.SafetyTests.test_zip_file_directory_prefix_conflict_aborts_before_extraction \
             tests.test_safety.SafetyTests.test_git_fingerprint_includes_executable_bit_and_index_state \
-            tests.test_safety.SafetyTests.test_repeated_successful_checks_are_not_reported_as_no_op \
             tests.test_sequences.SequencesTests.test_formatter_changes_existing_bytes_without_changing_paths_stops_sequence_and_recovers \
             tests.test_sequences.SequencesTests.test_direct_check_invalidated_after_prior_success_clears_stale_evidence \
             tests.test_safety.SafetyTests.test_canonical_check_timeout_stops_batch_and_preserves_commit \

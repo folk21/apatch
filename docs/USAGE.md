@@ -38,6 +38,55 @@ The guard runs before the new Git ref and associated patch changes are created. 
 
 Use `apatch.sh --help` to see the modes, direct-action selection, and automation parameters. The interactive menu also displays the active mode and the other available modes. Replace `<zip-stem>` in examples with your ZIP filename without `.zip`.
 
+### Guarded local goals (`goal`, FS-05)
+
+In LOOSE mode, `goal=CHECKED` and `goal=COMMITTED` plan a local feature
+workflow from current ZIP, Git, session and check evidence. Unlike `opSeq`,
+a goal derives its next safe action at each step. It never pushes, creates
+a PR, merges, or synchronizes a remote branch.
+
+```bash
+apatch.sh my-new-patch goal=CHECKED planOnly=true
+apatch.sh my-new-patch goal=CHECKED skipApproves=true
+apatch.sh my-new-patch goal=COMMITTED skipApproves=true
+apatch.sh my-next-patch goal=CHECKED intent=continue planOnly=true
+apatch.sh my-next-patch goal=CHECKED intent=continue skipApproves=true
+```
+
+`intent=auto` (default) requires an unambiguous local scenario; `new`
+requires a clean configured base and a new ZIP; `continue` requires an
+existing applied ZIP or a uniquely verified active feature session. After
+one goal completes, an already-applied ZIP can be explicitly selected again,
+or omitted when its verified cached handoff is available. Repeated local
+goals never extract the same ZIP again.
+
+`planOnly=true` is a read-only diagnosis: it does not acquire a write lock,
+create logs/progress/checkpoints, select a cache, stage files, or change Git
+refs. Its proposed steps are advisory; execution rechecks live evidence before
+every operation. `CHECKED` runs guarded canonical checks, which intentionally
+stage only proven session-owned paths. `COMMITTED` additionally creates one
+local commit of the exact stable verified index. Git hooks that unexpectedly
+change the commit tree produce an error rather than a success claim.
+
+Neither `skipApproves=true` nor an explicit goal accepts unknown manual
+paths, pre-existing staged files, overlapping new ZIP content, rename/copy
+conflicts, or stale check evidence. Such situations stop with an actionable
+`WAITING_FOR_USER` or verification message and preserve existing files/index.
+This first goal release does **not** provide a manual-path approval flag;
+review such changes using the supervised direct LOOSE actions. New ZIP
+continuation after an already committed patch requires a linked session;
+published/PR continuation and remote goals remain outside FS-05. `followup`,
+`handoffSeq`, STRICT/FORCE, legacy JSON, `op` and exact `opSeq` retain
+their existing behavior and cannot be combined with `goal`.
+
+`planOnly` shows the repository root and `.apatch/config.yaml` when a
+configured check executable cannot be found. Fix the check and resume using
+the verified selected ZIP. If source bytes or verification policy change,
+run guarded checks again before `COMMITTED`; an earlier success is not enough.
+
+`goal=PUSHED`, `goal=PR_CREATED` and `goal=MERGED` are not available
+until remote revision and review/CI safety gates have their own implementation.
+
 ### Several operations in one invocation (`opSeq`)
 
 `opSeq` runs its comma-separated actions in order using the same checks and
@@ -218,20 +267,20 @@ The console highlights the failed result and the next safe operation on TTYs,
 while redirected output retains plain-text diagnostic markers. Prefer
 non-mutating formatter check modes in canonical verification commands.
 
-### Planned goal-based commit safety
+### Guarded local-goal commit safety
 
-FS-04 introduces an **internal-only** guarded commit implementation for
-feature sessions. It classifies ZIP-owned paths, pre-existing staged work
+FS-04 introduced the internal guarded commit foundation; FS-05 exposes it
+through LOOSE `goal=COMMITTED`. It classifies ZIP-owned paths, pre-existing staged work
 and explicitly accepted manual files; it binds checks to exact Git bytes and
 project policy, and never stages additional paths at commit time. If a
 formatter rewrites source, review its output and run a stable second check.
 Unknown paths require separate path-specific authorization.
 
-No public `goal=COMMITTED` or `commitScope=` argument is implemented yet;
-do not put those options in current commands. Existing `op=CMT` and
-`opSeq=...,CMT` remain the supervised operations described above.
-FS-05 will provide the planner interface and manual-path approval contract.
-See [Security](SECURITY.md) for the internal safety boundary.
+There is no public `commitScope=` or unattended manual-path approval argument:
+the planner blocks when user-owned files need separate authorization.
+Use supervised LOOSE `op=CMT` to review those files explicitly. Existing
+`op=CMT` and `opSeq=...,CMT` preserve their previous behavior.
+See [Security](SECURITY.md) for the guarded commit boundary.
 
 Terminal output presents `SUCCESS` in green, `ERROR` in red, uncertainty in
 yellow, and `==> Next suggested: N [CODE]` in bold cyan when supported. The
@@ -606,4 +655,3 @@ To keep runtime files out of patches and commits, `apatch` checks the repository
 `apatch` checks actual Git and GitHub state before important actions; its saved progress is not treated as authorization or proof of approval. It stops on an unexpected working-tree change, source or remote drift, unsafe archive content, conflicting branch, ambiguous pull request, or failed verification.
 
 Branch creation, committing, publishing, and merging require deliberate user actions. The tool does not force-push, bypass required checks, approve pull requests, or perform an unguarded direct merge. A partial extraction must be inspected before continuing; do not repeat extraction over an unexpectedly modified working tree.
-

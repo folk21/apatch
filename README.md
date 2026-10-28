@@ -47,4 +47,9 @@ P0.5a records cross-project operation summaries in the installed tool's private 
 
 P1.2 adds `11 [AUD]`, an offline-by-default, read-only audit of known patch history, with explicit `verifyRemote=true` for optional remote verification. Later source increments include FS-00R deterministic ZIP resume, WM-01/WM-02 activity and base-branch improvements, and architectural separation with optional quality tooling. See [Usage](docs/USAGE.md#repository-wide-patch-audit-11-aud) for operational details.
 
+FS-05 introduces guarded LOOSE local `goal=CHECKED|COMMITTED` execution and
+read-only `planOnly=true` previews. Local goals use explicit feature-session
+evidence and scoped checks; remote publication and merge goals remain planned.
+See [Usage](docs/USAGE.md#guarded-local-goals-goal-fs-05).
+
 On 2026-10-28 the developer also accepted and archived [SUB-002 — Execution History and Audit](docs/specs/archive/subspecs/subspec-02-state-history-audit.md) and [SUB-005 — Architectural Simplification](docs/specs/archive/subspecs/subspec-05-architectural-simplification.md), together with their plans. [SUB-003 — Feature Sessions](docs/specs/active/subspecs/subspec-03-feature-session-planning.md) and [SUB-004 — Operational Workflows](docs/specs/active/subspecs/subspec-04-operational-workflows.md) remain active. See the [SDD index](docs/specs/README.md) for the plan mapping and the [SDD agent rules](docs/specs/AGENTS.md) for lifecycle and archiving policy. [STATE.json](docs/specs/STATE.json) records only the developer-controlled processing focus and can be checked with `python3 tools/specs/validate_state.py`.

@@ -38,7 +38,7 @@ class SpecStateTests(unittest.TestCase):
         result = validate_state()
         self.assertEqual(result["selectedWorkstreamId"], "feature-sessions")
         self.assertEqual(next(w for w in result["workstreams"]
-                              if w["id"] == "feature-sessions")["stageId"], "FS-04")
+                              if w["id"] == "feature-sessions")["stageId"], "FS-05")
         self.assertEqual({item["id"] for item in result["workstreams"]},
                          {"feature-sessions", "operational-workflows"})
         self.assertEqual(STATE_PATH.read_bytes(), before)

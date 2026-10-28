@@ -18,6 +18,7 @@ from .logging_setup import LOG_FILENAME, configure, set_context
 from .migration import migrate_legacy_artifacts
 from .model import Abort, Config, load_config, load_project_config
 from .params_cache import save_cached_handoff
+from .planner import execute_goal
 from .progress import ProgressRecorder, ProgressStore, render_progress
 from .sequence import execute_sequence
 from .state import locked_state, read_state_snapshot
@@ -218,6 +219,11 @@ def execute_request(request: CliRequest, tool_dir: Path) -> int:
         raise Abort("followup=true requires a self-contained ZIP, not a legacy handoff JSON")
     if selection.handoff is not None and selection.handoff.repository != root.name:
         raise Abort("Handoff parameters belong to a different repository")
+    if request.goal is not None:
+        execute_goal(root, config, tool_dir, selection, goal=request.goal,
+                     intent=request.intent or "auto", plan_only=request.plan_only,
+                     skip_approves=request.skip_approves)
+        return 0
     if request.status_only:
         show_status_with_progress(root, config, None, selection.handoff, request.patch,
                                   request.mode, recorder, tool_dir,
