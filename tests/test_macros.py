@@ -1,4 +1,4 @@
-"""WM-03 local macro dispatch and best-effort terminal status regressions."""
+"""Local macro dispatch and best-effort terminal status regressions."""
 
 import shlex
 import threading
@@ -348,7 +348,7 @@ class LocalMacroTests(LocalGitFixture):
             with self.subTest(name=name):
                 result = self.invoke_zip(f"op={name}", "skipApproves=true")
                 self.assertEqual(result.returncode, 2, result.stderr + result.stdout)
-                self.assertIn("MACRO_NOT_IMPLEMENTED", result.stderr)
+                self.assertNotIn("MACRO_NOT_IMPLEMENTED", result.stderr)
                 self.assertIn("final 10 [STS]", result.stdout)
         self.assertFalse(self.state_path.exists())
 

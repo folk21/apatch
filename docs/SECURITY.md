@@ -66,7 +66,14 @@ publish; `APPLY_PATCH_CHECK` may stage exact authorized paths for canonical
 verification, but cannot commit or publish. They never convert an ordinary
 `NO_OP` into success without proven existing application/branch evidence.
 Both attempt final read-only repository status after any outcome, without
-concealing the original failure. Remote `MERGE`/`RUN_ALL` macro dispatch is
-not enabled until WM-05.
+concealing the original failure. WM-05 enables LOOSE-only `MERGE` and `RUN_ALL`
+through the existing guarded `MERGED` goal. `MERGE` requires an already applied,
+session-linked ZIP and cannot silently start a new patch cycle. `RUN_ALL` may
+apply a new ZIP but still rejects overlapping/unclassified changes and never
+skips stable canonical checks, exact commit-scope proof, PR review/CI gates,
+or fast-forward constraints. Each invocation stops on an uncertain GitHub
+mutation. Subsequent retries perform read-only reconciliation of exact remote
+evidence instead of blindly replaying PR creation or merge. A failed base
+sync can resume without issuing another merge; final `STS` remains best effort.
 
 The project currently has no published license. Maintainers must select a license explicitly; its terms cannot be inferred from repository visibility.

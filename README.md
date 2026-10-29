@@ -54,7 +54,9 @@ uncertain-outcome reconciliation and separately retryable base synchronization.
 See [Usage](docs/USAGE.md#guarded-goals-goal-fs-05fs-06).
 
 WM-03 introduces LOOSE `op=APPLY_PATCH` and `op=APPLY_PATCH_CHECK` as guarded
-local macros with a final best-effort status report. `MERGE` and `RUN_ALL`
-remain reserved for WM-05. See [Usage](docs/USAGE.md#local-workflow-macros-opapply_patch-opapply_patch_check-wm-03).
+local macros with a final best-effort status report. WM-05 adds guarded
+`op=MERGE` for existing feature sessions and `op=RUN_ALL` for complete new
+or resumed ZIP lifecycles. Both reuse the verified feature-session planner and
+stop on uncertain GitHub operations. See [Usage](docs/USAGE.md#guarded-workflow-macros-wm-03-and-wm-05).
 
 On 2026-10-28 the developer also accepted and archived [SUB-002 — Execution History and Audit](docs/specs/archive/subspecs/subspec-02-state-history-audit.md) and [SUB-005 — Architectural Simplification](docs/specs/archive/subspecs/subspec-05-architectural-simplification.md), together with their plans. [SUB-003 — Feature Sessions](docs/specs/active/subspecs/subspec-03-feature-session-planning.md) and [SUB-004 — Operational Workflows](docs/specs/active/subspecs/subspec-04-operational-workflows.md) remain active. See the [SDD index](docs/specs/README.md) for the plan mapping and the [SDD agent rules](docs/specs/AGENTS.md) for lifecycle and archiving policy. [STATE.json](docs/specs/STATE.json) records only the developer-controlled processing focus and can be checked with `python3 tools/specs/validate_state.py`.
