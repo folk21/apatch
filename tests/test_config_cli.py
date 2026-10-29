@@ -231,6 +231,37 @@ class ConfigCliTests(LocalGitFixture):
                 self.assertEqual(result.returncode, 2)
                 self.assertIn("require_required_checks must be a YAML boolean", result.stderr)
 
+    def test_github_ci_wait_defaults_and_project_override(self):
+        global_config = load_config(self.bin)
+        self.assertEqual(global_config.github_ci_wait_seconds, 300)
+        self.assertEqual(load_project_config(self.root, global_config).github_ci_wait_seconds, 300)
+        for seconds in (0, 15, 1800):
+            with self.subTest(seconds=seconds):
+                self.project_config.write_text(
+                    'schema_version: 1\nchecks:\n  - ["./run_checks.sh"]\n'
+                    f'github_ci_wait_seconds: {seconds}\n')
+                config = load_project_config(self.root, global_config)
+                self.assertEqual(config.github_ci_wait_seconds, seconds)
+
+    def test_invalid_github_ci_wait_is_rejected(self):
+        for value in ("true", "false", "null", '"30"', "-1", "1801", "1.5"):
+            with self.subTest(value=value):
+                self.project_config.write_text(
+                    'schema_version: 1\nchecks:\n  - ["./run_checks.sh"]\n'
+                    f'github_ci_wait_seconds: {value}\n')
+                result = self.invoke_cli("op=STS")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("github_ci_wait_seconds", result.stderr)
+
+    def test_invalid_global_github_ci_wait_is_rejected(self):
+        ini = self.bin / "apatch.conf"
+        original = ini.read_text()
+        for value in ("bad", "-1", "1801"):
+            with self.subTest(value=value):
+                ini.write_text(original + f"\ngithub_ci_wait_seconds = {value}\n")
+                with self.assertRaisesRegex(Abort, "github_ci_wait_seconds"):
+                    load_config(self.bin)
+
     def test_project_config_can_run_a_nonstandard_check_script(self):
         script = self.root / "custom_verify.sh"
         script.write_text("#!/bin/sh\nset -eu\ntest -f new.txt\n")

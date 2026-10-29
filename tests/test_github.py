@@ -108,7 +108,8 @@ class GithubGuardTest(unittest.TestCase):
 
     def test_unstable_merge_reports_pending_checks_and_safe_resume(self):
         self.config = replace(self.config, require_approval=False, require_checks=False,
-                              review_approval_source="project", required_checks_source="project")
+                              review_approval_source="project", required_checks_source="project",
+                              github_ci_wait_seconds=0)
         self.details["mergeStateStatus"] = "UNSTABLE"
         self.details["statusCheckRollup"] = [{"name": "source-preflight", "state": "IN_PROGRESS"}]
         message = self.run_guard()
@@ -130,12 +131,133 @@ class GithubGuardTest(unittest.TestCase):
         self.assertNotIn("Wait for completion before retrying", message)
 
     def test_unstable_without_check_details_does_not_guess_pending(self):
-        self.config = replace(self.config, require_approval=False, require_checks=False)
+        self.config = replace(self.config, require_approval=False, require_checks=False,
+                              github_ci_wait_seconds=0)
         self.details["mergeStateStatus"] = "UNSTABLE"
         self.details["statusCheckRollup"] = []
         message = self.run_guard()
         self.assertIn("Checks may be running, missing or failing", message)
         self.assertIn("After GitHub reports CLEAN", message)
+
+    def test_pending_checkrun_waits_for_clean_then_merges_once(self):
+        from apatch_lib import github
+        self.config = replace(self.config, require_approval=False, require_checks=False,
+                              github_ci_wait_seconds=25)
+        pending = dict(self.details, mergeStateStatus="UNSTABLE",
+                       statusCheckRollup=[{"name": "CI", "status": "IN_PROGRESS",
+                                           "conclusion": ""}])
+        clean = dict(self.details)
+        merged = dict(clean, state="MERGED", mergedAt="2026-10-29T00:00:00Z")
+        now = [0.0]
+
+        def elapse(seconds):
+            now[0] += seconds
+
+        stream = StringIO()
+        with patch.object(github, "require_clean"), \
+             patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "pr_list", return_value=[dict(self.details)]), \
+             patch.object(github, "pr_details", side_effect=[pending, pending, clean, merged]) as details, \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "run") as execute, \
+             patch.object(github, "confirm", return_value=True), \
+             patch.object(github.time, "monotonic", side_effect=lambda: now[0]), \
+             patch.object(github.time, "sleep", side_effect=elapse), redirect_stdout(stream):
+            github.merge_pr(self.config, self.handoff, self.root, self.record, lambda: None)
+        self.assertIn("Waiting up to 25s", stream.getvalue())
+        self.assertIn("finished: PR #4 is CLEAN", stream.getvalue())
+        self.assertEqual(details.call_count, 4)
+        self.assertEqual(now[0], 20)
+        self.assertEqual(self.record["phase"], "merged")
+        self.assertEqual(sum(call.args[0][:3] == ["gh", "pr", "merge"]
+                             for call in execute.call_args_list), 1)
+
+    def test_unstable_unknown_rollup_can_converge_without_guessing(self):
+        from apatch_lib import github
+        self.config = replace(self.config, require_checks=False, github_ci_wait_seconds=20)
+        unknown = dict(self.details, mergeStateStatus="UNSTABLE", statusCheckRollup=[])
+        clean = dict(self.details)
+        merged = dict(clean, state="MERGED", mergedAt="2026-10-29T00:00:00Z")
+        now = [0.0]
+        with patch.object(github, "require_clean"), \
+             patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "pr_list", return_value=[dict(self.details)]), \
+             patch.object(github, "pr_details", side_effect=[unknown, clean, merged]), \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "run") as execute, \
+             patch.object(github, "confirm", return_value=True), \
+             patch.object(github.time, "monotonic", side_effect=lambda: now[0]), \
+             patch.object(github.time, "sleep", side_effect=lambda seconds: now.__setitem__(0, now[0] + seconds)), \
+             redirect_stdout(StringIO()):
+            github.merge_pr(self.config, self.handoff, self.root, self.record, lambda: None)
+        self.assertEqual(self.record["phase"], "merged")
+        self.assertEqual(sum(call.args[0][:3] == ["gh", "pr", "merge"]
+                             for call in execute.call_args_list), 1)
+
+    def test_polling_stops_on_failed_check_without_merging(self):
+        from apatch_lib import github
+        self.config = replace(self.config, require_checks=False, github_ci_wait_seconds=30)
+        pending = dict(self.details, mergeStateStatus="UNSTABLE",
+                       statusCheckRollup=[{"name": "CI", "status": "IN_PROGRESS"}])
+        failed = dict(pending, statusCheckRollup=[{"name": "CI", "conclusion": "FAILURE"}])
+        now = [0.0]
+        with patch.object(github, "require_clean"), \
+             patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "pr_list", return_value=[dict(self.details)]), \
+             patch.object(github, "pr_details", side_effect=[pending, failed]), \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "run") as execute, \
+             patch.object(github.time, "monotonic", side_effect=lambda: now[0]), \
+             patch.object(github.time, "sleep", side_effect=lambda seconds: now.__setitem__(0, now[0] + seconds)), \
+             redirect_stdout(StringIO()):
+            with self.assertRaisesRegex(Abort, "check\\(s\\) failed"):
+                github.merge_pr(self.config, self.handoff, self.root, self.record, lambda: None)
+        self.assertEqual(self.record["phase"], "pr_created")
+        execute.assert_not_called()
+
+    def test_polling_times_out_without_merging(self):
+        from apatch_lib import github
+        self.config = replace(self.config, require_checks=False, github_ci_wait_seconds=15)
+        pending = dict(self.details, mergeStateStatus="UNSTABLE",
+                       statusCheckRollup=[{"context": "CI", "state": "PENDING"}])
+        now = [0.0]
+        with patch.object(github, "require_clean"), \
+             patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "pr_list", return_value=[dict(self.details)]), \
+             patch.object(github, "pr_details", return_value=pending) as details, \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "run") as execute, \
+             patch.object(github.time, "monotonic", side_effect=lambda: now[0]), \
+             patch.object(github.time, "sleep", side_effect=lambda seconds: now.__setitem__(0, now[0] + seconds)), \
+             redirect_stdout(StringIO()):
+            with self.assertRaisesRegex(Abort, "GitHub CI wait timed out after 15s") as caught:
+                github.merge_pr(self.config, self.handoff, self.root, self.record, lambda: None)
+        self.assertIn("opSeq=MRG,SYN,STS", str(caught.exception))
+        self.assertEqual(details.call_count, 3)
+        self.assertEqual(now[0], 15)
+        self.assertEqual(self.record["phase"], "pr_created")
+        execute.assert_not_called()
+
+    def test_polling_rechecks_pr_identity_before_merge(self):
+        from apatch_lib import github
+        self.config = replace(self.config, require_checks=False, github_ci_wait_seconds=20)
+        pending = dict(self.details, mergeStateStatus="UNSTABLE",
+                       statusCheckRollup=[{"name": "CI", "status": "QUEUED"}])
+        moved = dict(self.details, headRefOid="b" * 40)
+        now = [0.0]
+        with patch.object(github, "require_clean"), \
+             patch.object(github, "repository", return_value="example/repo"), \
+             patch.object(github, "pr_list", return_value=[dict(self.details)]), \
+             patch.object(github, "pr_details", side_effect=[pending, moved]), \
+             patch.object(github, "remote_head", return_value=self.sha), \
+             patch.object(github, "run") as execute, \
+             patch.object(github.time, "monotonic", side_effect=lambda: now[0]), \
+             patch.object(github.time, "sleep", side_effect=lambda seconds: now.__setitem__(0, now[0] + seconds)), \
+             redirect_stdout(StringIO()):
+            with self.assertRaisesRegex(Abort, "drifted while waiting"):
+                github.merge_pr(self.config, self.handoff, self.root, self.record, lambda: None)
+        self.assertEqual(self.record["phase"], "pr_created")
+        execute.assert_not_called()
 
     def test_no_published_ci_blocks_merge_by_default(self):
         self.details["statusCheckRollup"] = []
