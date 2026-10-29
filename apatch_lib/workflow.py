@@ -14,6 +14,7 @@ from .core.actions import ACTION_CODES, action_number
 from .core.enums import PHASE_VALUES, WorkflowPhase
 from .core.contracts import ActionResult
 from .force import ForceActions
+from .formatting import run_formatters
 from .loose import LooseActions
 from .gitutil import (confirm, current_branch, head, is_clean, output, remote_head,
                       require_branch, require_clean, run, worktree_fingerprint)
@@ -254,7 +255,7 @@ class Workflow(OperationPresentation):
             8: ("pr_number", "merge_commit_sha"),
             9: ("pr_number",),
         }
-        for key in relevant[number]:
+        for key in relevant.get(number, ()):
             value = record.get(key)
             if isinstance(value, (str, int)) and not isinstance(value, bool):
                 facts[key] = value
@@ -396,6 +397,10 @@ class Workflow(OperationPresentation):
         self.persist()
         print("Canonical checks passed for the current changed bytes. Review the diff before commit.")
         return True
+
+    def format(self):
+        """Prepare the applied worktree explicitly without authorizing verification."""
+        return run_formatters(self)
 
     def commit_push(self):
         if self.phase != "verified":

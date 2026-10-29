@@ -101,6 +101,8 @@ def build_parser() -> argparse.ArgumentParser:
                 "  apatch.sh apatch-PATCH-2026-10-24-00-42-example op=3\n"
                 "  apatch.sh op=BRN\n"
                 "  apatch.sh op=CHK\n"
+                "  apatch.sh op=FMT\n"
+                "  apatch.sh some-new-zip opSeq=APL,BRN,FMT,CHK,CMT,PSH,PR,MRG,SYN,STS skipApproves=true\n"
                 "  apatch.sh apatch-PATCH-2026-10-24-00-42-example opSeq=APL,BRN,CHK,CMT,PSH skipApproves=true\n"
                 "  apatch.sh opSeq=APL,BRN,APL,CHK,CMT handoffSeq=first.zip,second.zip skipApproves=true\n"
                 "  apatch.sh repair-patch followup=true opSeq=APL,CHK,CMT skipApproves=true\n"
@@ -137,7 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.set_defaults(mode="loose")
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument("--op", type=parse_operation, metavar="NUMBER|CODE|MACRO",
-                         help="Run one action (0-11, APL/STS/AUD) or a named workflow macro")
+                         help="Run one action (0-12, APL/STS/AUD/FMT) or a named workflow macro")
     actions.add_argument("--op-seq", "--opSeq", type=parse_operation_sequence,
                          metavar="CODE,CODE,...",
                          help="Run sequential actions; stop after any error or no-op; pair with skipApproves=true for unattended use")

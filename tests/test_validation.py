@@ -15,7 +15,8 @@ from tests._support import (
 
 class ValidationTest(unittest.TestCase):
     def test_every_action_code_maps_to_its_number(self):
-        self.assertEqual(len(ACTION_CODES), 12)
+        self.assertEqual(len(ACTION_CODES), 13)
+        self.assertEqual(ACTION_CODES[12], "FMT")
         self.assertEqual(len(set(ACTION_CODES)), len(ACTION_CODES))
         for index, acronym in enumerate(ACTION_CODES):
             with self.subTest(action=acronym):

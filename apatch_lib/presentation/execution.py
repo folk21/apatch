@@ -64,6 +64,7 @@ class OperationPresentation:
             print(f" {index}. [{ACTION_CODES[index]}] {label}{suffix}")
         print(" 10. [STS] Inspect current patch status (read-only; offline)")
         print(" 11. [AUD] Audit all known patch history (read-only; offline by default)")
+        print(" 12. [FMT] Run configured formatters before CHK (preserves edits)")
         print(" 0. [EXT] Exit")
         try:
             return input("Choose an action (number or code): ").strip()
@@ -125,8 +126,12 @@ class OperationPresentation:
             from ..reconciliation import audit_repository, format_audit
             print(format_audit(audit_repository(self.root, self.config)))
             return "NO_OP"
-        options = self.options()
-        label, operation, reason = options[number - 1]
+        if number == 12:
+            label, operation, reason = ("Run configured formatters before CHK",
+                                        self.format, None)
+        else:
+            options = self.options()
+            label, operation, reason = options[number - 1]
         before_branch = current_branch(self.root)
         before_head = head(self.root)
         before_phase = self.phase

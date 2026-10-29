@@ -120,6 +120,36 @@ class ConfigCliTests(LocalGitFixture):
                 self.assertEqual(command("git", "branch", "--show-current", cwd=self.root)
                                  .stdout.strip(), "main")
 
+    def test_format_commands_are_explicit_argv_and_default_to_disabled(self):
+        base = load_project_config(self.root, load_config(self.bin))
+        self.assertEqual(base.format_commands, ())
+        self.project_config.write_text(
+            'schema_version: 1\nchecks:\n  - ["./run_checks.sh"]\n'
+            'format_commands:\n'
+            '  - ["cargo", "fmt", "--all"]\n'
+            '  - ["dart", "format", "lib", "test"]\n')
+        formatted = load_project_config(self.root, load_config(self.bin))
+        self.assertEqual(formatted.format_commands,
+                         (("cargo", "fmt", "--all"), ("dart", "format", "lib", "test")))
+
+    def test_invalid_format_commands_fail_before_state_mutation(self):
+        invalid = (
+            ("format_commands: null", "format_commands must be a list"),
+            ("format_commands: true", "format_commands must be a list"),
+            ("format_commands: [echo]", "non-empty argv list"),
+            ("format_commands: [[]]", "non-empty argv list"),
+            ("format_commands: [[false]]", "non-empty argv list"),
+            ("format_commands: [[\"echo\", \"\"]]", "non-empty argv list"),
+        )
+        for value, diagnostic in invalid:
+            with self.subTest(value=value):
+                self.project_config.write_text(
+                    'schema_version: 1\nchecks:\n  - ["./run_checks.sh"]\n' + value + '\n')
+                result = self.invoke_cli("op=STS")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn(diagnostic, result.stderr)
+                self.assertFalse(self.state_path.exists())
+
     def test_invalid_global_base_branch_fails_closed(self):
         ini = self.bin / "apatch.conf"
         original = ini.read_text()
@@ -372,7 +402,7 @@ class ConfigCliTests(LocalGitFixture):
         self.assertFalse((self.root / "new.txt").exists())
 
     def test_direct_action_rejects_invalid_options_and_strict_guard_is_not_skipped(self):
-        for arguments in (("op=12",), ("op=UNKNOWN",), ("skipApproves=sometimes",)):
+        for arguments in (("op=13",), ("op=UNKNOWN",), ("skipApproves=sometimes",)):
             with self.subTest(arguments=arguments):
                 result = self.invoke_cli(*arguments)
                 self.assertEqual(result.returncode, 2)
