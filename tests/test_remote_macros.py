@@ -1,6 +1,7 @@
 """WM-05 guarded publication macros with local Git and mocked GitHub."""
 
 from contextlib import ExitStack, redirect_stdout
+from dataclasses import replace
 from io import StringIO
 from unittest.mock import patch
 
@@ -116,8 +117,11 @@ class RemoteMacroTests(LocalGitFixture):
             return details
 
         fake.details = pending_details
-        with self.assertRaisesRegex(Abort, "GitHub checks.*pending|UNSTABLE"):
-            self.run_macro("MERGE", fake)
+        original_config = self.config
+        with patch.object(self, "config", side_effect=lambda: replace(
+                original_config(), github_ci_wait_seconds=0)):
+            with self.assertRaisesRegex(Abort, "GitHub checks.*pending|UNSTABLE"):
+                self.run_macro("MERGE", fake)
         self.assertIn("MACRO MERGE: STOPPED", self.last_output)
         self.assertIn("final 10 [STS]", self.last_output)
         self.assertNotIn(("gh", "pr", "merge"), fake.calls)

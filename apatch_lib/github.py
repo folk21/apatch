@@ -83,7 +83,7 @@ def _validate_pr(value: object, source: str, *, require_url: bool,
         for check in checks:
             if not isinstance(check, dict):
                 raise Abort(f"Invalid {source}: statusCheckRollup entries must be objects")
-            for field in ("name", "context", "state", "conclusion"):
+            for field in ("name", "context", "state", "status", "conclusion"):
                 if field in check and check[field] is not None and (
                         type(check[field]) is not str or len(check[field]) > 256):
                     raise Abort(f"Invalid {source}: check {field} must be a string or null")
@@ -280,16 +280,29 @@ def create_pr(config, handoff, root, record, save_checkpoint):
     return True
 
 
+_CI_PENDING = frozenset({"PENDING", "QUEUED", "IN_PROGRESS", "WAITING",
+                         "REQUESTED", "EXPECTED"})
+_CI_FAILED = frozenset({"FAILURE", "ERROR", "TIMED_OUT", "CANCELLED",
+                        "ACTION_REQUIRED", "STALE", "STARTUP_FAILURE"})
+_CI_POLL_INTERVAL_SECONDS = 10
+
+
+def _check_statuses(pr):
+    """Read CheckRun conclusions/statuses and StatusContext states from GitHub."""
+    return [str(check.get("conclusion") or check.get("status")
+                or check.get("state") or "UNKNOWN").upper()
+            for check in (pr.get("statusCheckRollup") or [])]
+
+
+def _has_failed_checks(pr):
+    return any(status in _CI_FAILED for status in _check_statuses(pr))
+
+
 def _unstable_merge_message(pr):
     """Explain non-passing GitHub status without assuming checks are pending."""
-    checks = pr.get("statusCheckRollup") or []
-    pending = {"PENDING", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED", "EXPECTED"}
-    failed = {"FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED",
-              "STALE", "STARTUP_FAILURE"}
-    statuses = [str(item.get("conclusion") or item.get("state") or "UNKNOWN").upper()
-                for item in checks]
-    pending_count = sum(status in pending for status in statuses)
-    failed_count = sum(status in failed for status in statuses)
+    statuses = _check_statuses(pr)
+    pending_count = sum(status in _CI_PENDING for status in statuses)
+    failed_count = sum(status in _CI_FAILED for status in statuses)
     if failed_count:
         detail = (f"{failed_count} check(s) failed, were cancelled or require attention. "
                   "Review and correct them before retrying.")
@@ -306,6 +319,42 @@ def _unstable_merge_message(pr):
             "    apatch.sh opSeq=MRG,SYN,STS skipApproves=true\n"
             "    Project CI checks 'not required' does not change GitHub's reported status. "
             "No merge or synchronization was attempted.")
+
+
+def _wait_for_pending_checks(config, handoff, root, record, repo, pr):
+    """Wait for a verified CLEAN state, never treating unknown CI as success."""
+    if (pr["mergeable"] != "MERGEABLE" or pr["mergeStateStatus"] != "UNSTABLE"
+            or _has_failed_checks(pr) or not config.github_ci_wait_seconds):
+        return pr
+    deadline = time.monotonic() + config.github_ci_wait_seconds
+    print(f"GitHub CI is pending or unresolved for PR #{pr['number']}. "
+          f"Waiting up to {config.github_ci_wait_seconds}s for CLEAN "
+          "(read-only polling); failed checks will block merge.", flush=True)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise Abort(f"GitHub CI wait timed out after {config.github_ci_wait_seconds}s. "
+                        + _unstable_merge_message(pr))
+        delay = min(_CI_POLL_INTERVAL_SECONDS, remaining)
+        print(f"PR #{pr['number']}: checks not yet confirmed; next GitHub status read in "
+              f"{delay:g}s...", flush=True)
+        time.sleep(delay)
+        require_clean(root)
+        pr = pr_details(config, root, repo, record["pr_number"])
+        if (pr["state"] != "OPEN" or pr["baseRefName"] != config.base
+                or pr["headRefName"] != handoff.branch
+                or pr["headRefOid"] != record.get("pushed_sha")
+                or remote_head(root, config, handoff.branch) != record.get("pushed_sha")):
+            raise Abort("PR or remote ref has drifted while waiting for GitHub CI")
+        if pr["mergeable"] == "MERGEABLE" and pr["mergeStateStatus"] == "CLEAN":
+            print(f"GitHub CI finished: PR #{pr['number']} is CLEAN.", flush=True)
+            return pr
+        if (pr["mergeable"] != "MERGEABLE" or pr["mergeStateStatus"] != "UNSTABLE"
+                or _has_failed_checks(pr)):
+            if pr["mergeStateStatus"] == "UNSTABLE":
+                raise Abort(_unstable_merge_message(pr))
+            raise Abort(f"PR status changed while waiting for GitHub CI: "
+                        f"{pr['mergeable']}/{pr['mergeStateStatus']}")
 
 
 def merge_pr(config, handoff, root, record, save_checkpoint, *, verified_repo=None):
@@ -328,6 +377,7 @@ def merge_pr(config, handoff, root, record, save_checkpoint, *, verified_repo=No
             or pr["headRefOid"] != record.get("pushed_sha")
             or remote_head(root, config, handoff.branch) != record.get("pushed_sha")):
         raise Abort("PR or remote ref has drifted")
+    pr = _wait_for_pending_checks(config, handoff, root, record, repo, pr)
     if pr["mergeable"] == "MERGEABLE" and pr["mergeStateStatus"] == "UNSTABLE":
         raise Abort(_unstable_merge_message(pr))
     if pr["mergeable"] != "MERGEABLE" or pr["mergeStateStatus"] != "CLEAN":

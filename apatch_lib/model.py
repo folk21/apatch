@@ -51,6 +51,7 @@ class Config:
     prepare_checks: tuple[tuple[str, ...], ...] = ()
     check_worktree_policy: str = "stop"
     format_commands: tuple[tuple[str, ...], ...] = ()
+    github_ci_wait_seconds: int = 300
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,12 @@ def load_config(script_dir: Path) -> Config:
     if not 5 <= github_timeout_seconds <= 300:
         raise Abort("github_timeout_seconds must be an integer from 5 to 300")
     try:
+        github_ci_wait_seconds = section.getint("github_ci_wait_seconds", 300)
+    except ValueError as exc:
+        raise Abort("github_ci_wait_seconds must be an integer from 0 to 1800") from exc
+    if not 0 <= github_ci_wait_seconds <= 1800:
+        raise Abort("github_ci_wait_seconds must be an integer from 0 to 1800")
+    try:
         check_timeout_seconds = section.getint("check_timeout_seconds", 900)
     except ValueError as exc:
         raise Abort("check_timeout_seconds must be an integer from 1 to 3600") from exc
@@ -132,6 +139,7 @@ def load_config(script_dir: Path) -> Config:
         max_bytes=section.getint("max_uncompressed_patch_bytes", 52428800),
         require_patch_feature_branch=section.getboolean("require_patch_feature_branch", False),
         github_timeout_seconds=github_timeout_seconds,
+        github_ci_wait_seconds=github_ci_wait_seconds,
         check_timeout_seconds=check_timeout_seconds,
         check_idle_timeout_seconds=check_idle_timeout_seconds,
         **validated_limits,
@@ -193,7 +201,7 @@ def load_project_config(root: Path, global_config: Config) -> Config:
     allowed = required | {"log_directory", "state_file", "applied_patches_file", "base_branch",
                           "require_review_approval", "require_required_checks", "check_timeout_seconds",
                           "check_idle_timeout_seconds", "prepare_checks", "check_worktree_policy",
-                          "format_commands"}
+                          "format_commands", "github_ci_wait_seconds"}
     if not isinstance(data, dict) or not required <= set(data) or set(data) - allowed:
         raise Abort("Project config must contain schema_version and checks, with supported optional settings")
     if type(data["schema_version"]) is not int or data["schema_version"] != 1:
@@ -218,6 +226,9 @@ def load_project_config(root: Path, global_config: Config) -> Config:
     idle_timeout = data.get("check_idle_timeout_seconds", global_config.check_idle_timeout_seconds)
     if type(idle_timeout) is not int or not 1 <= idle_timeout <= 3600:
         raise Abort("Project check_idle_timeout_seconds must be an integer from 1 to 3600")
+    ci_wait = data.get("github_ci_wait_seconds", global_config.github_ci_wait_seconds)
+    if type(ci_wait) is not int or not 0 <= ci_wait <= 1800:
+        raise Abort("Project github_ci_wait_seconds must be an integer from 0 to 1800")
     parsed = []
     for index, command in enumerate(commands, start=1):
         if isinstance(command, str):
@@ -277,7 +288,7 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                    require_approval=require_approval, review_approval_source=approval_source,
                    require_checks=require_checks, required_checks_source=checks_source,
                    prepare_checks=tuple(prepared), check_worktree_policy=policy,
-                   format_commands=tuple(format_commands))
+                   format_commands=tuple(format_commands), github_ci_wait_seconds=ci_wait)
 
 
 def safe_relative(path: str) -> str:
