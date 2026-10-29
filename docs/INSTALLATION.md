@@ -22,6 +22,14 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 ```
 
+The executable `apatch` launcher (without `.sh`) is available in the same directory as `apatch.sh`. Both accept identical arguments; the existing `apatch.sh` remains supported. From a target repository root, run:
+
+```bash
+/path/to/apatch/apatch <zip-stem> op=APL
+```
+
+If the tool directory is already on your `PATH`, use `apatch` directly. ZIP patch application preserves the executable bit of the new launcher.
+
 ## Prepare a target repository
 
 Start `apatch` from the root of the target repository. A configured Git remote and a committed `.apatch/config.yaml` with at least one canonical check are required:

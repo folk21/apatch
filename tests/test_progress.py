@@ -164,6 +164,7 @@ class ProgressOverviewTests(unittest.TestCase):
                         ignore=shutil.ignore_patterns("__pycache__"))
         shutil.copy2(TOOL / "apatch.py", self.tool / "apatch.py")
         shutil.copy2(TOOL / "apatch.sh", self.tool / "apatch.sh")
+        shutil.copy2(TOOL / "apatch", self.tool / "apatch")
         shutil.copy2(TOOL / "apatch.conf", self.tool / "apatch.conf")
         self.other_directory = self.base / "outside git"
         self.other_directory.mkdir()
@@ -203,6 +204,21 @@ class ProgressOverviewTests(unittest.TestCase):
                                 cwd=self.other_directory, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("APATCH GLOBAL PROGRESS [RECORDED]", result.stdout)
+
+    def test_extensionless_launcher_from_unrelated_directory_and_path_with_spaces(self):
+        interpreter = self.tool / ".venv" / "bin" / "python"
+        interpreter.parent.mkdir(parents=True)
+        interpreter.symlink_to(sys.executable)
+        launcher = self.tool / "apatch"
+        launcher.chmod(0o755)
+        result = subprocess.run([str(launcher), "info=PROGRESS"],
+                                cwd=self.other_directory, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("APATCH GLOBAL PROGRESS [RECORDED]", result.stdout)
+        help_result = subprocess.run([str(launcher), "force", "--help"],
+                                     cwd=self.other_directory, capture_output=True, text=True)
+        self.assertEqual(help_result.returncode, 0, help_result.stderr)
+        self.assertIn("--force", help_result.stdout)
 
     def test_read_only_query_obeys_independent_limits_and_project_identities(self):
         marker = "2026-10-25T10:30:00.000Z"
