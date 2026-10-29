@@ -110,15 +110,17 @@ GitHub review/CI, revision or fast-forward protections.
 These goal semantics do not change standalone `op`, deterministic `opSeq`,
 or FORCE recovery behavior.
 
-### Local workflow macros (`op=APPLY_PATCH`, `op=APPLY_PATCH_CHECK`; WM-03)
+### Guarded workflow macros (WM-03 and WM-05)
 
-In LOOSE mode, two named macros reuse the guarded ZIP/session planner without
+In LOOSE mode, four named macros reuse the guarded ZIP/session planner without
 changing the numeric operation IDs or expanding `opSeq` behind the scenes:
 
 ```bash
 apatch.sh my-new-patch op=APPLY_PATCH skipApproves=true
 apatch.sh my-new-patch op=APPLY_PATCH_CHECK skipApproves=true
 apatch.sh op=APPLY_PATCH_CHECK skipApproves=true
+apatch.sh op=MERGE skipApproves=true
+apatch.sh my-new-patch op=RUN_ALL skipApproves=true
 ```
 
 `APPLY_PATCH` stops after safe `APL` and any necessary `BRN`; it does not run
@@ -128,7 +130,29 @@ recorded application and active session after each completed action. An
 already-applied ZIP is not extracted again; a pending initial branch transfer
 can resume at `BRN`. A missing ZIP, ambiguous history, unsafe collision,
 wrong checkout or missing check executable stops before an unsupported step.
-Neither macro implicitly enables `followup=true` or accepts legacy JSON.
+Neither local macro implicitly enables `followup=true` or accepts legacy JSON.
+
+`MERGE` completes an **already applied, uniquely linked feature session**.
+It may run missing guarded checks and a verified commit, then safely push,
+create or reuse the exact matching PR, merge it, and synchronize the configured
+base branch. It never applies a new ZIP. Use `RUN_ALL` for a completely new
+self-contained ZIP or to continue its verified unfinished lifecycle, from
+`APL`/`BRN` through guarded `CHK`, `CMT`, `PSH`, `PR`, `MRG`, and `SYN`.
+Both use fresh branch/HEAD/index/commit-scope checks and live GitHub PR
+revision, review, CI and mergeability evidence before remote operations.
+Previously completed actions are not replayed; a previously merged ZIP may
+be recognized as satisfied only when its exact current evidence is verified.
+`MERGE` and `RUN_ALL` may push, create a PR, merge and synchronize; review
+the selected ZIP before invoking them with `skipApproves=true`.
+
+If GitHub reports `MERGEABLE/UNSTABLE`, the macro stops with check-specific
+diagnostics and does not guess that checks will pass. Inspect the live PR and
+CI status, then rerun the same macro after the blocker is resolved. If a PR
+creation or merge attempt has an uncertain result, the current invocation
+stops without issuing another remote mutation. A later invocation can adopt
+the result only after independent exact live PR/revision verification. If
+sync fails after a confirmed merge, the next invocation resumes at `SYN`
+without merging twice.
 
 Each invocation prints executed, independently verified already-satisfied,
 and not-executed actions. It then attempts a final `10 [STS]` report, even if
@@ -137,10 +161,8 @@ not replace the original failure or success exit code. The report does not
 perform remote GitHub writes. `skipApproves=true` still skips confirmations
 only, never the safety checks.
 
-`MERGE` and `RUN_ALL` are reserved macro names, but their execution remains
-unavailable until WM-05; they report a clear error instead of performing a
-partially guarded publication. `MRG` retains its existing atomic action
-meaning. Macros reject STRICT/FORCE and cannot be combined with `opSeq`,
+`MRG` retains its existing atomic PR merge action meaning; `MERGE` is a named
+guarded publication macro. Macros reject STRICT/FORCE and cannot be combined with `opSeq`,
 `handoffSeq`, `followup`, or a `goal` option. Existing `op=NUMBER`, `op=CODE`
 and exact sequences are unchanged.
 
@@ -635,7 +657,7 @@ Commands run sequentially from the target repository root; execution stops on th
 
 ### Optional macro preparation and stable-check retry (WM-04)
 
-The `APPLY_PATCH_CHECK` macro alone may enable explicit preparation and one bounded retry when checks normalize repository files:
+The `APPLY_PATCH_CHECK`, `MERGE`, and `RUN_ALL` macros may enable explicit preparation and one bounded retry when their planned checks normalize repository files:
 
 ```yaml
 schema_version: 1
@@ -668,7 +690,7 @@ These examples are independent: configure only the formatters installed and rele
 
 Use `apatch.sh opSeq=FMT,CHK,STS skipApproves=true` after `APL,BRN`, or include `FMT` in an initial full `opSeq`. `FMT` runs only for an applied, uncommitted workflow on the recorded non-base feature branch at the original applied HEAD. It invalidates previous verified-check evidence **before** executing the first formatter, and never runs checks, stages, commits, or publishes changes itself. It lists changed paths, including content, executable-bit and untracked changes. It stops on nonzero exit, timeout, branch/HEAD or policy drift, unexpected Git index mutations, and symlink identity changes; all edits remain in place for review. A successful formatter exit does not authorize a commit: `CHK` must still independently pass on the resulting bytes.
 
-The older `prepare_checks` mechanism remains supported **only** in the opt-in `APPLY_PATCH_CHECK` macro. To use explicit `FMT`, move those formatter argv entries into `format_commands` and call `FMT` before direct `CHK`; `FMT` does not implicitly execute `prepare_checks`. Existing macro behavior and the default `check_worktree_policy: stop` are unchanged.
+The older `prepare_checks` mechanism remains supported **only** in guarded macros that execute `CHK`; it does not affect a direct `CHK` or a standalone `goal=MERGED`. To use explicit `FMT`, move formatter argv entries into `format_commands` and call `FMT` before direct `CHK`; `FMT` does not implicitly execute `prepare_checks`. The default `check_worktree_policy: stop` remains unchanged.
 
 Console diagnostics show the specific changed paths and types of differences; the modifying process cannot be identified from a filesystem snapshot, so concurrent editor activity is treated as possible. After a stop, inspect the changed paths, Git index, and `op=STS`; correct the problem and explicitly retry verification. No implicit cleanup, reset, or ZIP replay occurs. Full successful check output remains console-only rather than being copied into the application log.
 

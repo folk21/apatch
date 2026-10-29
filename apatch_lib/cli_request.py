@@ -113,6 +113,8 @@ def build_parser() -> argparse.ArgumentParser:
                 "  apatch.sh goal=MERGED skipApproves=true\n"
                 "  apatch.sh some-new-zip op=APPLY_PATCH skipApproves=true\n"
                 "  apatch.sh some-new-zip op=APPLY_PATCH_CHECK skipApproves=true\n"
+                "  apatch.sh op=MERGE skipApproves=true\n"
+                "  apatch.sh some-new-zip op=RUN_ALL skipApproves=true\n"
                 "  apatch.sh op=AUD\n"
                 "  apatch.sh op=11 verifyRemote=true\n"
                 "  apatch.sh info=PROGRESS\n"
