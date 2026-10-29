@@ -280,6 +280,34 @@ def create_pr(config, handoff, root, record, save_checkpoint):
     return True
 
 
+def _unstable_merge_message(pr):
+    """Explain non-passing GitHub status without assuming checks are pending."""
+    checks = pr.get("statusCheckRollup") or []
+    pending = {"PENDING", "QUEUED", "IN_PROGRESS", "WAITING", "REQUESTED", "EXPECTED"}
+    failed = {"FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED",
+              "STALE", "STARTUP_FAILURE"}
+    statuses = [str(item.get("conclusion") or item.get("state") or "UNKNOWN").upper()
+                for item in checks]
+    pending_count = sum(status in pending for status in statuses)
+    failed_count = sum(status in failed for status in statuses)
+    if failed_count:
+        detail = (f"{failed_count} check(s) failed, were cancelled or require attention. "
+                  "Review and correct them before retrying.")
+    elif pending_count:
+        detail = (f"{pending_count} check(s) are queued, pending or still running. "
+                  "Wait for completion before retrying.")
+    else:
+        detail = ("GitHub reports a non-passing commit status. Checks may be running, "
+                  "missing or failing; inspect their actual results before retrying.")
+    return (f"PR #{pr['number']} is mergeable, but GitHub reports UNSTABLE "
+            "(commit checks are not passing). " + detail + "\n"
+            f"    Review PR checks: {pr['url']}\n"
+            "    After GitHub reports CLEAN, resume with:\n"
+            "    apatch.sh opSeq=MRG,SYN,STS skipApproves=true\n"
+            "    Project CI checks 'not required' does not change GitHub's reported status. "
+            "No merge or synchronization was attempted.")
+
+
 def merge_pr(config, handoff, root, record, save_checkpoint, *, verified_repo=None):
     approval = "required" if config.require_approval else "not required"
     print(f"PR review approval: {approval} (source: {config.review_approval_source}).")
@@ -300,6 +328,8 @@ def merge_pr(config, handoff, root, record, save_checkpoint, *, verified_repo=No
             or pr["headRefOid"] != record.get("pushed_sha")
             or remote_head(root, config, handoff.branch) != record.get("pushed_sha")):
         raise Abort("PR or remote ref has drifted")
+    if pr["mergeable"] == "MERGEABLE" and pr["mergeStateStatus"] == "UNSTABLE":
+        raise Abort(_unstable_merge_message(pr))
     if pr["mergeable"] != "MERGEABLE" or pr["mergeStateStatus"] != "CLEAN":
         raise Abort(f"PR is not cleanly mergeable: {pr['mergeable']}/{pr['mergeStateStatus']}")
     if config.require_approval and pr.get("reviewDecision") != "APPROVED":

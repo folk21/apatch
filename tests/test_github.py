@@ -106,6 +106,37 @@ class GithubGuardTest(unittest.TestCase):
     def test_pending_check_blocks_merge(self):
         self.assertIn("pending checks", self.run_guard(check="PENDING"))
 
+    def test_unstable_merge_reports_pending_checks_and_safe_resume(self):
+        self.config = replace(self.config, require_approval=False, require_checks=False,
+                              review_approval_source="project", required_checks_source="project")
+        self.details["mergeStateStatus"] = "UNSTABLE"
+        self.details["statusCheckRollup"] = [{"name": "source-preflight", "state": "IN_PROGRESS"}]
+        message = self.run_guard()
+        self.assertIn("PR #4 is mergeable", message)
+        self.assertIn("1 check(s) are queued, pending or still running", message)
+        self.assertIn("https://github.com/example/repo/pull/4", message)
+        self.assertIn("apatch.sh opSeq=MRG,SYN,STS skipApproves=true", message)
+        self.assertIn("No merge or synchronization was attempted", message)
+        self.assertEqual(self.record["phase"], "pr_created")
+
+    def test_unstable_failed_check_requires_attention_not_just_waiting(self):
+        self.config = replace(self.config, require_approval=False, require_checks=False)
+        self.details["mergeStateStatus"] = "UNSTABLE"
+        self.details["statusCheckRollup"] = [{"name": "lint", "conclusion": "FAILURE"},
+                                            {"name": "tests", "state": "IN_PROGRESS"}]
+        message = self.run_guard()
+        self.assertIn("1 check(s) failed", message)
+        self.assertIn("Review and correct them before retrying", message)
+        self.assertNotIn("Wait for completion before retrying", message)
+
+    def test_unstable_without_check_details_does_not_guess_pending(self):
+        self.config = replace(self.config, require_approval=False, require_checks=False)
+        self.details["mergeStateStatus"] = "UNSTABLE"
+        self.details["statusCheckRollup"] = []
+        message = self.run_guard()
+        self.assertIn("Checks may be running, missing or failing", message)
+        self.assertIn("After GitHub reports CLEAN", message)
+
     def test_no_published_ci_blocks_merge_by_default(self):
         self.details["statusCheckRollup"] = []
         self.assertIn("no published checks", self.run_guard())
