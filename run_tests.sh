@@ -42,6 +42,7 @@ case "${1:-regular}" in
             tests.test_publication_goals.PublicationGoalTests.test_stale_pr_head_blocks_merge_before_mutation \
             tests.test_publication_goals.PublicationGoalTests.test_unknown_pr_creation_adopts_exact_open_pr_without_recreating \
             tests.test_macros \
+            tests.test_formatting \
             tests.test_zip_resume.ExplicitZipResumeTests.test_apl_and_brn_prefix_are_satisfied_without_replaying_archive \
             tests.test_zip_resume.ExplicitZipResumeTests.test_symlinked_cache_refuses_reselection_without_touching_target \
             tests.test_operation_journal.OperationJournalStorageTests.test_invalid_v2_fails_without_overwriting_bytes \

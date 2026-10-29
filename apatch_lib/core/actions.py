@@ -1,6 +1,6 @@
 """Canonical operation identifiers shared across CLI, workflow, and presentation."""
 
-ACTION_CODES = ("EXT", "BRN", "BAP", "APL", "CHK", "CMT", "PSH", "PR", "MRG", "SYN", "STS", "AUD")
+ACTION_CODES = ("EXT", "BRN", "BAP", "APL", "CHK", "CMT", "PSH", "PR", "MRG", "SYN", "STS", "AUD", "FMT")
 
 
 def action_number(value: object) -> int:
@@ -11,4 +11,5 @@ def action_number(value: object) -> int:
     try:
         return ACTION_CODES.index(key)
     except ValueError as exc:
-        raise ValueError("Invalid action: use 0-11 or one of " + ", ".join(ACTION_CODES)) from exc
+        raise ValueError(f"Invalid action: use 0-{len(ACTION_CODES) - 1} or one of "
+                         + ", ".join(ACTION_CODES)) from exc

@@ -50,6 +50,7 @@ class Config:
     base_branch_source: str = "global"
     prepare_checks: tuple[tuple[str, ...], ...] = ()
     check_worktree_policy: str = "stop"
+    format_commands: tuple[tuple[str, ...], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -191,7 +192,8 @@ def load_project_config(root: Path, global_config: Config) -> Config:
     required = {"schema_version", "checks"}
     allowed = required | {"log_directory", "state_file", "applied_patches_file", "base_branch",
                           "require_review_approval", "require_required_checks", "check_timeout_seconds",
-                          "check_idle_timeout_seconds", "prepare_checks", "check_worktree_policy"}
+                          "check_idle_timeout_seconds", "prepare_checks", "check_worktree_policy",
+                          "format_commands"}
     if not isinstance(data, dict) or not required <= set(data) or set(data) - allowed:
         raise Abort("Project config must contain schema_version and checks, with supported optional settings")
     if type(data["schema_version"]) is not int or data["schema_version"] != 1:
@@ -240,6 +242,16 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                        for arg in command)):
             raise Abort(f"Project prepare_checks command {index} must be a non-empty argv list")
         prepared.append(tuple(command))
+    formatting = data.get("format_commands", [])
+    if not isinstance(formatting, list) or len(formatting) > 20:
+        raise Abort("Project format_commands must be a list of at most 20 argv commands")
+    format_commands = []
+    for index, command in enumerate(formatting, start=1):
+        if (not isinstance(command, list) or not command or len(command) > 128
+                or any(type(arg) is not str or not arg or "\x00" in arg
+                       for arg in command)):
+            raise Abort(f"Project format_commands command {index} must be a non-empty argv list")
+        format_commands.append(tuple(command))
     policy = data.get("check_worktree_policy", "stop")
     if type(policy) is not str or policy not in {"stop", "recheck_once"}:
         raise Abort("Project check_worktree_policy must be stop or recheck_once")
@@ -264,7 +276,8 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                    base=base, base_branch_source=base_source,
                    require_approval=require_approval, review_approval_source=approval_source,
                    require_checks=require_checks, required_checks_source=checks_source,
-                   prepare_checks=tuple(prepared), check_worktree_policy=policy)
+                   prepare_checks=tuple(prepared), check_worktree_policy=policy,
+                   format_commands=tuple(format_commands))
 
 
 def safe_relative(path: str) -> str:

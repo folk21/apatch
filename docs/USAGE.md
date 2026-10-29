@@ -152,6 +152,7 @@ new self-contained ZIP workflow, apply first and create the branch second:
 
 ```bash
 /path/to/apatch/apatch.sh <zip-stem> opSeq=APL,BRN,CHK,CMT,PSH skipApproves=true
+/path/to/apatch/apatch.sh <zip-stem> opSeq=APL,BRN,FMT,CHK,CMT,PSH skipApproves=true
 /path/to/apatch/apatch.sh <zip-stem> opSeq=3,1,4,5,6 skipApproves=true
 ```
 
@@ -520,6 +521,9 @@ The action numbers are consistent across modes, although their behavior and phas
 | `7` | `PR` | Create/find a pull request. | Create/find a pull request. |
 | `8` | `MRG` | Merge a reviewed pull request. | Merge a reviewed pull request. |
 | `9` | `SYN` | Switch to and fast-forward the local base branch; reconcile PR status when GitHub is available. | FORCE: same as LOOSE. STRICT: requires an already confirmed merge. |
+| `10` | `STS` | Read-only current patch inspection. | Same. |
+| `11` | `AUD` | Read-only repository-wide audit. | Same. |
+| `12` | `FMT` | Run explicit project formatters before `CHK` without staging. | Same operation; requires an applied, uncommitted patch on its recorded feature branch. |
 
 STRICT requires the expected phase and Git state for each action. LOOSE allows manually changed files and an alternative branch, but backs up overlapping modifications before applying ZIP replacements. FORCE supports explicit reconciliation of existing Git operations. All modes retain archive integrity checks, safe Git operations, and GitHub review/CI requirements.
 
@@ -600,7 +604,7 @@ checks:
   - ["./gradlew", "check"]
 ```
 
-`base_branch`, `log_directory`, `state_file`, `applied_patches_file`, `require_review_approval`, `require_required_checks`, `check_timeout_seconds`, and `check_idle_timeout_seconds` are optional and override their global counterparts. The optional macro-only `prepare_checks` and `check_worktree_policy` settings are explained below. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. Separate lock files named `<state_file>.lock` and `<applied_patches_file>.lock` are created automatically in `.apatch/`. Omit these settings to inherit the global defaults.
+`base_branch`, `log_directory`, `state_file`, `applied_patches_file`, `require_review_approval`, `require_required_checks`, `check_timeout_seconds`, and `check_idle_timeout_seconds` are optional and override their global counterparts. The optional macro-only `prepare_checks` and `check_worktree_policy` settings, and the separate `FMT`-only `format_commands`, are explained below. For example, `log_directory: diagnostics/checks` writes to `<repository>/.apatch/diagnostics/checks/apatch.log`. Separate lock files named `<state_file>.lock` and `<applied_patches_file>.lock` are created automatically in `.apatch/`. Omit these settings to inherit the global defaults.
 
 The effective base branch is selected in this order: project `.apatch/config.yaml:base_branch`, installation-wide `apatch.conf:base_branch`, then `main`. Values must be nonempty, valid Git branch names (for example `develop` or `release/2026-q4`). Invalid or malformed explicit values are rejected before any workflow action; `apatch` does not fall back to a different branch. The configured branch must exist on the selected remote for branch creation. The action header and `STS` identify the effective base branch and its `project` or `global` source. Set the override in the target project that actually uses the alternative base; changing it mid-workflow does not automatically retarget an existing PR.
 
@@ -646,6 +650,25 @@ check_worktree_policy: recheck_once
 `prepare_checks` defaults to an empty list and accepts **argv lists only**, with no shell expansion; a maximum of 20 commands of 128 arguments each is supported. These are user-trusted executable commands, run once before guarded commit-scope staging and before the first check pass. They use the same per-command total/idle timeouts and live console output as canonical checks. A failed or timed-out preparation stops the macro without rolling back file edits. Preparation commands never run during `op=CHK`, `opSeq=CHK`, or other direct atomic operations.
 
 `check_worktree_policy` defaults to `stop`; its only other value is `recheck_once`. Both apply **only to macro-controlled verification**, and direct `CHK` always retains its existing stop-on-change behavior. If every canonical check succeeds but Git index entries, statuses, executable bits, symlink identity, or changed file bytes differ before versus after the first pass, `recheck_once` allows exactly one complete repeat. The macro re-stages only the previously authorized session-owned paths if the index and commit-path set remain safe. It does not silently accept new untracked outputs, altered index entries, symlink replacements, or unrelated/manual changes as additional commit scope. When the final pass is stable, verification records the final index and worktree fingerprint. A second change, failed check, timeout, branch/HEAD drift, or unclassified path stops the macro with preserved files and no publication.
+
+### Explicit formatting before canonical checks (`12 [FMT]`)
+
+For Rust, Dart, or other project-specific formatters, declare the commands in the **target repository** `.apatch/config.yaml`:
+
+```yaml
+schema_version: 1
+checks:
+  - ["./run_checks.sh"]
+format_commands:
+  - ["cargo", "fmt", "--all"]
+  - ["dart", "format", "lib", "test"]
+```
+
+These examples are independent: configure only the formatters installed and relevant to your repository. The optional `format_commands` list accepts up to 20 nonempty argv lists of up to 128 arguments; no shell interpolation or automatic tool discovery occurs. Formatters run from the repository root, using the configured canonical-check total and idle timeouts. A missing list blocks `FMT` with a configuration error; direct `CHK` remains available without it.
+
+Use `apatch.sh opSeq=FMT,CHK,STS skipApproves=true` after `APL,BRN`, or include `FMT` in an initial full `opSeq`. `FMT` runs only for an applied, uncommitted workflow on the recorded non-base feature branch at the original applied HEAD. It invalidates previous verified-check evidence **before** executing the first formatter, and never runs checks, stages, commits, or publishes changes itself. It lists changed paths, including content, executable-bit and untracked changes. It stops on nonzero exit, timeout, branch/HEAD or policy drift, unexpected Git index mutations, and symlink identity changes; all edits remain in place for review. A successful formatter exit does not authorize a commit: `CHK` must still independently pass on the resulting bytes.
+
+The older `prepare_checks` mechanism remains supported **only** in the opt-in `APPLY_PATCH_CHECK` macro. To use explicit `FMT`, move those formatter argv entries into `format_commands` and call `FMT` before direct `CHK`; `FMT` does not implicitly execute `prepare_checks`. Existing macro behavior and the default `check_worktree_policy: stop` are unchanged.
 
 Console diagnostics show the specific changed paths and types of differences; the modifying process cannot be identified from a filesystem snapshot, so concurrent editor activity is treated as possible. After a stop, inspect the changed paths, Git index, and `op=STS`; correct the problem and explicitly retry verification. No implicit cleanup, reset, or ZIP replay occurs. Full successful check output remains console-only rather than being copied into the application log.
 

@@ -240,7 +240,7 @@ class ProgressEvent:
                 started_at_utc, duration_seconds, error=None, sequence=None,
                 event_id=None):
         project_id, canonical = project_identity(root)
-        if result not in RESULTS or not 1 <= operation_number <= 10:
+        if result not in RESULTS or not (1 <= operation_number <= 10 or operation_number == 12):
             raise Abort("Invalid operation summary for global progress")
         code = ACTION_CODES[operation_number]
         suggestions = {"new": 3, "branch_created": 3, "patch_applied": 4,

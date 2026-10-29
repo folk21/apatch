@@ -21,7 +21,7 @@ Inputs include an untrusted ZIP with embedded handoff metadata (or a legacy exte
 2. The thin `apatch.py` entry point passes an immutable request from `cli_request.py` to `application.py`. `handoff_selection.py` resolves explicitly selected ZIPs, legacy JSON, multi-ZIP inputs, or the verified cached handoff. Resolution does not authorize replay or bypass the existing ZIP-first admission gates.
 3. Project runtime artifacts are excluded locally from Git, log context is established, and the state file is opened under a lock. Legacy runtime data is migrated when appropriate.
 4. `Workflow` chooses the relevant action under LOOSE, STRICT, or FORCE, reports the current branch/phase, and coordinates the owning helpers.
-5. For lifecycle actions 1–9, a project-local `STARTED` run is atomically recorded before the helper acts. Helpers inspect actual filesystem/Git/GitHub state, update workflow checkpoints, then atomically record a terminal run outcome and bounded evidence. After a successful initial `APL`, the validated handoff and archive digest are cached locally.
+5. For lifecycle actions 1–9 and the separate formatter action 12, a project-local `STARTED` run is atomically recorded before the helper acts. Helpers inspect actual filesystem/Git/GitHub state, update workflow checkpoints, then atomically record a terminal run outcome and bounded evidence. After a successful initial `APL`, the validated handoff and archive digest are cached locally.
 6. Each attempted action also produces a bounded tool-global progress event. Events are buffered while the target checkpoint lock is held and persisted only after releasing it; progress failures cannot undo or change the reported Git/GitHub outcome. The global event ID matches the project run ID for actions 1–9.
 
 Lifecycle actions report explicit completion evidence to
@@ -228,6 +228,7 @@ reapplication, commit, or GitHub mutation follows the failure.
 | `apatch_lib/cli_inspection.py` | Read-only status, audit and progress presentation before lifecycle mutations |
 | `apatch_lib/action_applicability.py` | Pure local policy shared by the action menu and status recommendations |
 | `apatch_lib/workflow.py` | Action dispatch, phase coordination, menu and progress summaries |
+| `apatch_lib/formatting.py` | Explicit project-configured formatter execution, verification invalidation, and Git drift checks |
 | `apatch_lib/console.py` | Shared terminal-only result colors and next-operation emphasis |
 | `apatch_lib/presentation/` | Action menu, console progress, and operation outcome classification |
 | `apatch_lib/action_executor.py` | Shared guarded action execution and explicit completion normalization |
