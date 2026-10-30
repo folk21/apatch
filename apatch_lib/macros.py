@@ -41,6 +41,8 @@ def _plan_macro(root: Path, config: Config, selection: HandoffSelection,
     remote = name in REMOTE_MACRO_GOALS
     applicable = (REMOTE_MACRO_STEPS if remote else
                   LOCAL_MACRO_STEPS[:2 if goal == "APPLIED" else 3])
+    if remote and config.review_required:
+        applicable = applicable[:3] + ("REV",) + applicable[3:]
     blockers = list(plan.blockers)
     if name == "MERGE":
         state = read_state_snapshot(config.state_path)

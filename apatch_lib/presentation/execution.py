@@ -65,6 +65,7 @@ class OperationPresentation:
         print(" 10. [STS] Inspect current patch status (read-only; offline)")
         print(" 11. [AUD] Audit all known patch history (read-only; offline by default)")
         print(" 12. [FMT] Run configured formatters before CHK (preserves edits)")
+        print(" 13. [REV] Independent code review (configured CLI or script)")
         print(" 0. [EXT] Exit")
         try:
             return input("Choose an action (number or code): ").strip()
@@ -129,6 +130,9 @@ class OperationPresentation:
         if number == 12:
             label, operation, reason = ("Run configured formatters before CHK",
                                         self.format, None)
+        elif number == 13:
+            label, operation, reason = ("Independent code review after CHK",
+                                        self.review, None)
         else:
             options = self.options()
             label, operation, reason = options[number - 1]

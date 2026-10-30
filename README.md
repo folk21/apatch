@@ -37,6 +37,12 @@ For an unexpected repair ZIP while earlier patch changes remain uncommitted on t
 
 To inspect recorded activity across all projects from any directory, use `apatch.sh info=PROGRESS`. This read-only summary does not require a Git repository or a handoff.
 
+For an optional independent code-review stage, configure script and/or LLM CLI
+reviewers in the target project's `.apatch/config.yaml`, then run
+`apatch opSeq=CHK,REV,STS skipApproves=true`. A project can require passing
+review evidence before `CMT` using `review_required: true`; see
+[Independent code review](docs/USAGE.md#independent-code-review-13-rev).
+
 Examples of direct actions:
 
 ```bash

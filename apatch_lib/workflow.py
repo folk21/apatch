@@ -11,6 +11,7 @@ from .action_applicability import (ActionFacts, action_unavailable,
                                    DEPRECATED_BAP_REASON)
 from .branch_patch import BranchPatchActions
 from .console import outcome_label, terminal_style
+from .code_review import run_review, require_fresh_review
 from .core.actions import ACTION_CODES, action_number
 from .core.enums import PHASE_VALUES, WorkflowPhase
 from .core.contracts import ActionResult
@@ -387,6 +388,7 @@ class Workflow(OperationPresentation):
     def verify(self):
         if self.phase not in {WorkflowPhase.PATCH_APPLIED, WorkflowPhase.VERIFIED}:
             raise Abort("There is no uncommitted applied patch to verify")
+        self.record.pop("code_review", None)
         require_branch(self.root, self.applied_branch)
         self.assert_remote_unchanged()
         if head(self.root) != self.record.get("before_patch_head"):
@@ -414,7 +416,11 @@ class Workflow(OperationPresentation):
         """Prepare the applied worktree explicitly without authorizing verification."""
         return run_formatters(self)
 
+    def review(self):
+        return run_review(self)
+
     def commit_push(self):
+        require_fresh_review(self)
         if self.phase != "verified":
             raise Abort("Run verification before commit")
         if self.applied_branch != self.handoff.branch:

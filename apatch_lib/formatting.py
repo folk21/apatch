@@ -72,7 +72,7 @@ def run_formatters(workflow):
     before_index = _index_entries(workflow.root)
     baseline_policy = policy_fingerprint(workflow.root, workflow.config)
     for key in ("verified_fingerprint", "verified_head", "verified_branch",
-                "verified_commit", "guarded_verification"):
+                "verified_commit", "guarded_verification", "code_review"):
         workflow.record.pop(key, None)
     workflow.record["phase"] = WorkflowPhase.PATCH_APPLIED.value
     workflow.persist()
