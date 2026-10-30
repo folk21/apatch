@@ -205,7 +205,11 @@ def inspect_context(
         flag("CONFIGURED_REMOTE_UNAVAILABLE", "UNKNOWN", "Configured Git remote cannot be inspected")
         return report(Scenario.UNKNOWN_REMOTE)
     observed_remote_id = remote_identity(remote_url)
-    intended_branch = handoff.branch if handoff else branch
+    selected_record = (state["workflows"].get(workflow_key(root, handoff.branch, handoff.patch))
+                       if handoff else None)
+    intended_branch = (selected_record.get("reassigned_branch", handoff.branch)
+                       if handoff and isinstance(selected_record, dict)
+                       else handoff.branch if handoff else branch)
     candidates = _session_candidates(state, root, intended_branch)
     if session_id is not None:
         candidates = [item for item in candidates if item["session_id"] == session_id]

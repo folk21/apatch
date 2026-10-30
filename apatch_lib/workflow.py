@@ -3,6 +3,7 @@
 import hashlib
 import logging
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 
 from . import github
@@ -18,7 +19,7 @@ from .formatting import run_formatters
 from .loose import LooseActions
 from .gitutil import (confirm, current_branch, head, is_clean, output, remote_head,
                       require_branch, require_clean, run, worktree_fingerprint)
-from .model import Abort
+from .model import Abort, BRANCH_PATTERN
 from .operation_events import OperationRun, RunOutcome, journal_outcome_for_result
 from .patch import inspect
 from .patch_history import locked_history
@@ -43,6 +44,7 @@ class Workflow(OperationPresentation):
                  progress_recorder=None):
         self.root = root
         self.config = config
+        self.source_handoff = handoff
         self.handoff = handoff
         self.state = state
         self.force = force
@@ -62,6 +64,16 @@ class Workflow(OperationPresentation):
         key_data = f"{root.resolve()}\0{handoff.branch}\0{handoff.patch}"
         self.key = hashlib.sha256(key_data.encode()).hexdigest()
         self.record = state["workflows"].get(self.key, {})
+        reassigned = self.record.get("reassigned_branch")
+        if reassigned is not None:
+            if (self.record.get("zip_first") is not True
+                    or self.record.get("source_branch") != handoff.branch
+                    or not isinstance(reassigned, str)
+                    or not BRANCH_PATTERN.fullmatch(reassigned)
+                    or ".." in reassigned or reassigned.endswith("/")
+                    or reassigned in {handoff.branch, config.base}):
+                raise Abort("Invalid pending ZIP branch reassignment checkpoint")
+            self.handoff = replace(handoff, branch=reassigned)
         LOGGER.info("workflow loaded feature=%s patch=%s phase=%s", handoff.branch, handoff.patch, self.record.get("phase", "new"))
         signature = handoff_signature(handoff)
         self.signature = signature
@@ -71,7 +83,7 @@ class Workflow(OperationPresentation):
             print("WARNING: Handoff JSON changed since this workflow was recorded.")
             if not confirm("LOOSE: Use the updated handoff for this patch cycle?"):
                 raise Abort("Updated handoff was declined")
-        if not skip_previous_cycles and self.record and (self.record.get("branch") != handoff.branch or
+        if not skip_previous_cycles and self.record and (self.record.get("branch") != self.handoff.branch or
                             self.record.get("patch_file") != handoff.patch or
                             self.record.get("repository") != str(root.resolve())):
             raise Abort("State record identity mismatch")
@@ -194,7 +206,7 @@ class Workflow(OperationPresentation):
             return
         with locked_history(self.config.applied_patches_path) as history:
             if (not history.entries or history.entries[-1].patch != self.handoff.patch
-                    or history.entries[-1].planned_branch != self.handoff.branch
+                    or history.entries[-1].planned_branch != self.source_handoff.branch
                     or history.entries[-1].real_branch != self.record.get("applied_branch")):
                 print("WARNING: Previous-cycle linkage deferred: applied history is not "
                       "the expected latest patch. Inspect 11 [AUD].")
@@ -309,7 +321,7 @@ class Workflow(OperationPresentation):
     def record_committed_branch(self):
         """Keep the applied-patch journal aligned with the current Git commit branch."""
         with locked_history(self.config.applied_patches_path) as history:
-            history.record_commit_branch(self.handoff.patch, self.handoff.branch,
+            history.record_commit_branch(self.handoff.patch, self.source_handoff.branch,
                                          current_branch(self.root))
 
     def verified_resume_step(self, number: int) -> str | None:
@@ -318,7 +330,7 @@ class Workflow(OperationPresentation):
             return None
         if self.phase in {"merged", "synced"}:
             raise Abort("Completed or merged ZIP cannot satisfy APL/BRN on the base branch")
-        evidence = verify_applied_zip(self.root, self.config, self.handoff, self.state)
+        evidence = verify_applied_zip(self.root, self.config, self.source_handoff, self.state)
         if number == 1 and evidence.pending_branch:
             return None
         run = OperationRun.start(
@@ -351,7 +363,7 @@ class Workflow(OperationPresentation):
                 and self.record.get("archive_sha256") == self.handoff.patch_sha256
                 and not (self.config.downloads / self.handoff.patch).exists()):
             return None
-        archive = inspect(self.config, self.handoff, self.root,
+        archive = inspect(self.config, self.source_handoff, self.root,
                           before_apply=self.phase in {WorkflowPhase.NEW, WorkflowPhase.BRANCH_CREATED})
         saved = self.record.get("archive_sha256")
         if saved and saved != archive.sha256:

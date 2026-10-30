@@ -45,6 +45,7 @@ case "${1:-regular}" in
             tests.test_remote_macros.RemoteMacroTests.test_run_all_new_zip_completes_and_repeated_call_does_not_mutate \
             tests.test_formatting \
             tests.test_zip_resume.ExplicitZipResumeTests.test_apl_and_brn_prefix_are_satisfied_without_replaying_archive \
+            tests.test_branch_reassignment \
             tests.test_zip_resume.ExplicitZipResumeTests.test_symlinked_cache_refuses_reselection_without_touching_target \
             tests.test_operation_journal.OperationJournalStorageTests.test_invalid_v2_fails_without_overwriting_bytes \
             tests.test_operation_journal.OperationJournalCliTests.test_failed_action_still_creates_run_with_bounded_error \

@@ -26,7 +26,7 @@ Global configuration is read from `apatch.conf` next to `apatch.py`; project ver
 
 ### One unfinished feature branch at a time
 
-Before creating any **new** `feature/...` branch with `BRN` (or deprecated legacy `BAP`), `apatch` verifies that no other feature branch is left unfinished. This gate runs in **all three modes**, including FORCE, and **cannot be disabled** through configuration or `skipApproves=true`.
+Before creating any **new** `feature/...` branch with `BRN` (or deprecated legacy `BAP`), `apatch` verifies that no other feature branch is left unfinished. This gate runs in **all three modes**, including FORCE, and **cannot be disabled** through configuration or `skipApproves=true`. The sole narrow exception is the original, conflicting planned branch of an explicitly reassigned, already-applied ZIP (see below); unrelated unfinished feature branches still block creation.
 
 - An open GitHub PR or a remote feature branch that cannot be confirmed merged into the remote base blocks creation with `сначала смерджи fb: <branch>` and identifying details.
 - A local-only feature branch with commits not in the local base blocks creation with `Unfinished local feature branch <branch> ...`. Uncommitted changes on the currently checked-out feature branch also block starting a new one.
@@ -301,6 +301,36 @@ If ZIP-first `APL` succeeded on the base branch but `BRN` never completed,
 only `APL` is satisfied; `BRN` still executes under its existing live guards.
 A follow-up ZIP successfully applied directly on its feature branch may also
 be reselected: it must have its own successful `APL` journal evidence.
+
+#### Reassign the feature branch after APL (BRN recovery)
+
+If a self-contained ZIP was successfully applied to `main`, but its embedded
+`feature/...` branch already exists, select a **new, unused** branch without
+reapplying the ZIP:
+
+```bash
+apatch op=BRN featureBranch=feature/macos-runner-phase-compat skipApproves=true
+apatch opSeq=FMT,CHK,STS skipApproves=true
+```
+
+`FMT` requires configured `format_commands`; otherwise run `CHK` directly.
+The same recovery accepts `--strict` or `opSeq=BRN,FMT,CHK` (when formatters are
+configured). `featureBranch` is deliberately unsupported for `APL`, `FORCE`,
+macros, goals, and multi-ZIP starts. Reassignment requires a verified pending
+ZIP-first checkpoint on the base branch, its original digest, exact changed
+paths, unchanged HEAD/remote, and a fresh target absent from both local and
+remote Git. All checks run **before branch creation**; failed preflight leaves
+the checkpoint and Git refs unchanged. After validation, the chosen target is
+durably stored before the guarded `BRN` transition. If interrupted, repeat
+`op=BRN` using the cached handoff; no archive replay is needed.
+
+The original ZIP metadata, SHA-256, successful APL run identity, cached handoff,
+and the applied-history **planned branch** remain unchanged. The checkpoint
+records the new target, and applied history updates only its **real branch**
+after a successful switch. The original conflicting feature branch is retained;
+the new branch never adopts, resets, or deletes it. Unrelated unfinished feature
+branches remain blocking. `goal=CHECKED` and the normal lifecycle can resume
+on the reassigned branch.
 
 This resume path requires an unchanged ZIP digest and embedded handoff,
 a matching checkpoint signature, exactly one **latest** structured applied-history

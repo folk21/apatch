@@ -83,7 +83,9 @@ class BranchPatchActions:
             if not confirm(f"Create branch {w.handoff.branch} from current HEAD?"):
                 return
             self.assert_new_branch_available()
-            assert_no_unfinished_feature_branches(w.root, w.config, w.handoff.branch)
+            assert_no_unfinished_feature_branches(
+                w.root, w.config, w.handoff.branch,
+                ignore_branch=w.source_handoff.branch if w.record.get("reassigned_branch") else None)
             require_clean(w.root)
             w.assert_base()
             if remote_head(w.root, w.config, w.config.base) != head(w.root):
@@ -124,7 +126,9 @@ class BranchPatchActions:
             if not confirm(f"Move uncommitted patch changes from {branch} to {w.handoff.branch}?"):
                 return
             self.assert_new_branch_available()
-            assert_no_unfinished_feature_branches(w.root, w.config, w.handoff.branch)
+            assert_no_unfinished_feature_branches(
+                w.root, w.config, w.handoff.branch,
+                ignore_branch=w.source_handoff.branch if w.record.get("reassigned_branch") else None)
             if head(w.root) != expected_head or worktree_fingerprint(w.root)[0] != before_fingerprint:
                 raise Abort("Base HEAD or pending files changed before branch creation")
             if remote_head(w.root, w.config, w.config.base) != expected_head:
@@ -138,7 +142,8 @@ class BranchPatchActions:
                         branch_base=expected_head, extracted_on_branch=w.config.base)
         w.persist()
         with locked_history(w.config.applied_patches_path) as history:
-            history.record_commit_branch(w.handoff.patch, w.handoff.branch, w.handoff.branch)
+            history.record_commit_branch(w.handoff.patch, w.source_handoff.branch,
+                                         w.handoff.branch)
         print(f"Patch changes now reside on {w.handoff.branch}; run CHK next.")
         return True
 

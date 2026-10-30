@@ -41,6 +41,8 @@ class WorkflowRecord(TypedDict, total=False):
     continued_patch: str
     superseded_by: str
     session_id: str
+    source_branch: str
+    reassigned_branch: str
 
 
 class _OptionalStateFields(TypedDict, total=False):

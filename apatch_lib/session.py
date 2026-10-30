@@ -217,7 +217,7 @@ def attach_applied_workflow(state: dict, session_id: str, workflow_key: str,
             or workflow.get("branch") != record["feature_branch"]):
         raise Abort("Feature session repository or intended feature branch differs")
     if (history_entry.patch != workflow.get("patch_file")
-            or history_entry.planned_branch != record["feature_branch"]
+            or history_entry.planned_branch != workflow.get("source_branch", record["feature_branch"])
             or history_entry.real_branch not in {record["base_branch"], record["feature_branch"]}):
         raise Abort("Applied patch history does not match the feature session")
     digest = workflow.get("archive_sha256")
