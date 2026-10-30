@@ -14,6 +14,53 @@ from tests._support import (
 
 
 class SequencesTests(LocalGitFixture):
+    def test_completed_clean_workflow_skips_redundant_check_commit_sequence(self):
+        config = load_project_config(self.root, load_config(self.bin))
+
+        class CompletedWorkflow:
+            phase = "synced"
+
+            def __init__(self, root, project_config):
+                self.root = root
+                self.config = project_config
+                self.calls = []
+
+            def interactive(self, code, *, show_header):
+                self.calls.append(code)
+                raise AssertionError("Completed workflow must not execute any operation")
+
+        workflow = CompletedWorkflow(self.root, config)
+        output = StringIO()
+        with redirect_stdout(output):
+            outcome = execute_sequence(
+                workflow, OperationSequence.parse("CHK,CMT,PSH,PR,MRG,SYN,STS"))
+        self.assertEqual(outcome, "ALREADY_COMPLETED")
+        self.assertEqual(workflow.calls, [])
+        self.assertIn("SEQUENCE ALREADY COMPLETED", output.getvalue())
+        self.assertNotIn("SEQUENCE ACTION 4 [CHK]", output.getvalue())
+
+    def test_completed_workflow_explicit_check_and_status_remain_available(self):
+        config = load_project_config(self.root, load_config(self.bin))
+
+        class RecheckWorkflow:
+            phase = "synced"
+
+            def __init__(self, root, project_config):
+                self.root = root
+                self.config = project_config
+                self.calls = []
+
+            def interactive(self, code, *, show_header):
+                self.calls.append(code)
+                return "NO_OP" if code == "STS" else "SUCCESS"
+
+        workflow = RecheckWorkflow(self.root, config)
+        output = StringIO()
+        with redirect_stdout(output):
+            execute_sequence(workflow, OperationSequence.parse("CHK,STS"))
+        self.assertEqual(workflow.calls, ["CHK", "STS"])
+        self.assertNotIn("SEQUENCE ALREADY COMPLETED", output.getvalue())
+
     def test_operation_sequence_parses_numbers_and_codes_and_rejects_unsafe_forms(self):
         self.assertEqual(OperationSequence.parse("3, CHK,5, PSH").actions, (3, 4, 5, 6))
         self.assertEqual(OperationSequence.parse("STS,9,10").actions, (10, 9, 10))
