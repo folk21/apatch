@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from .core.actions import ACTION_CODES, action_number
-from .model import Abort, BASENAME_PATTERN
+from .model import Abort, BASENAME_PATTERN, BRANCH_PATTERN
 from .sequence import OperationSequence
 
 
@@ -31,6 +31,7 @@ class CliRequest:
     goal: str | None = None
     intent: str | None = None
     plan_only: bool = False
+    feature_branch: str | None = None
 
     @property
     def audit_only(self) -> bool:
@@ -65,6 +66,7 @@ def normalize_arguments(arguments: Sequence[str]) -> list[str]:
         "verifyRemote=": "--verify-remote=",
         "goal=": "--goal=", "intent=": "--intent=",
         "planOnly=": "--plan-only=",
+        "featureBranch=": "--feature-branch=",
     }
     normalized: list[str] = []
     for argument in arguments:
@@ -100,6 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
                 "  apatch.sh apatch-PATCH-2026-10-24-00-42-example op=APL skipApproves=true\n"
                 "  apatch.sh apatch-PATCH-2026-10-24-00-42-example op=3\n"
                 "  apatch.sh op=BRN\n"
+                "  apatch.sh op=BRN featureBranch=feature/new-name skipApproves=true\n"
                 "  apatch.sh op=CHK\n"
                 "  apatch.sh op=FMT\n"
                 "  apatch.sh some-new-zip opSeq=APL,BRN,FMT,CHK,CMT,PSH,PR,MRG,SYN,STS skipApproves=true\n"
@@ -161,6 +164,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Explicit ZIP per APL in opSeq; multi-ZIP accumulation requires LOOSE")
     parser.add_argument("--followup", type=parse_boolean, default=False, metavar="{true,false}",
                         help="Explicitly apply a new ZIP to a matching unfinished LOOSE feature branch")
+    parser.add_argument("--feature-branch", "--featureBranch", metavar="feature/NAME",
+                        help="Reassign a pending, already applied ZIP to a new feature branch during BRN")
     parser.add_argument("--patch", metavar="NAME.zip",
                         help="Filter read-only STS by ZIP basename")
     parser.add_argument("--verify-remote", type=parse_boolean, default=False,
@@ -180,13 +185,15 @@ def parse_request(argv: Sequence[str] | None = None) -> CliRequest:
         info=args.info, handoff_seq=args.handoff_seq, followup=args.followup,
         patch=args.patch, verify_remote=args.verify_remote,
         skip_approves=args.skip_approves, normalized_arguments=tuple(normalized),
-        goal=args.goal, intent=args.intent, plan_only=args.plan_only)
+        goal=args.goal, intent=args.intent, plan_only=args.plan_only,
+        feature_branch=args.feature_branch)
 
 
 def validate_progress_request(request: CliRequest) -> None:
     """Keep global read-only progress free from lifecycle intent."""
     lifecycle_flags = {"--loose", "--strict", "--force", "--skip-approves",
-                       "--followup", "--verify-remote", "--intent", "--plan-only"}
+                       "--followup", "--verify-remote", "--intent", "--plan-only",
+                       "--feature-branch"}
     if (request.handoff is not None or request.handoff_seq is not None
             or request.patch is not None
             or any(token.split("=", 1)[0] in lifecycle_flags
@@ -196,6 +203,18 @@ def validate_progress_request(request: CliRequest) -> None:
 
 def validate_repository_request(request: CliRequest) -> None:
     """Validate option combinations without touching Git or persisted state."""
+    if request.feature_branch is not None:
+        target = request.feature_branch
+        if (not BRANCH_PATTERN.fullmatch(target) or ".." in target
+                or target.endswith("/") or target.endswith(".lock")):
+            raise Abort("featureBranch must be a valid feature/NAME Git branch")
+        if (request.mode == "force" or request.handoff_seq is not None
+                or request.followup or request.goal is not None
+                or request.op in MACRO_OPERATIONS
+                or not ((request.op in {"BRN", "1"}) or
+                        (request.op_seq is not None and request.op_seq.actions[0] == 1))):
+            raise Abort("featureBranch is only supported with op=BRN or opSeq starting with BRN "
+                        "in LOOSE/STRICT (no FORCE, goal, macro or new ZIP application)")
     if request.op in MACRO_OPERATIONS and (
             request.handoff_seq is not None or request.followup
             or request.patch is not None or request.verify_remote):

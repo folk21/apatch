@@ -8,7 +8,7 @@ from pathlib import Path
 from .core.contracts import StateDocument
 from .gitutil import (current_branch, head, output, remote_head,
                       status_paths, worktree_fingerprint)
-from .model import Abort, Config, Handoff
+from .model import Abort, BRANCH_PATTERN, Config, Handoff
 from .patch_history import AppliedPatchHistory
 from .status import workflow_key
 
@@ -48,12 +48,19 @@ def verify_applied_zip(
     record = state["workflows"].get(key)
     if not isinstance(record, dict) or record.get("phase") not in APPLIED_PHASES:
         raise Abort(f"{reason} No completed application checkpoint for {handoff.patch}.")
+    target = record.get("reassigned_branch", handoff.branch)
     if (record.get("repository") != str(root.resolve())
-            or record.get("branch") != handoff.branch
+            or record.get("branch") != target
             or record.get("patch_file") != handoff.patch
             or record.get("handoff_signature") != handoff_signature(handoff)
             or record.get("archive_sha256") != handoff.patch_sha256):
         raise Abort(f"{reason} Selected ZIP identity or digest conflicts with the checkpoint.")
+    if record.get("reassigned_branch") is not None and (
+            not isinstance(target, str) or not BRANCH_PATTERN.fullmatch(target)
+            or ".." in target or target.endswith("/") or target == handoff.branch
+            or target == config.base or record.get("source_branch") != handoff.branch
+            or record.get("zip_first") is not True):
+        raise Abort(f"{reason} Invalid stored feature branch reassignment.")
     if record.get("superseded_by") or record.get("continued_by"):
         raise Abort(f"{reason} The recorded patch has a newer continuation.")
     if config.applied_patches_path.is_symlink():
@@ -87,9 +94,8 @@ def verify_applied_zip(
     branch = current_branch(root)
     merged_base_recovery = phase == "merged" and branch == config.base
     expected_branch = (config.base if pending_branch or phase == "synced"
-                       or merged_base_recovery
-                       else handoff.branch)
-    if branch != expected_branch:
+                       or merged_base_recovery else target)
+    if branch != expected_branch and not (pending_branch and branch == target):
         raise Abort(f"{reason} Current branch {branch or 'DETACHED'} does not match the checkpoint.")
     remote_url = output(["git", "remote", "get-url", config.remote], root)
     if not record.get("remote_url") or remote_url != record["remote_url"]:

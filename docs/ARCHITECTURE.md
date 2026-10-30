@@ -127,6 +127,18 @@ or archive mutations. A pending ZIP-first branch transfer still executes the
 real guarded `BRN`. Missing or conflicting evidence stops before resumption;
 direct intentional `op=APL` and legacy handoffs retain their original guards.
 
+`branch_reassignment.py` provides an explicit, pending-APL-only branch recovery
+gate (`featureBranch=...` on `BRN`). It verifies the immutable original ZIP
+identity via `verify_applied_zip`, checks exact pending paths, HEAD, remote,
+local and remote target availability, and the unfinished-branch guard before
+persisting `source_branch` and `reassigned_branch` on the existing workflow key.
+The original handoff signature and APL operation key are never rewritten;
+`Workflow.source_handoff` preserves the ZIP provenance while the effective
+`Workflow.handoff` drives downstream Git and PR operations. The structured
+applied-history planned branch remains original, while its real branch changes
+only after the BRN switch. The one collision exception to unfinished-branch
+preflight is restricted to the verified ZIP's own original planned branch.
+
 `STS` takes an earlier, separate read-only path: it validates the repository and configuration, loads a snapshot without creating a state lock, and inspects local Git evidence. Interactive menu selection is also performed before opening the writable workflow state; choosing `STS` never enters the mutation path.
 
 `apatch_lib/action_applicability.py` supplies a pure, local applicability policy

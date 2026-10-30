@@ -8,6 +8,7 @@ from .cli_inspection import (select_without_handoff, show_audit_with_activity,
                              show_status_with_progress, show_unresolved_operations)
 from .cli_request import (CliRequest, validate_progress_request,
                           validate_repository_request)
+from .branch_reassignment import reassign_pending_branch
 from .core.actions import ACTION_CODES, action_number
 from .gitutil import (output, repository_root, reset_skip_approvals,
                       set_skip_approvals)
@@ -127,6 +128,9 @@ def _execute_lifecycle(
     """Run exactly one workflow coordinator for normal single-handoff requests."""
     root, config, tool_dir = context.root, context.config, context.tool_dir
     handoff = selection.handoff
+    if request.feature_branch is not None:
+        with locked_state(config.state_path) as state:
+            reassign_pending_branch(root, config, handoff, state, request.feature_branch)
     ensure_runtime_ignored(root, config.log_directory, LOG_FILENAME,
                            config.state_path, config.applied_patches_path)
     set_context(patch=handoff.patch, branch=handoff.branch, repository=handoff.repository)

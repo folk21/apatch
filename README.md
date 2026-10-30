@@ -26,6 +26,13 @@ Install the tool and its dependencies as described in [Installation](docs/INSTAL
 
 New ZIPs embed `<repository>/.apatch/params.json`; no separate JSON download is needed. The first action is `APL`, followed by `BRN`; subsequent commands use the verified project-local cache. Legacy `.json` handoffs remain supported.
 
+When `APL` succeeded but the ZIP's original feature branch already exists,
+recover before `BRN` with `apatch op=BRN featureBranch=feature/new-name
+skipApproves=true`. The selected target must be unused locally and remotely;
+the original ZIP, digest, changed paths and applied-history provenance are kept.
+Continue with `apatch opSeq=FMT,CHK,STS skipApproves=true` if formatters are
+configured, or `apatch goal=CHECKED skipApproves=true` otherwise.
+
 For an unexpected repair ZIP while earlier patch changes remain uncommitted on their feature branch, use explicit LOOSE `followup=true` with the new ZIP and `APL` instead of replaying or resetting the previous patch. See [Usage](docs/USAGE.md#unplanned-repair-zip-on-an-unfinished-feature-branch-followuptrue).
 
 To inspect recorded activity across all projects from any directory, use `apatch.sh info=PROGRESS`. This read-only summary does not require a Git repository or a handoff.

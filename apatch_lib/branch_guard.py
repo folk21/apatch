@@ -91,7 +91,7 @@ def _merged_pr_at_tip(prs, branch, sha, base):
                for pr in prs)
 
 
-def assert_no_unfinished_feature_branches(root, config, target):
+def assert_no_unfinished_feature_branches(root, config, target, *, ignore_branch=None):
     """Fail closed on unmerged remote work or local commits before a new branch is created."""
     current = current_branch(root)
     if current.startswith(FEATURE_PREFIX) and current != target:
@@ -111,13 +111,13 @@ def assert_no_unfinished_feature_branches(root, config, target):
 
     for pr in prs:
         branch = pr["headRefName"]
-        if (branch.startswith(FEATURE_PREFIX) and branch != target
+        if (branch.startswith(FEATURE_PREFIX) and branch not in {target, ignore_branch}
                 and pr["state"] == "OPEN"):
             raise Abort(f"сначала смерджи fb: {branch} (open PR #{pr.get('number')}: "
                         f"{pr.get('url')}).")
 
     for branch, sha in sorted(remote_features.items()):
-        if branch == target:
+        if branch in {target, ignore_branch}:
             continue
         if _merged_pr_at_tip(prs, branch, sha, config.base):
             continue
@@ -127,7 +127,7 @@ def assert_no_unfinished_feature_branches(root, config, target):
                     f"{config.remote}/{branch} is not confirmed merged into {config.base}).")
 
     for branch, sha in sorted(local_features.items()):
-        if branch == target or remote_features.get(branch) == sha:
+        if branch in {target, ignore_branch} or remote_features.get(branch) == sha:
             continue
         if (_is_ancestor_of_ref(root, sha, f"refs/heads/{config.base}")
                 or _merged_pr_at_tip(prs, branch, sha, config.base)):

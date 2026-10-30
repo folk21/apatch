@@ -1,6 +1,7 @@
 """Bounded, evidence-driven goal plans and guarded publication."""
 
 from dataclasses import dataclass
+from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
@@ -107,6 +108,7 @@ def _build_local_plan(root: Path, config: Config, selection: HandoffSelection,
         raise Abort("GOAL_ZIP_REQUIRED: Select an exact self-contained ZIP")
     state = read_state_snapshot(config.state_path)
     record = _record(root, handoff, state)
+    effective_branch = record.get("reassigned_branch", handoff.branch) if record else handoff.branch
     context = inspect_context(root, config, handoff=handoff)
     guards = ["Exact ZIP digest and repository", "Fresh branch/HEAD/remote evidence",
               "Session-owned commit scope", "Stable canonical checks"]
@@ -150,7 +152,7 @@ def _build_local_plan(root: Path, config: Config, selection: HandoffSelection,
         else:
             phase = record.get("phase")
             if phase in {"committed", "pushed", "pr_created", "merged", "synced"}:
-                if (goal in {"APPLIED", "COMMITTED"} and branch == handoff.branch
+                if (goal in {"APPLIED", "COMMITTED"} and branch == effective_branch
                         and head(root) == record.get("commit_sha")
                         and not status_paths(root)):
                     pass
@@ -164,7 +166,7 @@ def _build_local_plan(root: Path, config: Config, selection: HandoffSelection,
                                   and record.get("applied_branch") == config.base)
                 if pending_branch:
                     steps.append("BRN")
-                elif branch != handoff.branch:
+                elif branch != effective_branch:
                     blockers.append("FEATURE_BRANCH_DRIFT: Select the intended feature branch")
                 if goal == "APPLIED":
                     pass
@@ -256,12 +258,13 @@ def _live_pr(root: Path, config: Config, handoff, record, *, merged: bool):
 def _assert_published_identity(root: Path, config: Config, handoff, record, state):
     """Fail closed on stale commit, remote identity or session associations."""
     key = workflow_key(root, handoff.branch, handoff.patch)
+    branch = record.get("reassigned_branch", handoff.branch)
     session_id = record.get("session_id")
     session = state.get("feature_sessions", {}).get(session_id)
     if (not isinstance(session, dict)
             or session.get("status") not in {"active", "merged"}
             or key not in session.get("patch_workflow_keys", ())
-            or session.get("feature_branch") != handoff.branch
+            or session.get("feature_branch") != branch
             or session.get("base_branch") != config.base
             or session.get("remote_name") != config.remote
             or session.get("remote_identity") != remote_identity(output(
@@ -270,7 +273,7 @@ def _assert_published_identity(root: Path, config: Config, handoff, record, stat
     if record.get("remote_url") != output(
             ["git", "remote", "get-url", config.remote], root):
         raise Abort("PUBLICATION_REMOTE_DRIFT: Recorded remote URL changed")
-    if (record.get("applied_branch") != handoff.branch
+    if (record.get("applied_branch") != branch
             or type(record.get("commit_sha")) is not str
             or record["commit_sha"] not in session.get("commit_shas", ())):
         raise Abort("PUBLICATION_COMMIT_DRIFT: No verified session commit matches the ZIP")
@@ -282,7 +285,7 @@ def _assert_published_identity(root: Path, config: Config, handoff, record, stat
     elif phase == "merged" and current_branch(root) == config.base:
         if type(record.get("pr_number")) is not int:
             raise Abort("PUBLICATION_MERGE_DRIFT: A partial sync needs the recorded PR identity")
-    elif current_branch(root) != handoff.branch or head(root) != record["commit_sha"]:
+    elif current_branch(root) != branch or head(root) != record["commit_sha"]:
         raise Abort("PUBLICATION_HEAD_DRIFT: Select the recorded feature commit")
     if status_paths(root):
         raise Abort("PUBLICATION_DIRTY_WORKTREE: Finish local edits before remote operations")
@@ -301,6 +304,8 @@ def build_plan(root: Path, config: Config, selection: HandoffSelection,
         raise Abort("GOAL_ZIP_REQUIRED: Select an exact self-contained ZIP")
     state = read_state_snapshot(config.state_path)
     record = _record(root, handoff, state)
+    effective_handoff = (replace(handoff, branch=record["reassigned_branch"])
+                         if record and record.get("reassigned_branch") else handoff)
     phase = record.get("phase") if record else None
     required = PUBLICATION_STEPS[:PUBLICATION_STEPS.index(GOAL_FINAL_STEP[goal]) + 1]
     remote_guards = ("Exact verified feature-session commit and remote",
@@ -321,13 +326,13 @@ def build_plan(root: Path, config: Config, selection: HandoffSelection,
         if intent == "new":
             raise Abort("INTENT_CONFLICT: Existing ZIP cannot start a new session")
         if phase in {"pushed", "pr_created"} and remote_head(
-                root, config, handoff.branch) != record.get("pushed_sha"):
+                root, config, effective_handoff.branch) != record.get("pushed_sha"):
             if phase != "pr_created" or goal != "MERGED":
                 raise Abort("PUBLICATION_REMOTE_HEAD_DRIFT: Feature branch no longer matches its pushed SHA")
-            _live_pr(root, config, handoff, record, merged=True)
+            _live_pr(root, config, effective_handoff, record, merged=True)
         if phase in {"merged", "synced"} or (
                 phase == "pr_created" and goal == "PR_CREATED"):
-            details = _live_pr(root, config, handoff, record,
+            details = _live_pr(root, config, effective_handoff, record,
                                merged=phase in {"merged", "synced"})
             if phase == "synced" and goal == "MERGED":
                 merged_sha = (details.get("mergeCommit") or {}).get("oid")
