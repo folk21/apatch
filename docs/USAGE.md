@@ -198,6 +198,12 @@ or cancelled step stops the sequence; earlier successful steps are
 not rolled back. An unchanged state-changing operation normally stops the
 sequence; the exceptions are read-only `STS` and a `SYN` that positively
 reverifies an already synchronized local base and the matching merged PR.
+If the selected ZIP is already `synced` and the base branch is clean, an
+attempted resume sequence beginning with `CHK` and containing later commit or
+publication actions reports `SEQUENCE ALREADY COMPLETED` immediately. It does
+not rerun project checks or start new publication operations. A deliberate
+standalone `CHK` or `opSeq=CHK,STS` remains available for checking the current
+repository without attempting to republish an already completed ZIP.
 The output identifies the last completed operation and actions
 not executed, so inspect `op=STS` and resume explicitly with `op=` or a
 shorter `opSeq`. Never automatically rerun an uncertain remote mutation.

@@ -70,6 +70,17 @@ def execute_sequence(workflow, sequence: OperationSequence, *, on_completed=None
 
     print("\n==> SEQUENCE START: " + ", ".join(map(describe, sequence.actions)))
     print("    skipApproves applies to confirmation prompts, not safety checks")
+    if (sequence.actions and getattr(workflow, "phase", None) == "synced"
+            and sequence.actions[0] == 4
+            and any(action in {5, 6, 7, 8, 9} for action in sequence.actions[1:])):
+        from .gitutil import current_branch, is_clean
+        if (current_branch(workflow.root) == workflow.config.base
+                and is_clean(workflow.root)):
+            print("==> SEQUENCE ALREADY COMPLETED: The selected ZIP is merged and "
+                  "the clean base branch is synchronized.")
+            print("    No canonical checks, commit, push, PR, or merge were attempted.")
+            print("    Run op=STS to inspect the completed ZIP, or select a new ZIP with APL.")
+            return "ALREADY_COMPLETED"
     last_completed = "NONE"
     sequence_id = uuid.uuid4().hex
     executed: list[str] = []
