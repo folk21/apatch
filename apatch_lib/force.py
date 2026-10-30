@@ -297,6 +297,8 @@ class ForceActions:
             if not self._adopt_commit():
                 return
             return self._push_recorded_commit()
+        from .code_review import require_fresh_review
+        require_fresh_review(w)
         fingerprint, paths = dirty
         branch = self.branch()
         print("FORCE: commit these changed paths:")

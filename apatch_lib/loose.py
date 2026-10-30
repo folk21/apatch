@@ -226,7 +226,7 @@ class LooseActions:
     def _invalidate_verification(self):
         w = self.w
         for field in ("verified_fingerprint", "verified_head", "verified_branch",
-                      "verified_commit", "guarded_verification"):
+                      "verified_commit", "guarded_verification", "code_review"):
             w.record.pop(field, None)
         if w.record.get("phase") == WorkflowPhase.VERIFIED.value:
             w.record["phase"] = WorkflowPhase.PATCH_APPLIED.value
@@ -415,6 +415,8 @@ class LooseActions:
 
     def guarded_commit(self, session_id: str):
         """Commit the exact verified index; never stage additional files at CMT."""
+        from .code_review import require_fresh_review
+        require_fresh_review(self.w)
         w = self.w
         evidence = w.record.get("guarded_verification")
         if not isinstance(evidence, dict) or evidence.get("session_id") != session_id:
@@ -469,6 +471,8 @@ class LooseActions:
         return True
 
     def commit(self):
+        from .code_review import require_fresh_review
+        require_fresh_review(self.w)
         w = self.w
         branch = self.branch()
         fingerprint, paths = worktree_fingerprint(w.root)

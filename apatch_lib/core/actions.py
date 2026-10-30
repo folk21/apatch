@@ -1,6 +1,6 @@
 """Canonical operation identifiers shared across CLI, workflow, and presentation."""
 
-ACTION_CODES = ("EXT", "BRN", "BAP", "APL", "CHK", "CMT", "PSH", "PR", "MRG", "SYN", "STS", "AUD", "FMT")
+ACTION_CODES = ("EXT", "BRN", "BAP", "APL", "CHK", "CMT", "PSH", "PR", "MRG", "SYN", "STS", "AUD", "FMT", "REV")
 
 
 def action_number(value: object) -> int:

@@ -21,8 +21,21 @@ Inputs include an untrusted ZIP with embedded handoff metadata (or a legacy exte
 2. The thin `apatch.py` entry point passes an immutable request from `cli_request.py` to `application.py`. `handoff_selection.py` resolves explicitly selected ZIPs, legacy JSON, multi-ZIP inputs, or the verified cached handoff. Resolution does not authorize replay or bypass the existing ZIP-first admission gates.
 3. Project runtime artifacts are excluded locally from Git, log context is established, and the state file is opened under a lock. Legacy runtime data is migrated when appropriate.
 4. `Workflow` chooses the relevant action under LOOSE, STRICT, or FORCE, reports the current branch/phase, and coordinates the owning helpers.
-5. For lifecycle actions 1–9 and the separate formatter action 12, a project-local `STARTED` run is atomically recorded before the helper acts. Helpers inspect actual filesystem/Git/GitHub state, update workflow checkpoints, then atomically record a terminal run outcome and bounded evidence. After a successful initial `APL`, the validated handoff and archive digest are cached locally.
+5. For lifecycle actions 1–9 and the separate `FMT` (12) and `REV` (13) stages, a project-local `STARTED` run is atomically recorded before the helper acts. Helpers inspect actual filesystem/Git/GitHub state, update workflow checkpoints, then atomically record a terminal run outcome and bounded evidence. After a successful initial `APL`, the validated handoff and archive digest are cached locally.
 6. Each attempted action also produces a bounded tool-global progress event. Events are buffered while the target checkpoint lock is held and persisted only after releasing it; progress failures cannot undo or change the reported Git/GitHub outcome. The global event ID matches the project run ID for actions 1–9.
+
+Optional `13 [REV]` runs after `CHK` as an independent evidence-bound check.
+`apatch_lib/code_review.py` builds a size-limited diff of staged, unstaged and
+untracked source, dispatches explicitly configured script or LLM CLI reviewers
+without shell interpolation, parses structured model verdicts, and aborts on
+uncertain responses or Git/index/policy drift. It records bounded reports and
+the exact reviewed snapshot in the existing workflow checkpoint; no new
+history schema is required. Projects may require a fresh PASS before `CMT`,
+including guarded goals and publication macros. Review providers are
+user-trusted subprocesses; LLM providers run outside the repository root
+to reduce accidental tool access, but this is not a security sandbox or
+exfiltration barrier. The review stage never equates model output with human
+acceptance or GitHub review requirements.
 
 Lifecycle actions report explicit completion evidence to
 `apatch_lib/action_executor.py`, which owns action admission and dispatch.

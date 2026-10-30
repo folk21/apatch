@@ -23,6 +23,7 @@ ACTION_NAMES = {
     7: ("PR", "Create or find the pull request"),
     8: ("MRG", "Merge the pull request after GitHub policy checks"),
     9: ("SYN", "Synchronize the local base branch"),
+    13: ("REV", "Run required independent code review"),
 }
 
 
@@ -120,7 +121,7 @@ def recommend_next_action(phase: str, mode: str, branch: str, planned_branch: st
                           zip_pending_branch=False, zip_selected=False,
                           applied_branch: str | None = None,
                           require_patch_feature_branch=False,
-                          stale_verification=False):
+                          stale_verification=False, missing_review=False):
     """Provide cautious guidance; this never replaces a command's live guards."""
     facts = ActionFacts(
         mode=mode, phase=phase, branch=branch, planned_branch=planned_branch,
@@ -171,6 +172,8 @@ def recommend_next_action(phase: str, mode: str, branch: str, planned_branch: st
             if blocked(4):
                 return None, None, "Verification evidence is stale; reconcile the checkout before CHK."
             return 4, None, "Working-tree bytes or revision changed since verification; rerun CHK."
+        if missing_review:
+            return 13, None, "Independent review is required for the current checked bytes before CMT."
         if blocked(5):
             return None, None, "Publishing requires the verified planned feature branch."
         return 5, 3 if mode == "loose" else None, "Check the planned commit scope and message."
@@ -256,10 +259,12 @@ def inspect_patch(root: Path, config, record: dict, patch: str,
             facts["Working HEAD"] = _fact(current_head[:12], "CONFLICT", "changed since patch application")
             conflict = True
     stale_verification = False
+    current_fingerprint = None
+    current_paths = None
     if (phase == WorkflowPhase.VERIFIED and mode in {"loose", "force"}
             and isinstance(record.get("verified_fingerprint"), str)):
         try:
-            current_fingerprint, _ = worktree_fingerprint(root)
+            current_fingerprint, current_paths = worktree_fingerprint(root)
         except (Abort, OSError):
             facts["Current verification"] = _fact(
                 "UNKNOWN", "UNKNOWN", "current working-tree bytes could not be inspected")
@@ -272,13 +277,25 @@ def inspect_patch(root: Path, config, record: dict, patch: str,
             if stale_verification:
                 facts["Current verification"] = _fact(
                     "STALE", "VERIFIED", "current bytes or HEAD differ from the saved CHK evidence")
+    missing_review = False
+    if config.review_required and phase == WorkflowPhase.VERIFIED and not conflict:
+        from .commit_scope import policy_fingerprint
+        if current_fingerprint is None:
+            current_fingerprint, current_paths = worktree_fingerprint(root)
+        snapshot = [current, current_head, current_fingerprint,
+                    "\x00".join(sorted(current_paths)), policy_fingerprint(root, config)]
+        report = record.get("code_review")
+        missing_review = not (isinstance(report, dict) and report.get("verdict") == "PASS"
+                              and report.get("snapshot") == snapshot)
+        facts["Code review"] = _fact("REQUIRED" if missing_review else "PASS",
+                                     "RECORDED" if missing_review else "VERIFIED")
     next_action, alternate, guidance = recommend_next_action(
         phase, mode, current, planned_branch, conflict=conflict, dirty=dirty, base=config.base,
         zip_pending_branch=(record.get("zip_first") is True
                             and record.get("applied_branch") == config.base),
         zip_selected=zip_selected, applied_branch=actual,
         require_patch_feature_branch=config.require_patch_feature_branch,
-        stale_verification=stale_verification)
+        stale_verification=stale_verification, missing_review=missing_review)
     return PatchStatus(patch, planned_branch, phase, current, facts, next_action, alternate, guidance)
 
 

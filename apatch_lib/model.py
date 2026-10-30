@@ -52,6 +52,18 @@ class Config:
     check_worktree_policy: str = "stop"
     format_commands: tuple[tuple[str, ...], ...] = ()
     github_ci_wait_seconds: int = 300
+    reviewers: tuple["ReviewProvider", ...] = ()
+    review_required: bool = False
+    review_timeout_seconds: int = 180
+    review_max_bytes: int = 131072
+
+
+@dataclass(frozen=True)
+class ReviewProvider:
+    id: str
+    kind: str
+    command: tuple[str, ...]
+    model: str = ""
 
 
 @dataclass(frozen=True)
@@ -201,7 +213,8 @@ def load_project_config(root: Path, global_config: Config) -> Config:
     allowed = required | {"log_directory", "state_file", "applied_patches_file", "base_branch",
                           "require_review_approval", "require_required_checks", "check_timeout_seconds",
                           "check_idle_timeout_seconds", "prepare_checks", "check_worktree_policy",
-                          "format_commands", "github_ci_wait_seconds"}
+                          "format_commands", "github_ci_wait_seconds", "reviewers",
+                          "review_required", "review_timeout_seconds", "review_max_bytes"}
     if not isinstance(data, dict) or not required <= set(data) or set(data) - allowed:
         raise Abort("Project config must contain schema_version and checks, with supported optional settings")
     if type(data["schema_version"]) is not int or data["schema_version"] != 1:
@@ -263,6 +276,41 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                        for arg in command)):
             raise Abort(f"Project format_commands command {index} must be a non-empty argv list")
         format_commands.append(tuple(command))
+    review_required = data.get("review_required", False)
+    if type(review_required) is not bool:
+        raise Abort("Project review_required must be a YAML boolean")
+    review_timeout = data.get("review_timeout_seconds", 180)
+    if type(review_timeout) is not int or not 1 <= review_timeout <= 1800:
+        raise Abort("Project review_timeout_seconds must be an integer from 1 to 1800")
+    review_max_bytes = data.get("review_max_bytes", 131072)
+    if type(review_max_bytes) is not int or not 1024 <= review_max_bytes <= 1048576:
+        raise Abort("Project review_max_bytes must be an integer from 1024 to 1048576")
+    configured_reviewers = data.get("reviewers", [])
+    if not isinstance(configured_reviewers, list) or len(configured_reviewers) > 8:
+        raise Abort("Project reviewers must be a list of at most 8 providers")
+    reviewers = []
+    names = set()
+    for item in configured_reviewers:
+        if not isinstance(item, dict) or set(item) - {"id", "kind", "command", "model"}:
+            raise Abort("Each reviewer must contain id, kind and command, with optional model")
+        name, kind, command, model = (item.get("id"), item.get("kind"),
+                                     item.get("command"), item.get("model", ""))
+        if (not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,48}", name)
+                or name in names):
+            raise Abort("Reviewer IDs must be unique ASCII identifiers")
+        if kind not in {"llm", "script"}:
+            raise Abort(f"Reviewer {name} kind must be llm or script")
+        if (not isinstance(command, list) or not 1 <= len(command) <= 128
+                or any(type(arg) is not str or not arg or "\x00" in arg
+                       or "\n" in arg or "\r" in arg for arg in command)):
+            raise Abort(f"Reviewer {name} command must be a nonempty argv list")
+        if (type(model) is not str or len(model) > 100
+                or "\x00" in model or "\n" in model or "\r" in model):
+            raise Abort(f"Reviewer {name} model must be a short string")
+        names.add(name)
+        reviewers.append(ReviewProvider(name, kind, tuple(command), model))
+    if review_required and not reviewers:
+        raise Abort("review_required=true requires at least one configured reviewer")
     policy = data.get("check_worktree_policy", "stop")
     if type(policy) is not str or policy not in {"stop", "recheck_once"}:
         raise Abort("Project check_worktree_policy must be stop or recheck_once")
@@ -288,7 +336,9 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                    require_approval=require_approval, review_approval_source=approval_source,
                    require_checks=require_checks, required_checks_source=checks_source,
                    prepare_checks=tuple(prepared), check_worktree_policy=policy,
-                   format_commands=tuple(format_commands), github_ci_wait_seconds=ci_wait)
+                   format_commands=tuple(format_commands), github_ci_wait_seconds=ci_wait,
+                   reviewers=tuple(reviewers), review_required=review_required,
+                   review_timeout_seconds=review_timeout, review_max_bytes=review_max_bytes)
 
 
 def safe_relative(path: str) -> str:

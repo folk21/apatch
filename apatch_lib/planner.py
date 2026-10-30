@@ -29,8 +29,8 @@ from .zip_resume import verify_applied_zip
 
 LOCAL_GOALS = frozenset({"APPLIED", "CHECKED", "COMMITTED"})
 REMOTE_GOALS = frozenset({"PUSHED", "PR_CREATED", "MERGED"})
-MAX_LOCAL_STEPS = 4
-MAX_GOAL_STEPS = 8
+MAX_LOCAL_STEPS = 5
+MAX_GOAL_STEPS = 12
 PUBLICATION_STEPS = ("PSH", "PR", "MRG", "SYN")
 GOAL_FINAL_STEP = {"PUSHED": "PSH", "PR_CREATED": "PR", "MERGED": "SYN"}
 PHASE_NEXT_STEP = {
@@ -222,6 +222,13 @@ def _build_local_plan(root: Path, config: Config, selection: HandoffSelection,
                 steps.append("CMT")
     else:
         blockers.append(f"CONTEXT_UNVERIFIED: {context.scenario.value}")
+    if config.review_required and "CMT" in steps:
+        from .code_review import review_matches
+        workflow = Workflow(root, config, handoff, state, loose=True,
+                            skip_previous_cycles=True)
+        if "CHK" in steps or not review_matches(workflow):
+            steps.insert(steps.index("CMT"), "REV")
+            guards.append("Fresh passing external review on exact checked bytes")
     scenario_label = ("PUBLISHED_CONTINUATION" if published_continuation
                       else context.scenario.value)
     return ExecutionPlan(goal, intent, scenario_label, handoff.patch,
@@ -565,7 +572,7 @@ def execute_goal(root: Path, config: Config, tool_dir: Path,
                     outcome = workflow.interactive("BRN", show_header=False)
                     if outcome != "SUCCESS":
                         raise Abort(f"GOAL_STOPPED: BRN returned {outcome}")
-                elif step in {"CHK", "CMT"}:
+                elif step in {"CHK", "REV", "CMT"}:
                     if fresh.session_id is None:
                         session_id = _session_after_apply(workflow)
                     else:

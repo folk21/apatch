@@ -729,6 +729,93 @@ Console diagnostics show the specific changed paths and types of differences; th
 
 `check_timeout_seconds` bounds the **total duration** of each canonical check (integer 1–3600, default `900`). `check_idle_timeout_seconds` bounds the time **without a complete output line** (integer 1–3600, default `30`). Both settings may be overridden in `.apatch/config.yaml`; for example, a silent build taking longer than 30 seconds can set `check_idle_timeout_seconds: 120`. On either timeout, `apatch` terminates the check's process group and stops the sequence before commit or publication. The idle limit prevents a hung check from consuming the entire total deadline when it stops reporting progress.
 
+### Independent code review (`13 [REV]`)
+
+`REV` is an opt-in review of **exactly the bytes that passed `CHK`**, on the
+applied feature branch before `CMT`. Configure one or more independent reviewers
+in the target repository's `.apatch/config.yaml`:
+
+```yaml
+schema_version: 1
+checks:
+  - ["./run_checks.sh"]
+review_required: true
+review_timeout_seconds: 180
+review_max_bytes: 131072
+reviewers:
+  - id: static
+    kind: script
+    command: ["./scripts/code_review.sh", "{diff_file}"]
+  - id: gemini
+    kind: llm
+    model: gemini-2.5-pro
+    command: ["gemini", "--model", "{model}", "--output-format", "json", "-p", "Review the supplied diff and return only the requested JSON verdict."]
+```
+
+Both providers are optional; configure only the executables you have
+installed and authenticated. A `script` reviewer runs from the repository
+root and passes when its exit code is `0`; any other exit code stops `REV`.
+Its stdin contains the diff, and the same content is available at
+`APATCH_REVIEW_DIFF` (also usable through the `{diff_file}` argv placeholder).
+Run build, lint, security scanners, or a project-owned wrapper there; no shell
+syntax is interpreted by `apatch` itself.
+
+A `llm` reviewer executes in a temporary directory **outside the repository**,
+receives instructions and the bounded diff through stdin, and must return JSON
+with an explicit verdict. Gemini CLI's `--output-format json` envelope with a
+JSON `response` field is supported. A plain JSON response from other CLIs or
+locally hosted models is supported too. The minimum response is:
+
+```json
+{"verdict":"PASS","summary":"No blocking issues found","findings":[]}
+```
+
+Valid verdicts are `PASS`, `CHANGES_REQUIRED`, and `ESCALATE`. Findings are
+optional objects containing `severity` (`high`, `medium`, `low`, `info`),
+`file`, and `message`. Missing or malformed verdicts **never** imply PASS.
+`{model}` is an optional argv replacement; `model` is an opaque identifier
+understood by the selected CLI, so switch models by editing this one field.
+Different CLIs may need different flags or a small wrapper. The CLI must
+support stdin for the supplied review request; it is not an API key manager.
+
+Run the stage explicitly between canonical checks and commit:
+
+```bash
+apatch opSeq=APL,BRN,FMT,CHK,REV,CMT,PSH,PR,MRG,SYN,STS skipApproves=true
+apatch opSeq=CHK,REV,STS skipApproves=true
+apatch op=REV skipApproves=true
+```
+
+Omit `FMT` when `format_commands` are not configured. `REV` does not run
+automatically in a direct `CHK`; an existing installation with no reviewers
+continues to work unchanged. With `review_required: true`, **all** configured
+reviewers must return PASS before `CMT`. Guarded `goal=COMMITTED|PUSHED|
+PR_CREATED|MERGED` and `MERGE`/`RUN_ALL` include `REV` in their displayed plan
+when required and no passing review matches the current snapshot. Review is
+never silently added to `goal=CHECKED` or `APPLY_PATCH_CHECK`. With
+`review_required: false` (the default), it remains a voluntary explicit stage.
+
+The input consists of the tracked diff from `HEAD` (including staged edits)
+plus the contents of non-ignored untracked files. Large diffs (default 128 KiB),
+untracked binary files, missing executables, timeouts, failed scripts, malformed
+model responses, or uncertain/negative verdicts stop the stage before commit.
+Review commands must not mutate source, Git index, branches, or project policy;
+any detected drift fails closed and leaves edits for inspection. Review
+decisions and bounded findings are saved in the existing project-local
+workflow checkpoint. Changes to the Git snapshot, check configuration,
+or a fresh `CHK` invalidate previous review evidence. External model requests
+are initiated **only** by an explicit `REV` or a plan including `REV` under
+`review_required: true`; review model output is untrusted advisory evidence,
+not a replacement for developer acceptance or GitHub PR approval.
+
+**Privacy and budget:** Sending a diff to an external model may expose code,
+secrets or personal data. Inspect the diff before enabling an external provider.
+The size/time bounds are not a monetary budget; provider charges, quotas,
+authentication, and network policies belong to the selected CLI. For an
+offline-only setup, configure `kind: script` and use local tools. ChatGPT Plus
+does not itself include general OpenAI API credits; select an appropriately
+authenticated CLI or a separately billed API wrapper if needed.
+
 For the `apatch` tool's own repository, `./run_tests.sh` runs a bounded regular smoke suite by default, and `./run_rare_checks.sh` runs the complete regression suite. Routine tests use two parallel workers on macOS (four elsewhere); set `APATCH_TEST_WORKERS=1`, `2`, `3`, or `4` to override this limit. A timed-out test receives one serial retry only while the suite-wide three-retry budget remains available. Unrecovered or unretried timeouts fail the suite. `CHK` executes only the checks explicitly listed in the target repository's `.apatch/config.yaml`; it does not automatically run the extended suite. GitHub Actions is manual-only and publishes no automatic push/PR test results. Run the extended suite locally before merging, even when `require_required_checks: false` is configured. GitHub branch-protection rules may independently require checks; verify those rules before relying on manual-only testing. See [Development](DEVELOPMENT.md).
 
 If the project configuration is missing, malformed, or has no commands, `apatch` stops with an explicit error. Adjust the example commands to match each target repository.
