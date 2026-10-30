@@ -12,7 +12,8 @@ from unittest.mock import patch
 
 from tests._support import run_bounded
 from tests.timeout_runner import (IsolatedResult, TimeoutSummaryRunner, configured_workers,
-                                  is_timeout_error, run_isolated_test_ids)
+                                  configured_serial_retries, is_timeout_error,
+                                  run_isolated_test_ids)
 
 
 class IsolatedSampleCases(unittest.TestCase):
@@ -41,6 +42,28 @@ class TimeoutReportingTests(unittest.TestCase):
             with self.subTest(invalid=invalid):
                 with self.assertRaisesRegex(ValueError, "APATCH_TEST_WORKERS"):
                     configured_workers(invalid, platform="darwin")
+
+    def test_default_retry_budget_is_platform_aware(self):
+        self.assertEqual(configured_serial_retries(platform="darwin"), 8)
+        self.assertEqual(configured_serial_retries(platform="linux"), 3)
+
+    def test_macos_budget_retries_six_concurrent_timeouts_serially(self):
+        names = [f"tests.sample.SlowCases.test_{index}" for index in range(6)]
+        attempts = iter([IsolatedResult(name, "TIMEOUT", 30.0, "", "")
+                         for name in names] +
+                        [IsolatedResult(name, "OK", 1.0, "", "")
+                         for name in names])
+        output = StringIO()
+        with patch("tests.timeout_runner._run_test_in_process",
+                   side_effect=lambda *_: next(attempts)) as run:
+            results = run_isolated_test_ids(
+                names, timeout_seconds=30, workers=2,
+                max_serial_retries=configured_serial_retries(platform="darwin"),
+                stream=output)
+        self.assertEqual(run.call_count, 12)
+        self.assertTrue(all(result.outcome == "OK" for result in results))
+        self.assertIn("SERIAL RETRIES: 6 attempted, 0 skipped", output.getvalue())
+        self.assertIn("TIMEOUT-AFFECTED TESTS: 6", output.getvalue())
 
     def test_many_concurrent_timeouts_have_bounded_serial_retries(self):
         names = [f"tests.sample.SlowCases.test_{index}" for index in range(4)]

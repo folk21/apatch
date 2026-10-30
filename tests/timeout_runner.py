@@ -19,6 +19,7 @@ TEST_CASE_TIMEOUT_SECONDS = 30
 MAX_OUTPUT_CHARACTERS = 8000
 MAX_TEST_WORKERS = 4
 MAX_SERIAL_RETRIES = 3
+MACOS_SERIAL_RETRIES = 8
 
 
 def configured_workers(value=None, *, platform=None):
@@ -33,6 +34,12 @@ def configured_workers(value=None, *, platform=None):
     if str(count) != str(value) or not 1 <= count <= MAX_TEST_WORKERS:
         raise ValueError("APATCH_TEST_WORKERS must be an integer from 1 to 4")
     return count
+
+
+def configured_serial_retries(*, platform=None):
+    """Allow bounded recovery for macOS subprocess contention."""
+    platform = sys.platform if platform is None else platform
+    return MACOS_SERIAL_RETRIES if platform == "darwin" else MAX_SERIAL_RETRIES
 
 
 def is_timeout_error(error):
@@ -242,7 +249,9 @@ def main():
         workers = configured_workers(os.environ.get("APATCH_TEST_WORKERS"))
     except ValueError as exc:
         parser.error(str(exc))
-    results = run_isolated_test_ids(test_ids, workers=workers)
+    results = run_isolated_test_ids(
+        test_ids, workers=workers,
+        max_serial_retries=configured_serial_retries())
     return 0 if all(item.outcome == "OK" for item in results) else 1
 
 
