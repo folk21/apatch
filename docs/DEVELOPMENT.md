@@ -4,8 +4,8 @@ This guide covers local development, tests, and documentation ownership. See [Ar
 
 ## Producer-side artifact preflight
 
-Before a patch producer packages generated source files into a ZIP, run the
-standalone source preflight against the **source Git checkout**. It reads the
+The standalone source preflight checks the **source Git checkout** before ZIP
+packaging. It reads the
 target repository's existing `.apatch/config.yaml` (`checks`, optional
 `format_commands`, and check timeouts). This utility is independent of the
 consumer's `APL`, `12 [FMT]`, and read-only `4 [CHK]` operations.
@@ -41,11 +41,61 @@ The fingerprint is evidence of **the source snapshot checked**, not a hash of
 any later ZIP. Run preflight **after the last source change** and immediately
 before packaging. If the producer changes files afterward, repeat preflight.
 
-This first increment is opt-in: external ZIP generators must explicitly call
-this command and honor its exit status. `apatch` does not yet embed a receipt
-or enforce the producer preflight when receiving an arbitrary ZIP. Consumer
-`CHK` remains the authoritative post-application gate and must never format
-source automatically.
+External ZIP generators can explicitly call this command and honor its exit
+status. The integrated ZIP producer below runs it automatically. `apatch`
+does not enforce producer verification when receiving an arbitrary ZIP.
+Consumer `CHK` remains the authoritative post-application gate and must never
+format source automatically.
+
+## Verified ZIP packaging
+
+`apatch_pack.py` combines source preflight, explicit source selection, and
+self-contained ZIP creation into a single fail-closed command. A standalone
+`apatch_preflight.py` success does not authorize later packaging: the packer
+**always reruns preflight** against the current source checkout.
+
+```bash
+python3 /path/to/apatch/apatch_pack.py \
+  --project . \
+  --output /path/outside/project/project-PATCH-feature.zip \
+  --branch feature/example \
+  --message "feat: implement example" \
+  --include app/lib/example.dart \
+  --include app/test/example_test.dart \
+  --prepare
+```
+
+`--include` explicitly selects every changed/new source file. Use repeated
+`--delete` arguments for removed tracked files. All Git-changed and untracked
+paths must be accounted for; use a dedicated producer worktree when unrelated
+changes exist. Explicit selection prevents accidentally packaging unrelated
+untracked files. Include paths are repository-relative, validated, and never
+symlinks or protected `.apatch`/`.git` runtime paths. Source content must be
+regular files in the checked worktree. Unsupported entries fail closed.
+
+`--output` is required, must be outside the source repository, and must not
+already exist. The packer writes a temporary ZIP in that output directory,
+includes `<repository>/.apatch/params.json` with schema-v1 handoff metadata,
+and checks its members and integrity before exclusive publication. The
+optional `--base-commit` refers to the **destination repository's** expected
+base commit; omit it when no exact destination SHA is known. Do not use the
+producer checkout's HEAD as a guessed destination base.
+
+The producer compares each packaged file's exact bytes and executable mode
+with the verified worktree inventory and checks branch, HEAD, changed paths,
+Git index and source fingerprint before and after ZIP construction. If a
+check fails, files change, a tool is missing, or the ZIP cannot be created,
+the command exits nonzero and does not publish an archive. `--json` reports
+the resulting source fingerprint, archive SHA-256, included/deleted paths,
+and outcome; command progress goes to stderr in JSON mode.
+
+This producer is opt-in; externally created archives are still supported.
+Its initial implementation requires POSIX `O_NOFOLLOW` and hard-link support
+for safe source reads and exclusive ZIP publication. Automatic source-file
+discovery, signing/embedding producer receipts, and consumer-side enforcement
+are not included. When `--prepare` is used, the formatters may modify source
+files even if later preflight or packaging fails. Never treat a failed
+producer run as a verified ZIP. Consumer `CHK` still runs after `APL`.
 
 ## Running the apatch tests
 
