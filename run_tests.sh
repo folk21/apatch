@@ -44,6 +44,7 @@ case "${1:-regular}" in
             tests.test_macros \
             tests.test_remote_macros.RemoteMacroTests.test_run_all_new_zip_completes_and_repeated_call_does_not_mutate \
             tests.test_formatting \
+            tests.test_artifact_preflight \
             tests.test_code_review \
             tests.test_zip_resume.ExplicitZipResumeTests.test_apl_and_brn_prefix_are_satisfied_without_replaying_archive \
             tests.test_branch_reassignment \
