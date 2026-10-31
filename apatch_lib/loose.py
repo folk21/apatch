@@ -291,6 +291,7 @@ class LooseActions:
             print(f"==> CANONICAL CHECK PASS {attempt}/"
                   f"{2 if policy == 'recheck_once' else 1}", flush=True)
             failure = None
+            whitespace_warnings = []
             try:
                 for argument in (["git", "diff", "--check"],
                                  ["git", "diff", "--cached", "--check"]):
@@ -299,6 +300,10 @@ class LooseActions:
                         print("WARNING: Git whitespace check reported problems; "
                               "the project verification commands will still run.")
                         print((result.stdout + result.stderr).strip())
+                        whitespace_warnings.extend(
+                            line.strip()[:240]
+                            for line in (result.stdout + result.stderr).splitlines()[:3]
+                            if line.strip())
                 for command in w.config.checks:
                     run(list(command), w.root, stream_output=True,
                         timeout=w.config.check_timeout_seconds,
@@ -316,6 +321,10 @@ class LooseActions:
                 self._invalidate_verification()
                 raise Abort("CHECK_HEAD_DRIFT: Branch or HEAD changed during verification")
             if failure is not None:
+                if whitespace_warnings and isinstance(failure, Abort):
+                    details = "\n    Additional Git whitespace warnings:\n" + "\n".join(
+                        f"      {line}" for line in whitespace_warnings[:3])
+                    raise Abort(f"{failure}{details}") from failure
                 raise failure
             if changed:
                 if policy == "recheck_once" and attempt == 1:

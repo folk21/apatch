@@ -490,6 +490,17 @@ After a successful, state-changing action, the result footer includes a potentia
 
 The console shows the selected action and its mnemonic, the starting branch and phase, and the number of modified paths. Important Git operations (switching branches, staging, committing, fetching, pushing, and pulling) report completion. Canonical checks stream their output live and end with a success or failure marker.
 
+If a streaming check exits nonzero, the final `STOP` diagnostic repeats up to
+four relevant lines from the bounded recent check output. `FAIL`, `ERROR`, and
+`Changed` lines take priority; otherwise the most recent output lines are
+shown. In LOOSE, up to three Git whitespace warnings are also repeated when a
+project check fails, so the final diagnostic identifies both the failed check
+and independently reported whitespace problems. The full check transcript is
+not persisted to the `apatch` log. Fix the indicated files, then resume with
+`apatch opSeq=CHK,STS`; do not reapply the ZIP. If a canonical check reports
+that it formatted a file, move that write to the explicit `FMT` operation or
+make the project check read-only before rerunning verification.
+
 When an action returns, `apatch` prints a result summary with elapsed time, phase transition, branch, before/after HEAD commit IDs, and the number of changed paths. When appropriate, it lists up to ten changed paths. If an action returns without a detectable transition, the summary explicitly notes that it may have been cancelled or already satisfied. Command failures still stop the action; the script does not claim success for failed operations.
 
 ### LOOSE (default): incremental development with manual edits

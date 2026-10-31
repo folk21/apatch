@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import shlex
 import signal
 import subprocess
@@ -24,6 +25,9 @@ _CONFIRMATION_DECLINED = ContextVar("apatch_confirmation_declined", default=Fals
 REDACT_FLAGS = {"--body", "--token", "--password", "--secret", "--api-key", "--authorization"}
 FAILURE_TAIL_LINES = 20
 FAILURE_TAIL_LINE_CHARS = 500
+CHECK_SUMMARY_LINES = 4
+CHECK_SUMMARY_CHARS = 240
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 COMMAND_DESCRIPTIONS = {
     "switch": "Git branch switch completed",
@@ -63,6 +67,19 @@ def display_command(argv):
         else:
             visible.append(value)
     return shlex.join(visible).replace("\n", "\\n").replace("\r", "\\r")
+
+
+def _check_failure_summary(lines):
+    """Select bounded, useful error lines from the already-captured check tail."""
+    cleaned = [ANSI_ESCAPE.sub("", line).strip()[:CHECK_SUMMARY_CHARS]
+               for line in lines if line.strip()]
+    if not cleaned:
+        return ()
+    markers = ("fail:", "failed:", "[failed]", "error:", "[error]",
+               "assertionerror", "syntaxerror", "traceback", "changed ")
+    chosen = [line for line in cleaned if line.lower().startswith(markers)
+              or line.lower().endswith((" failed", " error"))]
+    return tuple((chosen or cleaned)[-CHECK_SUMMARY_LINES:])
 
 
 def _run_captured_with_deadline(argv, cwd, *, input_text, text, timeout):
@@ -191,6 +208,11 @@ def run(argv, cwd: Path, *, input_text=None, check=True, text=True, log_commit_m
               file=sys.stderr, flush=True)
     if check and result.returncode:
         details = "" if stream_output else f"\n{result.stdout}{result.stderr}"
+        if stream_output:
+            summary = _check_failure_summary(failure_tail)
+            if summary:
+                details = "\n    Relevant check output:\n" + "\n".join(
+                    f"      {line}" for line in summary)
         raise Abort(f"Command failed ({result.returncode}): {command}{details}")
     return result
 

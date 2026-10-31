@@ -101,6 +101,44 @@ class SafetyTests(LocalGitFixture):
         self.assertNotIn("PROGRESS BEFORE ERROR", log)
         self.assertNotIn("step-0\\n", log)
 
+    def test_failed_check_exposes_actionable_lines_in_final_error(self):
+        self.configure_checks(
+            'schema_version: 1\nchecks:\n'
+            '  - ["python3", "-c", "print(\'== Dart format ==\'); '
+            'print(\'Changed app/test/party_widget_test.dart\'); '
+            'print(\'Formatted 41 files (1 changed)\'); '
+            'print(\'FAIL: Dart format (exit 1)\'); '
+            'raise SystemExit(1)"]\n')
+        self.assertEqual(self.invoke("2\nYES\nYES\n").returncode, 0)
+
+        failed = self.invoke("4\n")
+
+        self.assertEqual(failed.returncode, 2)
+        self.assertIn("Command failed (1)", failed.stderr)
+        self.assertIn("Relevant check output:", failed.stderr)
+        self.assertIn("Changed app/test/party_widget_test.dart", failed.stderr)
+        self.assertIn("FAIL: Dart format (exit 1)", failed.stderr)
+        self.assertNotIn("Formatted 41 files (1 changed)",
+                         failed.stderr.split("Relevant check output:", 1)[1])
+
+        sequence = self.invoke_cli("opSeq=CHK,STS", "skipApproves=true")
+        self.assertEqual(sequence.returncode, 2)
+        self.assertIn("SEQUENCE STOP: 4 [CHK]", sequence.stdout)
+        self.assertIn("FAIL: Dart format (exit 1)", sequence.stderr)
+        self.assertIn("Changed app/test/party_widget_test.dart", sequence.stderr)
+
+    def test_failed_check_without_error_markers_falls_back_to_recent_output(self):
+        self.configure_checks(
+            'schema_version: 1\nchecks:\n'
+            '  - ["python3", "-c", "print(\'Compiler stopped at module A\'); '
+            'raise SystemExit(7)"]\n')
+        self.assertEqual(self.invoke("2\nYES\nYES\n").returncode, 0)
+
+        failed = self.invoke("4\n")
+
+        self.assertEqual(failed.returncode, 2)
+        self.assertIn("Compiler stopped at module A", failed.stderr)
+
     def test_project_log_directory_is_relative_to_project_apatch(self):
         custom = self.root / ".apatch" / "custom" / "checks"
         self.project_config.write_text(
