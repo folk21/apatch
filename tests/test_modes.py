@@ -14,6 +14,22 @@ from tests._support import (
 
 
 class ModesTests(LocalGitFixture):
+    def test_loose_failed_check_reports_whitespace_alongside_root_cause(self):
+        self.configure_checks(
+            'schema_version: 1\nchecks:\n'
+            '  - ["python3", "-c", "print(\'FAIL: Dart format (exit 1)\'); '
+            'raise SystemExit(1)"]\n')
+        self.assertEqual(self.invoke_loose("3\nYES\n").returncode, 0)
+        (self.root / "existing.txt").write_text("updated\n\n")
+
+        failed = self.invoke_loose("4\n")
+
+        self.assertEqual(failed.returncode, 2)
+        self.assertIn("FAIL: Dart format (exit 1)", failed.stderr)
+        self.assertIn("Additional Git whitespace warnings:", failed.stderr)
+        self.assertIn("existing.txt:2: new blank line at EOF", failed.stderr)
+        self.assertEqual((self.root / "existing.txt").read_text(), "updated\n\n")
+
     def test_loose_sync_switches_main_even_if_github_is_unavailable(self):
         command("git", "switch", "-c", self.payload["feature_branch"], cwd=self.root)
         result = self.invoke_cli("op=SYN", "skipApproves=true")
