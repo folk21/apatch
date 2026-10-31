@@ -2,6 +2,51 @@
 
 This guide covers local development, tests, and documentation ownership. See [Architecture](ARCHITECTURE.md) for module boundaries and [Usage](USAGE.md) for public CLI behavior.
 
+## Producer-side artifact preflight
+
+Before a patch producer packages generated source files into a ZIP, run the
+standalone source preflight against the **source Git checkout**. It reads the
+target repository's existing `.apatch/config.yaml` (`checks`, optional
+`format_commands`, and check timeouts). This utility is independent of the
+consumer's `APL`, `12 [FMT]`, and read-only `4 [CHK]` operations.
+
+From the source repository root:
+
+```bash
+python3 /path/to/apatch/apatch_preflight.py --project . --prepare
+python3 /path/to/apatch/apatch_preflight.py --project . --json
+```
+
+`--prepare` is an **explicitly mutating** operation: it runs configured
+`format_commands` (for example, the project's `./run-checks.sh --prepare`)
+and then verifies. It refuses to proceed when formatters are not configured,
+unavailable, fail, or time out. During preparation, neither Git HEAD/branch
+nor the staging index may change. Omitting `--prepare` runs verification only
+and does not imply that any formatting preparation was performed.
+
+After preparation, the utility requires successful `git diff --check`,
+`git diff --cached --check`, and **all** configured canonical `checks`.
+These are read-only checks: changed file contents, modes, symlinks, staged
+index objects, or Git branch/HEAD invalidate the result. A missing tool,
+failing check, or timeout returns a nonzero exit code. In particular, Dart
+projects should use the real Dart formatter in their preparation command and
+the read-only `dart format --output=none --set-exit-if-changed ...` form in
+canonical checks. Tool installation is not inferred from file contents.
+
+For automation, `--json` writes a single JSON result on stdout while check
+logs go to stderr. A successful result includes `status: "passed"`, branch,
+HEAD, changed paths, and a SHA-256 fingerprint of changed source bytes and
+Git index evidence. A failure returns `status: "failed"` with an error.
+The fingerprint is evidence of **the source snapshot checked**, not a hash of
+any later ZIP. Run preflight **after the last source change** and immediately
+before packaging. If the producer changes files afterward, repeat preflight.
+
+This first increment is opt-in: external ZIP generators must explicitly call
+this command and honor its exit status. `apatch` does not yet embed a receipt
+or enforce the producer preflight when receiving an arbitrary ZIP. Consumer
+`CHK` remains the authoritative post-application gate and must never format
+source automatically.
+
 ## Running the apatch tests
 
 Run the tests from the `apatch` directory after installing the dependencies:
