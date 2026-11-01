@@ -4,6 +4,7 @@ import json
 import os
 import stat
 import tempfile
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -13,6 +14,10 @@ from .storage.locking import exclusive_file_lock
 
 MAX_PARAMS_BYTES = 65536
 PARAMS_NAME = "params.json"
+
+
+class RecoverableCacheError(Abort):
+    """A bounded, readable cache has invalid legacy or corrupt handoff content."""
 
 
 def cache_path(root: Path) -> Path:
@@ -55,11 +60,18 @@ def load_cached_handoff(root: Path):
             if not stat.S_ISREG(meta.st_mode) or meta.st_size > MAX_PARAMS_BYTES:
                 raise Abort("Cached parameters are not a bounded regular file")
             data = json.loads(stream.read().decode("utf-8"))
-    except (OSError, ValueError, UnicodeError) as exc:
+    except OSError as exc:
         raise Abort(f"Cannot read .apatch/params.json; select a handoff explicitly: {exc}") from exc
-    handoff = parse_handoff_payload(data)
+    except (ValueError, UnicodeError) as exc:
+        raise RecoverableCacheError(
+            f"Cannot read .apatch/params.json; select a handoff explicitly: {exc}") from exc
+    try:
+        handoff = parse_handoff_payload(data)
+    except Abort as exc:
+        raise RecoverableCacheError(f"Invalid cached handoff parameters: {exc}") from exc
     if handoff.repository != root.name or not handoff.patch_sha256:
-        raise Abort("Cached parameters have the wrong repository or no verified ZIP digest")
+        raise RecoverableCacheError(
+            "Cached parameters have the wrong repository or no verified ZIP digest")
     return handoff
 
 
@@ -73,6 +85,54 @@ def _locked_cache(root: Path):
         yield path
 
 
+def _recovery_backup_directory(path: Path) -> Path:
+    """Validate the backup location without following an existing symlink."""
+    backups = path.parent / "backups"
+    if backups.is_symlink() or (backups.exists() and not backups.is_dir()):
+        raise Abort(f"Unsafe cached handoff backup directory: {backups}")
+    return backups
+
+
+def preflight_cache_write(root: Path) -> None:
+    """Reject unsafe cache recovery targets before a ZIP changes source files."""
+    path = cache_path(root)
+    _require_regular(path)
+    if not path.exists():
+        return
+    if path.stat().st_size > MAX_PARAMS_BYTES:
+        raise Abort("Cached parameters exceed 64 KiB; inspect them before recovery")
+    try:
+        load_cached_handoff(root)
+    except RecoverableCacheError:
+        _require_regular(path)
+        if path.stat().st_size > MAX_PARAMS_BYTES:
+            raise Abort("Cached parameters exceed 64 KiB; inspect them before recovery")
+        _recovery_backup_directory(path)
+
+
+def _preserve_invalid_cache(path: Path) -> Path:
+    """Hard-link the exact stale file before replacing it with a verified handoff."""
+    backups = _recovery_backup_directory(path)
+    backups.mkdir(mode=0o700, exist_ok=True)
+    _recovery_backup_directory(path)
+    _require_regular(path)
+    for _ in range(5):
+        destination = backups / f"params-invalid-{uuid.uuid4().hex}.json"
+        try:
+            os.link(path, destination, follow_symlinks=False)
+        except FileExistsError:
+            continue
+        except OSError as exc:
+            raise Abort(f"Cannot preserve invalid cached parameters: {exc}") from exc
+        directory_fd = os.open(backups, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+        return destination
+    raise Abort("Cannot reserve a unique invalid-cache backup filename")
+
+
 def save_cached_handoff(root: Path, handoff):
     """Write only a previously validated ZIP handoff using atomic replacement."""
     if handoff.repository != root.name or not handoff.patch_sha256:
@@ -82,8 +142,18 @@ def save_cached_handoff(root: Path, handoff):
     if len(serialized) > MAX_PARAMS_BYTES:
         raise Abort("Cached handoff parameters exceed 64 KiB")
     with _locked_cache(root) as path:
+        invalid_cache = False
         if path.exists():
-            load_cached_handoff(root)
+            if path.stat().st_size > MAX_PARAMS_BYTES:
+                raise Abort("Cached parameters exceed 64 KiB; inspect them before recovery")
+            try:
+                load_cached_handoff(root)
+            except RecoverableCacheError:
+                _require_regular(path)
+                if path.stat().st_size > MAX_PARAMS_BYTES:
+                    raise Abort("Cached parameters exceed 64 KiB; inspect them before recovery")
+                _recovery_backup_directory(path)
+                invalid_cache = True
         descriptor, temporary = tempfile.mkstemp(prefix=".apatch-params-", dir=path.parent)
         try:
             with os.fdopen(descriptor, "wb") as stream:
@@ -92,6 +162,9 @@ def save_cached_handoff(root: Path, handoff):
                 stream.flush()
                 os.fsync(stream.fileno())
             _require_regular(path)
+            if invalid_cache:
+                backup = _preserve_invalid_cache(path)
+                print(f"WARNING: Invalid cached parameters preserved at {backup}")
             os.replace(temporary, path)
             directory_fd = os.open(path.parent, os.O_RDONLY)
             try:

@@ -10,7 +10,7 @@ Start `apatch` **from the root of the project repository** whose development wor
 /path/to/apatch/apatch.sh apatch-PATCH-2026-10-24-00-42-example
 ```
 
-For a new self-contained patch, the positional identifier is a ZIP stem or basename under `downloads_dir` (`~/Downloads` by default). The ZIP must embed one regular `<repository>/.apatch/params.json` member with the schema-v1 repository name, feature branch, ZIP filename, commit message, and optional base commit or deletions; it must omit its own SHA-256 field. `apatch` verifies the final ZIP hash and saves the validated handoff under the target repository's Git-ignored `.apatch/params.json`. Subsequent invocations can omit the identifier and load this cache. An absent, malformed, unsafe, or wrong-project cache is an error; the tool never guesses the most recent download.
+For a new self-contained patch, the positional identifier is a ZIP stem or basename under `downloads_dir` (`~/Downloads` by default). The ZIP must embed one regular `<repository>/.apatch/params.json` member with the schema-v1 repository name, feature branch, ZIP filename, commit message, and optional base commit or deletions; it must omit its own SHA-256 field. `apatch` verifies the final ZIP hash and saves the validated handoff under the target repository's Git-ignored `.apatch/params.json`. Subsequent lifecycle invocations can omit the identifier and load this cache. An absent, malformed, unsafe, or wrong-project cache cannot authorize a lifecycle action without explicit handoff selection; the tool never guesses the most recent download. `STS` is an exception: it can inspect recorded workflow evidence without using an invalid cache.
 
 For compatibility, explicit legacy JSON handoffs still work: an unqualified `.json` filename or stem resolves under `downloads_dir` when a matching legacy file exists, and an absolute or relative JSON path is accepted. A ZIP filename ending in `.zip` unambiguously selects embedded ZIP parameters. The P0.3c upgrade itself uses the old ZIP-plus-JSON bootstrap; future handoffs need only the ZIP.
 
@@ -306,6 +306,23 @@ manual correction, keep the same ZIP name and resume at `CHK`:
 /path/to/apatch/apatch.sh existing-patch op=CMT skipApproves=true
 ```
 
+If `APL` already succeeded on the base branch but the cached parameters are
+missing or invalid, inspect the recorded state first, then select the **same
+unchanged ZIP** explicitly to finish `BRN` and checks:
+
+```bash
+/path/to/apatch/apatch.sh op=STS
+/path/to/apatch/apatch.sh existing-patch opSeq=BRN,CHK,STS skipApproves=true
+```
+
+`BRN` recovery requires the exact ZIP digest, recorded application checkpoint,
+latest applied-patch entry, successful `APL` operation journal, and matching
+local Git evidence. It does not extract the archive again. A malformed legacy
+cache is saved byte-for-byte to `.apatch/backups/params-invalid-*.json` before
+the newly verified handoff replaces it; a symlinked cache or backup directory
+is refused before a new `APL` mutates source files. Do not manually fill in
+`patch_sha256` or reapply a ZIP to repair a cache.
+
 For a previously completed `APL` and `BRN`, a repeated prefix is verified one
 step at a time and reported as `ALREADY_SATISFIED`, **without replaying the ZIP
 or switching branches**:
@@ -472,7 +489,7 @@ Each status fact carries an evidence label:
 | `UNKNOWN` | Insufficient trustworthy evidence (including missing fields in older states). |
 | `CONFLICT` | Available local Git facts contradict the saved checkpoint. |
 
-Status does not contact GitHub or the Git remote by default. A recorded PR number or pushed SHA is not proof of its current remote state. It requires neither the original ZIP nor writable state. It reads the cached handoff or an explicit legacy JSON. When the cache is **absent**, it can select an unambiguous stored workflow; use `op=STS patch=NAME.zip` if several are stored. A present but malformed or symlinked cache still fails closed. Status cannot infer operations performed manually but never checkpointed.
+Status does not contact GitHub or the Git remote by default. A recorded PR number or pushed SHA is not proof of its current remote state. It requires neither the original ZIP nor writable state. It reads a valid cached handoff or an explicit ZIP/legacy JSON. When the cache is **absent, malformed, wrong-project, or symlinked**, `STS` can select an unambiguous stored workflow without reading the invalid cache and warns if a present cache is unusable; use `op=STS patch=NAME.zip` if several are stored. This read-only fallback cannot authorize `APL`, `BRN`, `CHK`, or other lifecycle actions. Status cannot infer operations performed manually but never checkpointed.
 
 ### Repository-wide patch audit: `11 [AUD]`
 

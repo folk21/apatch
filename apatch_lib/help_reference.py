@@ -131,6 +131,11 @@ HELP_EPILOG = dedent("""
       with a verified, complete APL-to-SYN opSeq returns ALREADY_COMPLETED and
       displays terminal STS without replaying actions. An incomplete cycle,
       dirty base, or changed remote is not treated as complete.
+      If an old params.json lacks a verified ZIP digest, STS reports recorded
+      state without trusting that cache. Select the original ZIP explicitly
+      to resume: project-PATCH-name opSeq=BRN,CHK,STS skipApproves=true.
+      Invalid bounded cache files are preserved in .apatch/backups/ before
+      replacement. A symlinked cache or backup directory blocks new APL.
       skipApproves=true disables
       prompts, NOT Git, ZIP, or repository safety checks. FORCE is NOT a
       force-push option. Remote GitHub checks remain separate from local CHK.

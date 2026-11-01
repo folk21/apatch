@@ -19,7 +19,7 @@ from .logging_setup import LOG_FILENAME, configure, set_context
 from .macros import MACRO_NAMES, execute_macro
 from .migration import migrate_legacy_artifacts
 from .model import Abort, Config, load_config, load_project_config
-from .params_cache import save_cached_handoff
+from .params_cache import preflight_cache_write, save_cached_handoff
 from .planner import execute_goal
 from .progress import ProgressRecorder, ProgressStore, render_progress
 from .sequence import execute_sequence
@@ -104,6 +104,8 @@ def _admit_zip_start(
                              and saved.get("applied_branch") == context.config.base
                              and saved.get("archive_sha256") == handoff.patch_sha256)
             if recover_cache:
+                verify_applied_zip(context.root, context.config, handoff,
+                                   read_state_snapshot(context.config.state_path))
                 return True, False
         if request.op_seq is not None:
             verify_applied_zip(context.root, context.config, selection.handoff,
@@ -233,6 +235,8 @@ def execute_request(request: CliRequest, tool_dir: Path) -> int:
                      skip_approves=request.skip_approves)
         return 0
     if request.status_only:
+        if selection.evidence and selection.handoff is None:
+            print(f"WARNING: {selection.evidence}; using recorded workflow evidence only.")
         show_status_with_progress(root, config, None, selection.handoff, request.patch,
                                   request.mode, recorder, tool_dir,
                                   zip_selected=selection.zip_selected)
@@ -246,6 +250,8 @@ def execute_request(request: CliRequest, tool_dir: Path) -> int:
         request = resolved
 
     recover_cache, resume_selected = _admit_zip_start(request, context, selection)
+    if selection.zip_selected and (recover_cache or not resume_selected):
+        preflight_cache_write(root)
     _execute_lifecycle(request, context, selection, recorder,
                        menu_shown=menu_shown, recover_cache=recover_cache,
                        resume_selected=resume_selected)

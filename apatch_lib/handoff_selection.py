@@ -140,10 +140,16 @@ def resolve_handoffs(request: CliRequest, config: Config, root: Path) -> Handoff
                                 evidence="All explicit sequence ZIPs validated",
                                 required_next_step="APL")
 
-    if (request.status_only and request.handoff is None
-            and not ((root / ".apatch" / "params.json").exists()
-                     or (root / ".apatch" / "params.json").is_symlink())):
-        return HandoffSelection(None, "stored workflow", SelectionKind.CACHED_WORKFLOW)
+    if request.status_only and request.handoff is None:
+        cached_path = root / ".apatch" / "params.json"
+        if not cached_path.exists() and not cached_path.is_symlink():
+            return HandoffSelection(None, "stored workflow", SelectionKind.CACHED_WORKFLOW)
+        try:
+            cached = load_cached_handoff(root)
+        except Abort as exc:
+            return HandoffSelection(None, "stored workflow", SelectionKind.CACHED_WORKFLOW,
+                                    evidence=f"Cached handoff unavailable: {exc}")
+        return HandoffSelection(cached, ".apatch/params.json", SelectionKind.CACHED_WORKFLOW)
 
     if (request.op_seq is not None
             and sum(action in {2, 3} for action in request.op_seq.actions) > 1):
