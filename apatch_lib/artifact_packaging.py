@@ -5,13 +5,15 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shlex
 import stat
 import tempfile
 import zipfile
 
 from .artifact_preflight import PreflightResult, preflight
 from .core.paths import PARAMS_MEMBER, is_protected_runtime_path
-from .gitutil import current_branch, head, output, worktree_fingerprint, worktree_inventory
+from .gitutil import (current_branch, head, output, run, worktree_fingerprint,
+                      worktree_inventory)
 from .model import (Abort, BASENAME_PATTERN, load_config, load_project_config,
                     parse_handoff_payload, safe_relative)
 
@@ -32,6 +34,80 @@ class PackagingResult:
 
     def to_dict(self) -> dict:
         return {"status": "passed", **asdict(self)}
+
+
+@dataclass(frozen=True)
+class SourceCandidates:
+    """Read-only explicit inclusion suggestions, never an authorization to pack."""
+
+    repository: str
+    branch: str
+    head: str
+    include: tuple[str, ...]
+    delete: tuple[str, ...]
+    untracked: tuple[str, ...]
+
+    def to_dict(self) -> dict:
+        return {"status": "candidates", **asdict(self)}
+
+    def suggested_flags(self) -> str:
+        def flag(name: str, path: str) -> str:
+            if path.startswith("-"):
+                return f"--{name}={shlex.quote(path)}"
+            return f"--{name} {shlex.quote(path)}"
+
+        items = [flag("include", path) for path in self.include]
+        items += [flag("delete", path) for path in self.delete]
+        return " ".join(items)
+
+
+def discover_source_paths(project: Path) -> SourceCandidates:
+    """List Git changes and renames without executing checks or writing files."""
+    root = project.resolve()
+    actual = Path(output(["git", "rev-parse", "--show-toplevel"], root)).resolve()
+    if root != actual:
+        raise Abort(f"Source discovery must run at the Git repository root: {actual}")
+    branch = current_branch(root)
+    if not branch:
+        raise Abort("Source discovery requires a named Git branch")
+    original_head = head(root)
+    raw = run(["git", "-c", "core.quotePath=false", "status", "--porcelain=v1",
+               "--untracked-files=all", "-z"], root, text=False).stdout
+    entries = raw.split(b"\x00")
+    included: set[str] = set()
+    deleted: set[str] = set()
+    untracked: set[str] = set()
+    index = 0
+    while index < len(entries) and entries[index]:
+        item = entries[index]
+        if len(item) < 4 or item[2:3] != b" ":
+            raise Abort("Malformed Git status during source discovery")
+        status = os.fsdecode(item[:2])
+        relative = safe_relative(os.fsdecode(item[3:]))
+        if "R" in status or "C" in status:
+            index += 1
+            if index >= len(entries) or not entries[index]:
+                raise Abort("Incomplete Git rename/copy during source discovery")
+            previous = safe_relative(os.fsdecode(entries[index]))
+            if "R" in status and not (root / previous).exists():
+                deleted.add(previous)
+        path = root / relative
+        if path.is_symlink():
+            raise Abort(f"Source discovery refuses symlink path: {relative}")
+        if path.is_file():
+            included.add(relative)
+            if status == "??":
+                untracked.add(relative)
+        elif not path.exists():
+            deleted.add(relative)
+        else:
+            raise Abort(f"Unsupported source path during discovery: {relative}")
+        index += 1
+    selected_include, selected_delete = _scope(tuple(included), tuple(deleted)) if (included or deleted) else ((), ())
+    if current_branch(root) != branch or head(root) != original_head:
+        raise Abort("Source Git branch or HEAD changed during discovery")
+    return SourceCandidates(root.name, branch, original_head,
+                            selected_include, selected_delete, tuple(sorted(untracked)))
 
 
 def _output_path(raw: Path, root: Path) -> Path:

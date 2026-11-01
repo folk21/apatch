@@ -3,13 +3,14 @@
 import argparse
 import os
 import re
+import shlex
 import signal
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,6 +21,11 @@ MAX_OUTPUT_CHARACTERS = 8000
 MAX_TEST_WORKERS = 4
 MAX_SERIAL_RETRIES = 3
 MACOS_SERIAL_RETRIES = 8
+SLOWEST_TEST_LIMIT = 5
+FAILURE_SUMMARY_LIMIT = 8
+FAILURE_REASON_LIMIT = 180
+RUNNER_HEARTBEAT_SECONDS = 10
+_ERROR_LINE = re.compile(r"(?:AssertionError|[A-Za-z_][A-Za-z_0-9.]*Error|[A-Za-z_][A-Za-z_0-9.]*Exception):")
 
 
 def configured_workers(value=None, *, platform=None):
@@ -103,6 +109,52 @@ def _flatten_test_ids(suite):
             yield item.id()
 
 
+def _failure_reason(result):
+    """Select one bounded diagnostic without echoing the complete test output."""
+    if result.outcome == "TIMEOUT":
+        return "per-test execution deadline exceeded"
+    lines = (result.stderr + "\n" + result.stdout).splitlines()
+    for line in reversed(lines):
+        match = _ERROR_LINE.search(line)
+        if match:
+            return line[match.start():].strip()[:FAILURE_REASON_LIMIT]
+    return "nonzero test result; inspect the detailed output above"
+
+
+def _print_final_report(results, elapsed_by_id, original_timeouts, recovered,
+                        skipped_retries, retried, max_serial_retries, started, stream):
+    """Place unresolved failures last so a bounded CHK tail can still report them."""
+    failed = [item for item in results if item.outcome != "OK"]
+    print(f"\nRan {len(results)} tests in {time.monotonic() - started:.3f}s\n",
+          file=stream)
+    print(f"FAILED ({len(failed)} failed or timed-out tests)" if failed else "OK",
+          file=stream)
+    print(f"\nTIMEOUT-AFFECTED TESTS: {len(original_timeouts)}", file=stream)
+    for test_id in sorted(original_timeouts):
+        status = ("recovered on serial retry" if test_id in recovered
+                  else "not retried (retry cap reached)" if test_id in skipped_retries
+                  else "not recovered")
+        print(f"  {test_id} ({status})", file=stream)
+    print(f"SERIAL RETRIES: {retried} attempted, {len(skipped_retries)} skipped "
+          f"(cap={max_serial_retries})",
+          file=stream)
+    slowest = sorted(results, key=lambda item: (-elapsed_by_id[item.test_id], item.test_id))
+    print(f"SLOWEST TESTS: {min(SLOWEST_TEST_LIMIT, len(slowest))}", file=stream)
+    for item in slowest[:SLOWEST_TEST_LIMIT]:
+        print(f"  {item.test_id}: {elapsed_by_id[item.test_id]:.2f}s "
+              f"(final result: {item.outcome})", file=stream)
+    print(f"FAILED TESTS: {len(failed)}", file=stream)
+    for item in failed[:FAILURE_SUMMARY_LIMIT]:
+        print(f"[APATCH_TEST_FAILURE] {item.test_id} ({item.outcome}): "
+              f"{_failure_reason(item)}", file=stream)
+        print(f"  Rerun: {shlex.quote(sys.executable)} -B -m unittest -v "
+              f"{shlex.quote(item.test_id)}", file=stream)
+    if len(failed) > FAILURE_SUMMARY_LIMIT:
+        print(f"  {len(failed) - FAILURE_SUMMARY_LIMIT} additional failed tests; "
+              "see earlier results", file=stream)
+    stream.flush()
+
+
 def _run_test_in_process(test_id, root, env, timeout_seconds):
     """Bound each test independently, including grandchildren on POSIX."""
     command = [sys.executable, "-B", "-m", "unittest", test_id, "-v"]
@@ -147,6 +199,7 @@ def run_isolated_test_ids(test_ids, *, timeout_seconds=TEST_CASE_TIMEOUT_SECONDS
     root = Path(__file__).resolve().parents[1]
     started = time.monotonic()
     results = []
+    elapsed_by_id = {}
     total = len(test_ids)
     print(f"TEST RUNNER: {total} cases; workers={workers}; "
           f"per-case timeout={timeout_seconds:g}s; "
@@ -169,17 +222,26 @@ def run_isolated_test_ids(test_ids, *, timeout_seconds=TEST_CASE_TIMEOUT_SECONDS
                             timeout_seconds): test_id
                 for test_id in test_ids
             }
-            for completed, future in enumerate(as_completed(futures), start=1):
-                result = future.result()
-                results.append(result)
-                print(f"[{completed}/{total}] {result.test_id} ... "
-                      f"{result.outcome} ({result.elapsed:.2f}s)", file=stream, flush=True)
-                if result.outcome != "OK":
-                    details = (result.stdout + "\n" + result.stderr).strip()
-                    if len(details) > MAX_OUTPUT_CHARACTERS:
-                        details = "... [output truncated]\n" + details[-MAX_OUTPUT_CHARACTERS:]
-                    if details:
-                        print(details, file=stream, flush=True)
+            pending = set(futures)
+            while pending:
+                completed_now, pending = wait(pending, timeout=RUNNER_HEARTBEAT_SECONDS,
+                                              return_when=FIRST_COMPLETED)
+                if not completed_now:
+                    print(f"[WAIT] {len(results)}/{total} complete; "
+                          f"{len(pending)} running or queued", file=stream, flush=True)
+                    continue
+                for future in completed_now:
+                    result = future.result()
+                    results.append(result)
+                    elapsed_by_id[result.test_id] = result.elapsed
+                    print(f"[{len(results)}/{total}] {result.test_id} ... "
+                          f"{result.outcome} ({result.elapsed:.2f}s)", file=stream, flush=True)
+                    if result.outcome != "OK":
+                        details = (result.stdout + "\n" + result.stderr).strip()
+                        if len(details) > MAX_OUTPUT_CHARACTERS:
+                            details = "... [output truncated]\n" + details[-MAX_OUTPUT_CHARACTERS:]
+                        if details:
+                            print(details, file=stream, flush=True)
         first_timeouts = {item.test_id for item in results if item.outcome == "TIMEOUT"}
         recovered = set()
         skipped_retries = set()
@@ -199,6 +261,7 @@ def run_isolated_test_ids(test_ids, *, timeout_seconds=TEST_CASE_TIMEOUT_SECONDS
                   file=stream, flush=True)
             retry = _run_test_in_process(result.test_id, root, environment, timeout_seconds)
             results[index] = retry
+            elapsed_by_id[result.test_id] += retry.elapsed
             if retry.outcome == "OK":
                 recovered.add(result.test_id)
             print(f"{result.test_id} ... RETRY {retry.outcome} ({retry.elapsed:.2f}s)",
@@ -209,22 +272,8 @@ def run_isolated_test_ids(test_ids, *, timeout_seconds=TEST_CASE_TIMEOUT_SECONDS
                     details = "... [output truncated]\n" + details[-MAX_OUTPUT_CHARACTERS:]
                 if details:
                     print(details, file=stream, flush=True)
-    failed = [item for item in results if item.outcome != "OK"]
-    timed_out = sorted(first_timeouts)
-    print(f"\nRan {len(results)} tests in {time.monotonic() - started:.3f}s\n",
-          file=stream)
-    if failed:
-        print(f"FAILED ({len(failed)} failed or timed-out tests)", file=stream)
-    else:
-        print("OK", file=stream)
-    print(f"\nTIMEOUT-AFFECTED TESTS: {len(timed_out)}", file=stream)
-    for test_id in timed_out:
-        status = ("recovered on serial retry" if test_id in recovered
-                  else "not retried (retry cap reached)" if test_id in skipped_retries
-                  else "not recovered")
-        print(f"  {test_id} ({status})", file=stream)
-    print(f"SERIAL RETRIES: {retried} attempted, {len(skipped_retries)} skipped "
-          f"(cap={max_serial_retries})", file=stream)
+    _print_final_report(results, elapsed_by_id, first_timeouts, recovered,
+                        skipped_retries, retried, max_serial_retries, started, stream)
     return results
 
 

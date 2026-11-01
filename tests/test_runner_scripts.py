@@ -54,12 +54,22 @@ class RunnerScriptsTests(unittest.TestCase):
                     "tests.test_session_continuation.SessionContinuationTests."
                     "test_modified_collision_blocks_before_history_or_source_writes",
                     args)
-                self.assertIn("tests.test_macros", args)
+                self.assertIn(
+                    "tests.test_macros.LocalMacroTests."
+                    "test_apply_patch_check_verifies_without_committing", args)
+                self.assertIn(
+                    "tests.test_code_review.CodeReviewTests."
+                    "test_required_review_blocks_commit_until_passed", args)
+                self.assertIn(
+                    "tests.test_artifact_packaging.ArtifactPackagingTests."
+                    "test_failed_check_never_produces_zip", args)
+                self.assertNotIn("tests.test_macros", args)
+                self.assertNotIn("tests.test_code_review", args)
                 self.assertIn(
                     "tests.test_handoffs.HandoffsTests.test_self_contained_lifecycle_loose",
                     args)
                 self.assertNotIn("tests.test_publication_goals", args)
-                self.assertLess(len(args), 50)
+                self.assertLess(len(args), 90)
 
     def test_rare_launcher_and_full_alias_run_all_tests(self):
         for script, options in (("run_rare_checks.sh", ()), ("run_tests.sh", ("full",))):

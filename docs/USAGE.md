@@ -36,7 +36,14 @@ Before creating any **new** `feature/...` branch with `BRN` (or deprecated legac
 
 The guard runs before the new Git ref and associated patch changes are created. It checks live Git/PR evidence rather than assuming that a previous apatch checkpoint proves a merge. Ordinary `APL` on an already selected branch does not start a new feature branch and is unaffected.
 
-Use `apatch.sh --help` to see the modes, direct-action selection, and automation parameters. The interactive menu also displays the active mode and the other available modes. Replace `<zip-stem>` in examples with your ZIP filename without `.zip`.
+Use `apatch.sh --help` for an extended built-in reference that includes
+workflow stages, numeric and named operations, sample `.apatch/config.yaml`
+and `apatch.conf`, optional `FMT` and `REV` setup, guarded macros, recovery,
+and producer tools. The standalone producer commands have their own help:
+`python3 /path/to/apatch/apatch_preflight.py --help` and
+`python3 /path/to/apatch/apatch_pack.py --help`. The interactive menu also
+displays the active mode and available alternatives. Replace `<zip-stem>`
+in examples with your ZIP filename without `.zip`.
 
 ### Guarded goals (`goal`, FS-05–FS-06)
 

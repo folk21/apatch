@@ -9,7 +9,7 @@ from unittest.mock import patch
 import zipfile
 
 import apatch_lib.artifact_packaging as packaging
-from apatch_lib.artifact_packaging import pack_source
+from apatch_lib.artifact_packaging import discover_source_paths, pack_source
 from apatch_lib.model import Abort, load_config, load_project_config
 from apatch_lib.patch import handoff_from_zip, inspect
 from tests._support import TOOL, LocalGitFixture, command
@@ -45,6 +45,53 @@ class ArtifactPackagingTests(LocalGitFixture):
         handoff = handoff_from_zip(config, self.root, self.destination.name)
         self.assertEqual(inspect(config, handoff, self.root).changed, frozenset({"new.txt"}))
         self.assertEqual(result.to_dict()["status"], "passed")
+
+    def test_discovery_lists_candidates_without_writing_anything(self):
+        before = (self.root / "new.txt").read_bytes()
+        candidates = discover_source_paths(self.root)
+        self.assertEqual(candidates.repository, "example_service")
+        self.assertEqual(candidates.include, ("new.txt",))
+        self.assertEqual(candidates.delete, ())
+        self.assertEqual(candidates.untracked, ("new.txt",))
+        self.assertEqual(candidates.to_dict()["status"], "candidates")
+        self.assertIn("--include new.txt", candidates.suggested_flags())
+        self.assertEqual((self.root / "new.txt").read_bytes(), before)
+        self.assertFalse(self.destination.exists())
+
+    def test_discovery_recognizes_staged_rename_as_add_and_delete(self):
+        command("git", "mv", "existing.txt", "renamed.txt", cwd=self.root)
+        candidates = discover_source_paths(self.root)
+        self.assertEqual(candidates.include, ("new.txt", "renamed.txt"))
+        self.assertEqual(candidates.delete, ("existing.txt",))
+        self.assertIn("--delete existing.txt", candidates.suggested_flags())
+        result = self.build(included=candidates.include, deleted=candidates.delete)
+        self.assertEqual(result.files, candidates.include)
+        self.assertEqual(result.deleted_paths, candidates.delete)
+
+    def test_discovery_rejects_symlinks(self):
+        other = self.base / "private.txt"
+        other.write_text("private\n")
+        (self.root / "new.txt").unlink()
+        (self.root / "new.txt").symlink_to(other)
+        with self.assertRaisesRegex(Abort, "refuses symlink"):
+            discover_source_paths(self.root)
+
+    def test_discovery_json_does_not_require_packaging_options(self):
+        shutil.copy(TOOL / "apatch_pack.py", self.bin / "apatch_pack.py")
+        command_line = [sys.executable, str(self.bin / "apatch_pack.py"),
+                        "--project", str(self.root), "--discover", "--json"]
+        completed = subprocess.run(command_line, cwd=self.root, capture_output=True,
+                                   text=True, timeout=15)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "candidates")
+        self.assertEqual(payload["include"], ["new.txt"])
+        self.assertFalse(self.destination.exists())
+
+    def test_discovery_quotes_option_like_filenames(self):
+        (self.root / "-special.py").write_text("print('safe')\n")
+        candidates = discover_source_paths(self.root)
+        self.assertIn("--include=-special.py", candidates.suggested_flags())
 
     def test_failed_check_never_produces_zip(self):
         (self.root / "run_checks.sh").write_text("#!/bin/sh\nexit 5\n")

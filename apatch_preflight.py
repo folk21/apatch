@@ -8,12 +8,15 @@ from pathlib import Path
 import sys
 
 from apatch_lib.artifact_preflight import preflight
+from apatch_lib.help_reference import PREFLIGHT_HELP_EPILOG
 from apatch_lib.model import Abort
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
-        description="Prepare and verify an exact source snapshot before creating a ZIP")
+        description="Prepare and verify a source Git snapshot before ZIP generation",
+        epilog=PREFLIGHT_HELP_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--project", type=Path, default=Path.cwd(),
                         help="Root of the source Git repository (default: current directory)")
     parser.add_argument("--prepare", action="store_true",
