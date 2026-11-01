@@ -27,7 +27,9 @@ class SequencesTests(LocalGitFixture):
 
             def interactive(self, code, *, show_header):
                 self.calls.append(code)
-                raise AssertionError("Completed workflow must not execute any operation")
+                if code != "STS":
+                    raise AssertionError("Completed workflow must not replay mutating operations")
+                return "NO_OP"
 
         workflow = CompletedWorkflow(self.root, config)
         output = StringIO()
@@ -35,9 +37,88 @@ class SequencesTests(LocalGitFixture):
             outcome = execute_sequence(
                 workflow, OperationSequence.parse("CHK,CMT,PSH,PR,MRG,SYN,STS"))
         self.assertEqual(outcome, "ALREADY_COMPLETED")
-        self.assertEqual(workflow.calls, [])
+        self.assertEqual(workflow.calls, ["STS"])
         self.assertIn("SEQUENCE ALREADY COMPLETED", output.getvalue())
+        self.assertIn("SEQUENCE ACTION 10 [STS]", output.getvalue())
         self.assertNotIn("SEQUENCE ACTION 4 [CHK]", output.getvalue())
+
+    def test_completed_verified_zip_full_sequence_is_replay_free(self):
+        config = load_project_config(self.root, load_config(self.bin))
+
+        class CompletedWorkflow:
+            phase = "synced"
+
+            def __init__(self, root, project_config):
+                self.root = root
+                self.config = project_config
+                self.calls = []
+
+            def interactive(self, code, *, show_header):
+                self.calls.append(code)
+                if code != "STS":
+                    raise AssertionError("An already completed ZIP must not be replayed")
+                return "NO_OP"
+
+        for actions in ("APL,BRN,CHK,CMT,PSH,PR,MRG,SYN,STS",
+                        "APL,BRN,FMT,CHK,REV,CMT,PSH,PR,MRG,SYN,STS"):
+            with self.subTest(actions=actions):
+                workflow = CompletedWorkflow(self.root, config)
+                output = StringIO()
+                with redirect_stdout(output):
+                    outcome = execute_sequence(
+                        workflow, OperationSequence.parse(actions),
+                        on_satisfied=lambda action, active: None)
+                self.assertEqual(outcome, "ALREADY_COMPLETED")
+                self.assertEqual(workflow.calls, ["STS"])
+                self.assertIn("SEQUENCE ALREADY COMPLETED", output.getvalue())
+                self.assertNotIn("SEQUENCE ACTION 3 [APL]", output.getvalue())
+
+    def test_completed_zip_without_verified_resume_does_not_skip_apply(self):
+        config = load_project_config(self.root, load_config(self.bin))
+
+        class UnverifiedWorkflow:
+            phase = "synced"
+
+            def __init__(self, root, project_config):
+                self.root = root
+                self.config = project_config
+                self.calls = []
+
+            def interactive(self, code, *, show_header):
+                self.calls.append(code)
+                raise Abort("Existing ZIP must be verified before replay is skipped")
+
+        workflow = UnverifiedWorkflow(self.root, config)
+        with self.assertRaisesRegex(Abort, "Existing ZIP must be verified"):
+            execute_sequence(workflow, OperationSequence.parse(
+                "APL,BRN,CHK,CMT,PSH,PR,MRG,SYN,STS"))
+        self.assertEqual(workflow.calls, ["APL"])
+
+    def test_completed_replay_status_failure_is_reported_without_reexecution(self):
+        config = load_project_config(self.root, load_config(self.bin))
+
+        class CompletedWorkflow:
+            phase = "synced"
+
+            def __init__(self, root, project_config):
+                self.root = root
+                self.config = project_config
+                self.calls = []
+
+            def interactive(self, code, *, show_header):
+                self.calls.append(code)
+                raise Abort("status backend unavailable")
+
+        workflow = CompletedWorkflow(self.root, config)
+        output = StringIO()
+        with redirect_stdout(output):
+            outcome = execute_sequence(
+                workflow, OperationSequence.parse(
+                    "APL,BRN,CHK,CMT,PSH,PR,MRG,SYN,STS"),
+                on_satisfied=lambda action, active: None)
+        self.assertEqual(outcome, "ALREADY_COMPLETED")
+        self.assertEqual(workflow.calls, ["STS"])
+        self.assertIn("WARNING: Final 10 [STS] unavailable", output.getvalue())
 
     def test_completed_workflow_explicit_check_and_status_remain_available(self):
         config = load_project_config(self.root, load_config(self.bin))

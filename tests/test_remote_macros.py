@@ -72,6 +72,61 @@ class RemoteMacroTests(LocalGitFixture):
         self.assertEqual(fake.calls.count(("gh", "pr", "create")), 1)
         self.assertEqual(fake.calls.count(("gh", "pr", "merge")), 1)
 
+    def test_completed_zip_explicit_full_sequence_reports_status_without_replay(self):
+        stem = self.make_self_contained_zip()
+        fake = FakeGitHub(self)
+        self.run_macro("RUN_ALL", fake, stem=stem)
+        before_state = read_state_snapshot(self.state_path)
+        before_history = self.history_path.read_bytes()
+        before_head = head(self.root)
+
+        for mode in (None, "--strict", "--force"):
+            with self.subTest(mode=mode):
+                args = ["opSeq=APL,BRN,CHK,CMT,PSH,PR,MRG,SYN,STS", "skipApproves=true"]
+                if mode is not None:
+                    args.append(mode)
+                result = self.invoke_zip(*args, selection=stem)
+                self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+                self.assertIn("Verified selected ZIP", result.stdout)
+                self.assertIn("SEQUENCE ALREADY COMPLETED", result.stdout)
+                self.assertIn("SEQUENCE ACTION 10 [STS]", result.stdout)
+                self.assertNotIn("SEQUENCE ACTION 3 [APL]", result.stdout)
+
+        after_state = read_state_snapshot(self.state_path)
+        self.assertEqual(after_state["operation_runs"], before_state["operation_runs"])
+        self.assertEqual(self.history_path.read_bytes(), before_history)
+        self.assertEqual(head(self.root), before_head)
+        self.assertEqual(fake.calls.count(("gh", "pr", "create")), 1)
+        self.assertEqual(fake.calls.count(("gh", "pr", "merge")), 1)
+
+    def test_completed_zip_full_sequence_rejects_dirty_base(self):
+        stem = self.make_self_contained_zip()
+        self.run_macro("RUN_ALL", FakeGitHub(self), stem=stem)
+        manual = self.root / "untracked-user-note.txt"
+        manual.write_text("keep this change\n")
+        before_history = self.history_path.read_bytes()
+        result = self.invoke_zip("opSeq=APL,BRN,CHK,CMT,PSH,PR,MRG,SYN,STS",
+                                 "skipApproves=true", selection=stem)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("Synchronized base revision is no longer verified", result.stderr)
+        self.assertNotIn("SEQUENCE ALREADY COMPLETED", result.stdout)
+        self.assertEqual(manual.read_text(), "keep this change\n")
+        self.assertEqual(self.history_path.read_bytes(), before_history)
+
+    def test_completed_zip_full_sequence_rejects_changed_remote_identity(self):
+        stem = self.make_self_contained_zip()
+        self.run_macro("RUN_ALL", FakeGitHub(self), stem=stem)
+        before_state = read_state_snapshot(self.state_path)
+        command("git", "remote", "set-url", "origin", str(self.base / "other.git"),
+                cwd=self.root)
+        result = self.invoke_zip("opSeq=APL,BRN,CHK,CMT,PSH,PR,MRG,SYN,STS",
+                                 "skipApproves=true", selection=stem)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("Configured remote identity has changed", result.stderr)
+        self.assertNotIn("SEQUENCE ALREADY COMPLETED", result.stdout)
+        self.assertEqual(read_state_snapshot(self.state_path)["operation_runs"],
+                         before_state["operation_runs"])
+
     def test_merge_refuses_new_zip_before_application_or_remote_mutation(self):
         stem = self.make_self_contained_zip()
         fake = FakeGitHub(self)

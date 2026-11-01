@@ -36,14 +36,7 @@ Before creating any **new** `feature/...` branch with `BRN` (or deprecated legac
 
 The guard runs before the new Git ref and associated patch changes are created. It checks live Git/PR evidence rather than assuming that a previous apatch checkpoint proves a merge. Ordinary `APL` on an already selected branch does not start a new feature branch and is unaffected.
 
-Use `apatch.sh --help` for an extended built-in reference that includes
-workflow stages, numeric and named operations, sample `.apatch/config.yaml`
-and `apatch.conf`, optional `FMT` and `REV` setup, guarded macros, recovery,
-and producer tools. The standalone producer commands have their own help:
-`python3 /path/to/apatch/apatch_preflight.py --help` and
-`python3 /path/to/apatch/apatch_pack.py --help`. The interactive menu also
-displays the active mode and available alternatives. Replace `<zip-stem>`
-in examples with your ZIP filename without `.zip`.
+Use `apatch.sh --help` to see the modes, direct-action selection, and automation parameters. The interactive menu also displays the active mode and the other available modes. Replace `<zip-stem>` in examples with your ZIP filename without `.zip`.
 
 ### Guarded goals (`goal`, FS-05–FS-06)
 
@@ -211,6 +204,17 @@ publication actions reports `SEQUENCE ALREADY COMPLETED` immediately. It does
 not rerun project checks or start new publication operations. A deliberate
 standalone `CHK` or `opSeq=CHK,STS` remains available for checking the current
 repository without attempting to republish an already completed ZIP.
+The same result applies when an explicitly reselected, fully synchronized ZIP
+is supplied again with its complete `APL,BRN,CHK,CMT,PSH,PR,MRG,SYN,STS`
+sequence (optionally including `FMT` and `REV` in their normal positions).
+Only verified ZIP-resume evidence, the exact synchronized base HEAD/remote,
+and a clean worktree authorize this shortcut. It does not extract the ZIP,
+create a branch, rerun checks, or repeat GitHub writes. A trailing `STS`
+is still displayed as a read-only completion report; it does not restart the
+workflow. A different ZIP, unfinished workflow, remote drift, dirty worktree,
+or partial sequence retains the ordinary guards and must not be silently
+treated as complete. Standalone `op=APL` retains its duplicate-application
+protection.
 The output identifies the last completed operation and actions
 not executed, so inspect `op=STS` and resume explicitly with `op=` or a
 shorter `opSeq`. Never automatically rerun an uncertain remote mutation.
@@ -496,17 +500,6 @@ After a successful, state-changing action, the result footer includes a potentia
 ### Console progress and results
 
 The console shows the selected action and its mnemonic, the starting branch and phase, and the number of modified paths. Important Git operations (switching branches, staging, committing, fetching, pushing, and pulling) report completion. Canonical checks stream their output live and end with a success or failure marker.
-
-If a streaming check exits nonzero, the final `STOP` diagnostic repeats up to
-four relevant lines from the bounded recent check output. `FAIL`, `ERROR`, and
-`Changed` lines take priority; otherwise the most recent output lines are
-shown. In LOOSE, up to three Git whitespace warnings are also repeated when a
-project check fails, so the final diagnostic identifies both the failed check
-and independently reported whitespace problems. The full check transcript is
-not persisted to the `apatch` log. Fix the indicated files, then resume with
-`apatch opSeq=CHK,STS`; do not reapply the ZIP. If a canonical check reports
-that it formatted a file, move that write to the explicit `FMT` operation or
-make the project check read-only before rerunning verification.
 
 When an action returns, `apatch` prints a result summary with elapsed time, phase transition, branch, before/after HEAD commit IDs, and the number of changed paths. When appropriate, it lists up to ten changed paths. If an action returns without a detectable transition, the summary explicitly notes that it may have been cancelled or already satisfied. Command failures still stop the action; the script does not claim success for failed operations.
 
