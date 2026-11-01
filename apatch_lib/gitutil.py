@@ -75,6 +75,9 @@ def _check_failure_summary(lines):
                for line in lines if line.strip()]
     if not cleaned:
         return ()
+    unresolved = [line for line in cleaned if line.startswith("[APATCH_TEST_FAILURE]")]
+    if unresolved:
+        return tuple(unresolved[:CHECK_SUMMARY_LINES])
     markers = ("fail:", "failed:", "[failed]", "error:", "[error]",
                "assertionerror", "syntaxerror", "traceback", "changed ")
     chosen = [line for line in cleaned if line.lower().startswith(markers)

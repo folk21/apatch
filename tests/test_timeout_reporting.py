@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from apatch_lib.gitutil import _check_failure_summary
 from tests._support import run_bounded
 from tests.timeout_runner import (IsolatedResult, TimeoutSummaryRunner, configured_workers,
                                   configured_serial_retries, is_timeout_error,
@@ -33,6 +34,54 @@ class IsolatedSampleCases(unittest.TestCase):
 
 
 class TimeoutReportingTests(unittest.TestCase):
+    def test_final_report_shows_unresolved_failures_after_retries_and_slowest_tests(self):
+        failed = "tests.sample.Cases.test_assertion"
+        passed = "tests.sample.Cases.test_passed"
+        recovered = "tests.sample.Cases.test_recovered"
+        attempts = {recovered: 0}
+
+        def fake_run(test_id, *_args):
+            if test_id == failed:
+                return IsolatedResult(test_id, "FAILED", 0.4, "",
+                                      "AssertionError: expected safe bytes\n")
+            if test_id == passed:
+                return IsolatedResult(test_id, "OK", 0.1, "", "")
+            attempts[recovered] += 1
+            if attempts[recovered] == 1:
+                return IsolatedResult(test_id, "TIMEOUT", 0.5, "", "")
+            return IsolatedResult(test_id, "OK", 0.2, "", "")
+
+        output = StringIO()
+        with patch("tests.timeout_runner._run_test_in_process", side_effect=fake_run):
+            results = run_isolated_test_ids([failed, passed, recovered], workers=1,
+                                            max_serial_retries=1, stream=output)
+        self.assertEqual([(r.test_id, r.outcome) for r in results if r.outcome != "OK"],
+                         [(failed, "FAILED")])
+        report = output.getvalue()
+        self.assertIn("FAILED TESTS: 1", report)
+        self.assertIn(f"[APATCH_TEST_FAILURE] {failed} (FAILED): "
+                      "AssertionError: expected safe bytes", report)
+        self.assertNotIn(f"[APATCH_TEST_FAILURE] {recovered}", report)
+        self.assertIn("SLOWEST TESTS: 3", report)
+        slowest = report.split("SLOWEST TESTS: 3", 1)[1].split("FAILED TESTS:", 1)[0]
+        self.assertLess(slowest.index(recovered), slowest.index(failed))
+        self.assertIn("0.70s (final result: OK)", slowest)
+        self.assertIn("Rerun:", report)
+        self.assertIn("TIMEOUT-AFFECTED TESTS: 1", report)
+        self.assertLess(report.index("SERIAL RETRIES:"), report.index("FAILED TESTS:"))
+
+    def test_canonical_check_summary_prioritizes_unresolved_failure(self):
+        lines = ["SERIAL RETRIES: 5 attempted, 0 skipped (cap=8)",
+                 "tests.sample.Cases.test_retry (recovered on serial retry)",
+                 "SLOWEST TESTS: 5",
+                 "[APATCH_TEST_FAILURE] tests.sample.Cases.test_real (FAILED): "
+                 "AssertionError: wrong result",
+                 "  Rerun: python3 -B -m unittest -v tests.sample.Cases.test_real"]
+        summary = _check_failure_summary(lines)
+        self.assertEqual(len(summary), 1)
+        self.assertIn("tests.sample.Cases.test_real", summary[0])
+        self.assertNotIn("test_retry", summary[0])
+
     def test_worker_selection_is_platform_aware_and_bounded(self):
         self.assertEqual(configured_workers(platform="darwin"), 2)
         self.assertEqual(configured_workers(platform="linux"), 4)

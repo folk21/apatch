@@ -5,7 +5,8 @@ import sys
 from dataclasses import dataclass
 from typing import Sequence
 
-from .core.actions import ACTION_CODES, action_number
+from .core.actions import action_number
+from .help_reference import HELP_EPILOG
 from .model import Abort, BASENAME_PATTERN, BRANCH_PATTERN
 from .sequence import OperationSequence
 
@@ -96,42 +97,9 @@ def parse_operation_sequence(value: str) -> OperationSequence:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description=("Manage project patches. LOOSE is the default mode; STRICT enforces "
-                     "workflow phases; FORCE recovers from manual changes."),
-        epilog=("Examples:\n"
-                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example op=APL skipApproves=true\n"
-                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example op=3\n"
-                "  apatch.sh op=BRN\n"
-                "  apatch.sh op=BRN featureBranch=feature/new-name skipApproves=true\n"
-                "  apatch.sh op=CHK\n"
-                "  apatch.sh op=FMT\n"
-                "  apatch.sh opSeq=CHK,REV,CMT,STS skipApproves=true\n"
-                "  apatch.sh some-new-zip opSeq=APL,BRN,FMT,CHK,CMT,PSH,PR,MRG,SYN,STS skipApproves=true\n"
-                "  apatch.sh apatch-PATCH-2026-10-24-00-42-example opSeq=APL,BRN,CHK,CMT,PSH skipApproves=true\n"
-                "  apatch.sh opSeq=APL,BRN,APL,CHK,CMT handoffSeq=first.zip,second.zip skipApproves=true\n"
-                "  apatch.sh repair-patch followup=true opSeq=APL,CHK,CMT skipApproves=true\n"
-                "  apatch.sh op=STS\n"
-                "  apatch.sh some-new-zip goal=CHECKED planOnly=true\n"
-                "  apatch.sh some-new-zip goal=COMMITTED skipApproves=true\n"
-                "  apatch.sh goal=PR_CREATED planOnly=true\n"
-                "  apatch.sh goal=MERGED skipApproves=true\n"
-                "  apatch.sh some-new-zip op=APPLY_PATCH skipApproves=true\n"
-                "  apatch.sh some-new-zip op=APPLY_PATCH_CHECK skipApproves=true\n"
-                "  apatch.sh op=MERGE skipApproves=true\n"
-                "  apatch.sh some-new-zip op=RUN_ALL skipApproves=true\n"
-                "  apatch.sh op=AUD\n"
-                "  apatch.sh op=11 verifyRemote=true\n"
-                "  apatch.sh info=PROGRESS\n"
-                "  apatch.sh strict op=CHK\n"
-                "  apatch.sh force op=CMT\n"
-                "  apatch.sh /path/legacy.json op=STS\n"
-                "Action codes: " + ", ".join(f"{i}={code}" for i, code in enumerate(ACTION_CODES)) + "\n"
-                "Select an exact ZIP stem for initial APL, or omit it for cached continuation. "
-                "Explicit legacy .json paths remain supported. "
-                "Without op=NUMBER, op=CODE, op=MACRO, or opSeq=CODE,CODE, "
-                "the action menu is displayed. "
-                "skipApproves defaults to false and only skips confirmation prompts; "
-                "Git/archive safety checks remain active."),
+        description=("Apply, verify, review, commit, and publish ZIP patches. "
+                     "Run from the target repository root; LOOSE is the default."),
+        epilog=HELP_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("handoff", nargs="?", metavar="ZIP_STEM|PATH.json",
                         help="ZIP stem/basename for new APL, legacy JSON, or omit to use .apatch/params.json")

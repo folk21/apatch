@@ -7,17 +7,24 @@ import json
 from pathlib import Path
 import sys
 
-from apatch_lib.artifact_packaging import pack_source
+from apatch_lib.artifact_packaging import discover_source_paths, pack_source
+from apatch_lib.help_reference import PACK_HELP_EPILOG
 from apatch_lib.model import Abort
 
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
-        description="Run project preflight and package only explicitly selected source paths")
-    parser.add_argument("--project", type=Path, default=Path.cwd())
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--branch", required=True, help="Destination feature branch")
-    parser.add_argument("--message", required=True, help="Commit message for the handoff")
+        description="Review changed source paths or run preflight and build a verified ZIP",
+        epilog=PACK_HELP_EPILOG,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--project", type=Path, default=Path.cwd(),
+                        help="Source Git repository root (default: current directory)")
+    parser.add_argument("--discover", action="store_true",
+                        help="READ-ONLY: list Git-changed/new/deleted files and suggested flags")
+    parser.add_argument("--output", type=Path,
+                        help="Destination ZIP outside source repository; must not exist")
+    parser.add_argument("--branch", help="Target feature branch (feature/NAME)")
+    parser.add_argument("--message", help="Commit message embedded in the ZIP handoff")
     parser.add_argument("--include", action="append", default=[], metavar="PATH",
                         help="Changed/new source file to package; repeat for each file")
     parser.add_argument("--delete", action="append", default=[], metavar="PATH",
@@ -29,6 +36,39 @@ def main(argv=None) -> int:
     parser.add_argument("--json", action="store_true",
                         help="Emit one JSON result on stdout; stream check logs to stderr")
     args = parser.parse_args(argv)
+
+    if args.discover:
+        if (args.output is not None or args.branch is not None or args.message is not None
+                or args.include or args.delete or args.base_commit is not None or args.prepare):
+            parser.error("--discover cannot be combined with ZIP publishing options")
+        try:
+            with redirect_stdout(sys.stderr) if args.json else redirect_stdout(sys.stdout):
+                candidates = discover_source_paths(args.project)
+        except Abort as exc:
+            if args.json:
+                print(json.dumps({"status": "failed", "error": str(exc)}))
+            else:
+                print(f"[DISCOVERY FAILED] {exc}", file=sys.stderr)
+            return 1
+        if args.json:
+            print(json.dumps(candidates.to_dict(), sort_keys=True))
+        else:
+            print(f"[DISCOVERY] {candidates.repository} {candidates.branch} "
+                  f"HEAD={candidates.head[:12]}")
+            if candidates.include or candidates.delete:
+                print("Suggested explicit packaging arguments:")
+                print("  " + candidates.suggested_flags())
+                if candidates.untracked:
+                    print("Review untracked files before including them: "
+                          + ", ".join(repr(name) for name in candidates.untracked))
+            else:
+                print("No changed or untracked source files were found.")
+            print("Discovery is read-only and does not approve or package any file.")
+        return 0
+
+    if args.output is None or args.branch is None or args.message is None:
+        parser.error("packaging requires --output, --branch, and --message; "
+                     "use --discover to inspect source paths first")
 
     error = None
     result = None
