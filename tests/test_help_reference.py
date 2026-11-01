@@ -35,6 +35,7 @@ class HelpReferenceTests(unittest.TestCase):
             "review_required: false", "reviewers:", "kind: llm", "kind: script",
             "skipApproves=true", "op=3", "op=APL", "opSeq=FMT,CHK,STS",
             "APPLY_PATCH_CHECK", "followup=true", "featureBranch=feature/new",
+            "ALREADY_COMPLETED", "dirty base, or changed remote",
             "goal=MERGED", "info=PROGRESS", "verifyRemote=true",
             "preflight", "--op NUMBER|CODE", "LOOSE", "STRICT", "FORCE",
         ):

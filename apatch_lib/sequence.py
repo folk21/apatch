@@ -8,6 +8,12 @@ from .core.actions import ACTION_CODES, action_number
 
 
 MAX_SEQUENCE_STEPS = 20
+COMPLETED_PUBLICATION_REPLAYS = frozenset({
+    (3, 1, 4, 5, 6, 7, 8, 9, 10),
+    (3, 1, 12, 4, 5, 6, 7, 8, 9, 10),
+    (3, 1, 4, 13, 5, 6, 7, 8, 9, 10),
+    (3, 1, 12, 4, 13, 5, 6, 7, 8, 9, 10),
+})
 
 
 @dataclass(frozen=True)
@@ -70,16 +76,33 @@ def execute_sequence(workflow, sequence: OperationSequence, *, on_completed=None
 
     print("\n==> SEQUENCE START: " + ", ".join(map(describe, sequence.actions)))
     print("    skipApproves applies to confirmation prompts, not safety checks")
-    if (sequence.actions and getattr(workflow, "phase", None) == "synced"
-            and sequence.actions[0] == 4
-            and any(action in {5, 6, 7, 8, 9} for action in sequence.actions[1:])):
+    verified_full_replay = (on_satisfied is not None and select_workflow is None
+                            and sequence.actions in COMPLETED_PUBLICATION_REPLAYS)
+    redundant_publication = (sequence.actions and sequence.actions[0] == 4
+                             and any(action in {5, 6, 7, 8, 9}
+                                     for action in sequence.actions[1:]))
+    if (getattr(workflow, "phase", None) == "synced"
+            and (verified_full_replay or redundant_publication)):
         from .gitutil import current_branch, is_clean
         if (current_branch(workflow.root) == workflow.config.base
                 and is_clean(workflow.root)):
             print("==> SEQUENCE ALREADY COMPLETED: The selected ZIP is merged and "
                   "the clean base branch is synchronized.")
-            print("    No canonical checks, commit, push, PR, or merge were attempted.")
-            print("    Run op=STS to inspect the completed ZIP, or select a new ZIP with APL.")
+            print("    No ZIP extraction, branch change, checks, commit, push, PR, "
+                  "merge or sync were attempted.")
+            if 10 in sequence.actions:
+                print("==> SEQUENCE ACTION 10 [STS]: read-only completion report", flush=True)
+                try:
+                    status_result = workflow.interactive("STS", show_header=False)
+                    if status_result not in {"NO_OP", "SUCCESS"}:
+                        print(f"WARNING: Final 10 [STS] returned {status_result}; "
+                              "the completed workflow was not replayed.")
+                except (Abort, KeyboardInterrupt) as exc:
+                    print(f"WARNING: Final 10 [STS] unavailable ({exc}); "
+                          "the completed workflow was not replayed.")
+            else:
+                print("    Run op=STS to inspect the completed ZIP.")
+            print("    Select a new ZIP with APL to begin another feature.")
             return "ALREADY_COMPLETED"
     last_completed = "NONE"
     sequence_id = uuid.uuid4().hex

@@ -127,7 +127,11 @@ HELP_EPILOG = dedent("""
 
       If CHK or REV fails: correct the reported files, run STS, then resume
       from the failed operation. Do not replay APL/BRN on already applied ZIPs
-      unless explicitly recovering their state. skipApproves=true disables
+      unless explicitly recovering their state. A previously synchronized ZIP
+      with a verified, complete APL-to-SYN opSeq returns ALREADY_COMPLETED and
+      displays terminal STS without replaying actions. An incomplete cycle,
+      dirty base, or changed remote is not treated as complete.
+      skipApproves=true disables
       prompts, NOT Git, ZIP, or repository safety checks. FORCE is NOT a
       force-push option. Remote GitHub checks remain separate from local CHK.
 
