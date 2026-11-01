@@ -70,6 +70,7 @@ case "${1:-regular}" in
             tests.test_code_review.CodeReviewTests.test_review_script_that_changes_worktree_fails_closed \
             tests.test_code_review.CodeReviewTests.test_guarded_committed_goal_executes_review_before_commit \
             tests.test_zip_resume.ExplicitZipResumeTests.test_apl_and_brn_prefix_are_satisfied_without_replaying_archive \
+            tests.test_cache_recovery \
             tests.test_branch_reassignment.PendingZipBranchReassignmentTests.test_reassign_existing_planned_branch_and_resume_fmt_chk \
             tests.test_branch_reassignment.PendingZipBranchReassignmentTests.test_target_local_or_remote_collision_does_not_mutate_checkpoint \
             tests.test_branch_reassignment.PendingZipBranchReassignmentTests.test_goal_checked_can_continue_on_reassigned_branch \

@@ -156,9 +156,11 @@ class ApplicationBoundaryTests(unittest.TestCase):
                         "applied_branch": "main",
                         "archive_sha256": handoff.patch_sha256}}}
         with patch.object(application, "read_state_snapshot", return_value=saved), \
-                patch.object(application, "workflow_key", return_value="the key"):
-            self.assertTrue(application._admit_zip_start(
-                parse_request(["op=BRN"]), context, selection))
+                patch.object(application, "workflow_key", return_value="the key"), \
+                patch.object(application, "verify_applied_zip") as verify:
+            self.assertEqual(application._admit_zip_start(
+                parse_request(["op=BRN"]), context, selection), (True, False))
+            verify.assert_called_once_with(context.root, context.config, handoff, saved)
 
     def test_global_progress_exits_before_repository_bootstrap(self) -> None:
         config = SimpleNamespace(progress_global_limit=8, progress_project_limit=3)
