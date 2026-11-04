@@ -208,3 +208,50 @@ class ReviewArtifacts:
         if failed.is_set() or incomplete:
             raise Abort(f"REVIEW_ARTIFACT_UNAVAILABLE: Cannot safely capture {identifier} output")
         return result
+
+    def verified_stdout(self, identifier: str) -> tuple[bytes, str]:
+        """Re-read captured stdout without following a replacement symlink."""
+        entries = [item for item in self.document["providers"] if item["id"] == identifier]
+        if len(entries) != 1:
+            raise Abort("REVIEW_ARTIFACT_UNAVAILABLE: Missing reviewer stdout")
+        item = entries[0]
+        path = self.directory / item["stdout_file"]
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            if path.is_symlink():
+                raise Abort("REVIEW_ARTIFACT_UNSAFE: stdout replaced by a symlink")
+            with os.fdopen(os.open(path, flags), "rb") as stream:
+                import stat
+                if (not stat.S_ISREG(os.fstat(stream.fileno()).st_mode)
+                        or stat.S_IMODE(os.fstat(stream.fileno()).st_mode) != 0o600):
+                    raise Abort("REVIEW_ARTIFACT_UNSAFE: stdout is not a regular file")
+                data = stream.read(self.max_output_bytes + 1)
+        except OSError as exc:
+            raise Abort(f"REVIEW_ARTIFACT_UNAVAILABLE: Cannot read stdout: {type(exc).__name__}") from exc
+        digest = hashlib.sha256(data).hexdigest()
+        if len(data) != item["stdout_bytes"] or digest != item["stdout_sha256"]:
+            raise Abort("REVIEW_ARTIFACT_INTEGRITY: Reviewer output changed after capture")
+        return data, digest
+
+    def save_normalized(self, identifier: str, report: dict):
+        """Persist a bounded, private derivative and index it in the raw manifest."""
+        destination = self.directory / (identifier + ".normalized.json")
+        payload = (json.dumps(report, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode()
+        if len(payload) > 1048576:
+            raise Abort("REVIEW_REPORT_INVALID: normalized report exceeds 1 MiB")
+        try:
+            with _secure_file(destination) as stream:
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+        except OSError as exc:
+            raise Abort(f"REVIEW_ARTIFACT_UNAVAILABLE: Cannot persist normalization: {type(exc).__name__}") from exc
+        for item in self.document["providers"]:
+            if item["id"] == identifier:
+                item["normalized_file"] = destination.name
+                item["normalized_sha256"] = hashlib.sha256(payload).hexdigest()
+                break
+        self._persist()
+        return f"{self.relative_path}/{destination.name}"

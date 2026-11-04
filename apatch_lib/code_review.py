@@ -11,6 +11,7 @@ from .commit_scope import policy_fingerprint
 from .gitutil import current_branch, head, run, worktree_fingerprint
 from .model import Abort, safe_relative
 from .review_artifacts import ReviewArtifacts
+from .review_normalizer import normalize_report
 
 
 VERDICTS = {"PASS", "CHANGES_REQUIRED", "ESCALATE"}
@@ -115,6 +116,17 @@ def _execute(provider, workflow, diff_file: Path, bundle: str, cwd: Path, artifa
     if artifacts is None and len(stdout) > 262144:
         raise Abort(f"REVIEW_OUTPUT_TOO_LARGE: {provider.id}")
     if provider.kind == "script":
+        if provider.report_format == "apatch-json-v1":
+            raw, digest = artifacts.verified_stdout(provider.id)
+            normalized = normalize_report(workflow.root, provider, raw, digest,
+                                          _snapshot(workflow))
+            location = artifacts.save_normalized(provider.id, normalized)
+            warnings = sum(1 for item in normalized["tools"]
+                           if item["status"] not in {"SUCCEEDED", "FINDINGS"})
+            return {"id": provider.id, "kind": "script", "verdict": normalized["verdict"],
+                    "summary": (f"{normalized['findings_unique']} unique findings; "
+                                f"{warnings} incomplete scanner(s); report: {location}"),
+                    "finding_count": normalized["findings_total"], "report_path": location}
         if artifacts is not None:
             print(f"    Reviewer output saved in {artifacts.relative_path}")
         else:

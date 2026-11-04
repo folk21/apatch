@@ -19,6 +19,66 @@ class CodeReviewTests(LocalGitFixture):
         data += "".join("  - " + json.dumps(item) + "\n" for item in reviewers)
         self.configure_checks(data)
 
+    def structured(self, scanner_specs, tool_results):
+        payload = json.dumps({"schema_version": 1, "tools": tool_results})
+        return {"id": "static", "kind": "script",
+                "command": [sys.executable, "-c", "print(" + repr(payload) + ")"],
+                "report_format": "apatch-json-v1", "scanners": scanner_specs}
+
+    def test_structured_review_persists_normalized_report_and_blocks_high_findings(self):
+        scanners = [{"id": "bandit", "format": "bandit-json", "required": True}]
+        report = {"id": "bandit", "status": "FINDINGS", "format": "bandit-json", "report": {
+            "errors": [], "results": [{"test_id": "B602", "issue_severity": "HIGH",
+                                    "filename": "existing.txt", "line_number": 1,
+                                    "issue_text": "Unsafe command"}]}}
+        self.configure_reviewers([self.structured(scanners, [report])], artifacts=True, required=True)
+        self.ready()
+        result = self.invoke_zip("opSeq=REV,CMT", "skipApproves=true")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("REVIEW_CHANGES_REQUIRED", result.stderr)
+        directory, manifest = self._artifact()
+        raw = (directory / "static.stdout").read_bytes()
+        self.assertEqual(hashlib.sha256(raw).hexdigest(), manifest["providers"][0]["stdout_sha256"])
+        path = directory / manifest["providers"][0]["normalized_file"]
+        normalized = json.loads(path.read_text())
+        self.assertEqual(normalized["verdict"], "CHANGES_REQUIRED")
+        self.assertEqual(normalized["findings"][0]["path"], "existing.txt")
+        self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+        self.assertEqual(manifest["status"], "COMPLETED")
+        self.assertIn("REVIEW_REQUIRED", self.invoke_zip("op=CMT", "skipApproves=true").stderr)
+
+    def test_structured_missing_required_scanner_escalates_and_advisory_missing_warns(self):
+        mandatory = [{"id": "ruff", "format": "ruff-json", "required": True}]
+        self.configure_reviewers([self.structured(mandatory, [])], artifacts=True, required=True)
+        self.ready()
+        missing = self.invoke_zip("op=REV", "skipApproves=true")
+        self.assertEqual(missing.returncode, 2)
+        self.assertIn("REVIEW_ESCALATE", missing.stderr)
+        directory, manifest = self._artifact()
+        self.assertEqual(json.loads((directory / "static.normalized.json").read_text())["verdict"], "ESCALATE")
+
+    def test_structured_zero_findings_allows_required_review_to_commit(self):
+        scanners = [{"id": "ruff", "format": "ruff-json", "required": True}]
+        report = {"id": "ruff", "status": "SUCCEEDED", "format": "ruff-json", "report": []}
+        self.configure_reviewers([self.structured(scanners, [report])], artifacts=True, required=True)
+        self.ready()
+        passed = self.invoke_zip("opSeq=REV,CMT", "skipApproves=true")
+        self.assertEqual(passed.returncode, 0, passed.stdout + passed.stderr)
+        self.assertIn("CODE REVIEW: PASS", passed.stdout)
+
+    def test_structured_report_requires_capture_and_configured_scanner_policy(self):
+        reviewers = [self.structured([{"id": "ruff", "format": "ruff-json", "required": True}], [])]
+        self.configure_reviewers(reviewers, artifacts=False)
+        result = self.invoke_zip("op=STS")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("review_artifacts_enabled", result.stderr)
+        self.configure_reviewers(reviewers, artifacts=True)
+        original = self.project_config.read_text()
+        self.project_config.write_text(original.replace('"required": true', '"required": "yes"'))
+        result = self.invoke_zip("op=STS")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("invalid scanner policy", result.stderr)
+
     def ready(self, *, checked=True):
         stem = self.make_self_contained_zip()
         actions = "APL,BRN,CHK" if checked else "APL,BRN"

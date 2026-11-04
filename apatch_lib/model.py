@@ -66,6 +66,15 @@ class ReviewProvider:
     kind: str
     command: tuple[str, ...]
     model: str = ""
+    report_format: str = ""
+    scanners: tuple["ScannerPolicy", ...] = ()
+
+
+@dataclass(frozen=True)
+class ScannerPolicy:
+    id: str
+    format: str
+    required: bool = True
 
 
 @dataclass(frozen=True)
@@ -300,7 +309,7 @@ def load_project_config(root: Path, global_config: Config) -> Config:
     reviewers = []
     names = set()
     for item in configured_reviewers:
-        if not isinstance(item, dict) or set(item) - {"id", "kind", "command", "model"}:
+        if not isinstance(item, dict) or set(item) - {"id", "kind", "command", "model", "report_format", "scanners"}:
             raise Abort("Each reviewer must contain id, kind and command, with optional model")
         name, kind, command, model = (item.get("id"), item.get("kind"),
                                      item.get("command"), item.get("model", ""))
@@ -316,8 +325,31 @@ def load_project_config(root: Path, global_config: Config) -> Config:
         if (type(model) is not str or len(model) > 100
                 or "\x00" in model or "\n" in model or "\r" in model):
             raise Abort(f"Reviewer {name} model must be a short string")
+        report_format = item.get("report_format", "")
+        scanner_items = item.get("scanners", [])
+        if type(report_format) is not str or report_format not in {"", "apatch-json-v1"}:
+            raise Abort(f"Reviewer {name} report_format must be apatch-json-v1")
+        if (report_format and (kind != "script" or not artifacts_enabled)
+                or not report_format and "scanners" in item):
+            raise Abort(f"Reviewer {name} structured reports require script and review_artifacts_enabled")
+        if type(scanner_items) is not list or len(scanner_items) > 16 or (report_format and not scanner_items):
+            raise Abort(f"Reviewer {name} scanners must be a nonempty list of at most 16")
+        scanners = []
+        scanner_names = set()
+        for entry in scanner_items:
+            if (type(entry) is not dict or set(entry) != {"id", "format", "required"}
+                    or type(entry.get("id")) is not str
+                    or not re.fullmatch(r"[A-Za-z0-9_-]{1,48}", entry["id"])
+                    or entry["id"] in scanner_names
+                    or type(entry.get("format")) is not str
+                    or entry["format"] not in {"ruff-json", "bandit-json", "semgrep-json", "sarif-2.1.0"}
+                    or type(entry.get("required")) is not bool):
+                raise Abort(f"Reviewer {name} has invalid scanner policy")
+            scanner_names.add(entry["id"])
+            scanners.append(ScannerPolicy(entry["id"], entry["format"], entry["required"]))
         names.add(name)
-        reviewers.append(ReviewProvider(name, kind, tuple(command), model))
+        reviewers.append(ReviewProvider(name, kind, tuple(command), model,
+                                        report_format, tuple(scanners)))
     if review_required and not reviewers:
         raise Abort("review_required=true requires at least one configured reviewer")
     policy = data.get("check_worktree_policy", "stop")
