@@ -97,6 +97,70 @@ class CodeReviewTests(LocalGitFixture):
         return {"id": "gemini", "kind": "llm", "model": "custom-model",
                 "command": [sys.executable, "-c", code, "{model}"]}
 
+    def test_structured_summary_llm_receives_bounded_data_not_raw_logs_or_diff(self):
+        scanners = [{"id": "ruff", "format": "ruff-json", "required": True}]
+        report = {"id": "ruff", "status": "FINDINGS", "format": "ruff-json", "report": [
+            {"code": "F401", "filename": "existing.txt", "location": {"row": 1},
+             "message": "PRIVATE_SCANNER_MESSAGE"}]}
+        llm_code = (
+            "import json,os,sys; raw=sys.stdin.read(); "
+            "assert 'PRIVATE_SCANNER_MESSAGE' not in raw; "
+            "assert '+++ b/existing.txt' not in raw; "
+            "assert 'APATCH_REVIEW_DIFF' not in os.environ; "
+            "assert os.path.exists(os.environ['APATCH_REVIEW_CONTEXT']); "
+            "assert 'severity_counts' in raw; "
+            "print(json.dumps({'verdict':'PASS','summary':'reviewed','findings':[]}))")
+        llm = {"id": "model", "kind": "llm", "model": "local-test",
+               "input_mode": "structured-summary",
+               "command": [sys.executable, "-c", llm_code]}
+        self.configure_reviewers([self.structured(scanners, [report]), llm],
+                                 required=True, artifacts=True)
+        content = self.project_config.read_text()
+        content += "review_context_external_consent: true\nreview_context_max_bytes: 4096\n"
+        self.configure_checks(content)
+        self.ready()
+        result = self.invoke_zip("opSeq=REV,CMT", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        directory, manifest = self._artifact()
+        entry = manifest["contexts"][0]
+        self.assertEqual(entry["provider_id"], "model")
+        stored = (directory / entry["file"]).read_bytes()
+        self.assertEqual(hashlib.sha256(stored).hexdigest(), entry["sha256"])
+        self.assertLessEqual(len(stored), 4096)
+        self.assertNotIn(b"PRIVATE_SCANNER_MESSAGE", stored)
+        self.assertEqual(stat.S_IMODE((directory / entry["file"]).stat().st_mode), 0o600)
+
+    def test_structured_summary_without_scanner_fails_closed(self):
+        llm = {"id": "model", "kind": "llm", "input_mode": "structured-summary",
+               "command": [sys.executable, "-c", "print('should-not-run')"]}
+        self.configure_reviewers([llm], required=True, artifacts=True)
+        self.configure_checks(self.project_config.read_text() +
+                              "review_context_external_consent: true\n")
+        self.ready()
+        result = self.invoke_zip("opSeq=REV,CMT", "skipApproves=true")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("REVIEW_CONTEXT_INCOMPLETE", result.stderr)
+        self.assertIn("REVIEW_REQUIRED", self.invoke_zip("op=CMT", "skipApproves=true").stderr)
+
+    def test_structured_summary_validates_consent_and_modes(self):
+        llm = {"id": "model", "kind": "llm", "input_mode": "structured-summary",
+               "command": [sys.executable, "-c", "print('no')"]}
+        self.configure_reviewers([llm], artifacts=True)
+        result = self.invoke_zip("op=STS", "skipApproves=true")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("explicit consent", result.stderr)
+        self.project_config.write_text(self.project_config.read_text() +
+                                       "review_context_external_consent: true\n"
+                                       "review_context_include_messages: true\n")
+        from apatch_lib.model import load_config, load_project_config
+        parsed = load_project_config(self.root, load_config(self.bin))
+        self.assertEqual(parsed.reviewers[0].input_mode, "structured-summary")
+        self.project_config.write_text(self.project_config.read_text() +
+                                       "review_context_max_bytes: 1\n")
+        result = self.invoke_zip("op=STS", "skipApproves=true")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("review_context_max_bytes", result.stderr)
+
     def test_script_review_runs_after_chk_and_is_recorded(self):
         self.configure_reviewers([self.script()])
         self.ready()

@@ -58,6 +58,10 @@ class Config:
     review_max_bytes: int = 131072
     review_artifacts_enabled: bool = False
     review_artifact_max_bytes: int = 8388608
+    review_context_max_bytes: int = 32768
+    review_context_external_consent: bool = False
+    review_context_include_messages: bool = False
+    review_context_include_diff: bool = False
 
 
 @dataclass(frozen=True)
@@ -68,6 +72,7 @@ class ReviewProvider:
     model: str = ""
     report_format: str = ""
     scanners: tuple["ScannerPolicy", ...] = ()
+    input_mode: str = "diff"
 
 
 @dataclass(frozen=True)
@@ -226,7 +231,9 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                           "check_idle_timeout_seconds", "prepare_checks", "check_worktree_policy",
                           "format_commands", "github_ci_wait_seconds", "reviewers",
                           "review_required", "review_timeout_seconds", "review_max_bytes",
-                          "review_artifacts_enabled", "review_artifact_max_bytes"}
+                          "review_artifacts_enabled", "review_artifact_max_bytes",
+                          "review_context_max_bytes", "review_context_external_consent",
+                          "review_context_include_messages", "review_context_include_diff"}
     if not isinstance(data, dict) or not required <= set(data) or set(data) - allowed:
         raise Abort("Project config must contain schema_version and checks, with supported optional settings")
     if type(data["schema_version"]) is not int or data["schema_version"] != 1:
@@ -303,13 +310,27 @@ def load_project_config(root: Path, global_config: Config) -> Config:
     artifact_max_bytes = data.get("review_artifact_max_bytes", 8388608)
     if type(artifact_max_bytes) is not int or not 65536 <= artifact_max_bytes <= 67108864:
         raise Abort("Project review_artifact_max_bytes must be an integer from 65536 to 67108864")
+    context_max_bytes = data.get("review_context_max_bytes", 32768)
+    if type(context_max_bytes) is not int or not 4096 <= context_max_bytes <= 65536:
+        raise Abort("Project review_context_max_bytes must be an integer from 4096 to 65536")
+    context_options = {}
+    for key in ("review_context_external_consent", "review_context_include_messages",
+                "review_context_include_diff"):
+        value = data.get(key, False)
+        if type(value) is not bool:
+            raise Abort(f"Project {key} must be a YAML boolean")
+        context_options[key] = value
+    if ((context_options["review_context_include_messages"] or
+         context_options["review_context_include_diff"])
+            and not context_options["review_context_external_consent"]):
+        raise Abort("Review context source text requires review_context_external_consent=true")
     configured_reviewers = data.get("reviewers", [])
     if not isinstance(configured_reviewers, list) or len(configured_reviewers) > 8:
         raise Abort("Project reviewers must be a list of at most 8 providers")
     reviewers = []
     names = set()
     for item in configured_reviewers:
-        if not isinstance(item, dict) or set(item) - {"id", "kind", "command", "model", "report_format", "scanners"}:
+        if not isinstance(item, dict) or set(item) - {"id", "kind", "command", "model", "report_format", "scanners", "input_mode"}:
             raise Abort("Each reviewer must contain id, kind and command, with optional model")
         name, kind, command, model = (item.get("id"), item.get("kind"),
                                      item.get("command"), item.get("model", ""))
@@ -334,6 +355,12 @@ def load_project_config(root: Path, global_config: Config) -> Config:
             raise Abort(f"Reviewer {name} structured reports require script and review_artifacts_enabled")
         if type(scanner_items) is not list or len(scanner_items) > 16 or (report_format and not scanner_items):
             raise Abort(f"Reviewer {name} scanners must be a nonempty list of at most 16")
+        input_mode = item.get("input_mode", "diff")
+        if (type(input_mode) is not str or input_mode not in {"diff", "structured-summary"}
+                or (input_mode == "structured-summary" and
+                    (kind != "llm" or not artifacts_enabled or
+                     not context_options["review_context_external_consent"]))):
+            raise Abort(f"Reviewer {name} structured-summary requires llm, capture and explicit consent")
         scanners = []
         scanner_names = set()
         for entry in scanner_items:
@@ -349,7 +376,7 @@ def load_project_config(root: Path, global_config: Config) -> Config:
             scanners.append(ScannerPolicy(entry["id"], entry["format"], entry["required"]))
         names.add(name)
         reviewers.append(ReviewProvider(name, kind, tuple(command), model,
-                                        report_format, tuple(scanners)))
+                                        report_format, tuple(scanners), input_mode))
     if review_required and not reviewers:
         raise Abort("review_required=true requires at least one configured reviewer")
     policy = data.get("check_worktree_policy", "stop")
@@ -381,7 +408,9 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                    reviewers=tuple(reviewers), review_required=review_required,
                    review_timeout_seconds=review_timeout, review_max_bytes=review_max_bytes,
                    review_artifacts_enabled=artifacts_enabled,
-                   review_artifact_max_bytes=artifact_max_bytes)
+                   review_artifact_max_bytes=artifact_max_bytes,
+                   review_context_max_bytes=context_max_bytes,
+                   **context_options)
 
 
 def safe_relative(path: str) -> str:

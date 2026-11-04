@@ -255,3 +255,64 @@ class ReviewArtifacts:
                 break
         self._persist()
         return f"{self.relative_path}/{destination.name}"
+
+    def verified_normalized(self, identifier: str, snapshot: tuple) -> dict:
+        """Verify both stored derivatives and their raw source before LLM use."""
+        entries = [item for item in self.document["providers"] if item["id"] == identifier]
+        if len(entries) != 1 or "normalized_file" not in entries[0]:
+            raise Abort("REVIEW_CONTEXT_INCOMPLETE: Missing normalized scanner evidence")
+        item = entries[0]
+        self.verified_stdout(identifier)
+        filename = identifier + ".normalized.json"
+        if item["normalized_file"] != filename:
+            raise Abort("REVIEW_CONTEXT_INTEGRITY: Normalized evidence filename changed")
+        path = self.directory / filename
+        flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            if path.is_symlink():
+                raise Abort("REVIEW_CONTEXT_INTEGRITY: Normalized evidence is symlinked")
+            with os.fdopen(os.open(path, flags), "rb") as stream:
+                import stat
+                mode = os.fstat(stream.fileno()).st_mode
+                if not stat.S_ISREG(mode) or stat.S_IMODE(mode) != 0o600:
+                    raise Abort("REVIEW_CONTEXT_INTEGRITY: Normalized evidence is unsafe")
+                payload = stream.read(1048577)
+        except OSError as exc:
+            raise Abort("REVIEW_CONTEXT_INTEGRITY: Cannot read normalized evidence") from exc
+        if (len(payload) > 1048576 or
+                hashlib.sha256(payload).hexdigest() != item.get("normalized_sha256")):
+            raise Abort("REVIEW_CONTEXT_INTEGRITY: Normalized evidence digest mismatch")
+        try:
+            report = json.loads(payload.decode("utf-8", "strict"))
+        except (UnicodeError, ValueError) as exc:
+            raise Abort("REVIEW_CONTEXT_INTEGRITY: Normalized evidence is not JSON") from exc
+        if (not isinstance(report, dict) or report.get("reviewer_id") != identifier or
+                report.get("raw_stdout_sha256") != item["stdout_sha256"] or
+                report.get("snapshot") != list(snapshot)):
+            raise Abort("REVIEW_CONTEXT_INTEGRITY: Normalized evidence snapshot mismatch")
+        return report
+
+    def save_context(self, identifier: str, context: dict, payload: bytes):
+        """Store a private, digest-indexed context independently of raw evidence."""
+        filename = identifier + ".context.json"
+        if (len(payload) > 65536 or
+                payload != (json.dumps(context, ensure_ascii=False, sort_keys=True,
+                                      separators=(",", ":")) + "\n").encode("utf-8")):
+            raise Abort("REVIEW_CONTEXT_INTEGRITY: Invalid context payload")
+        temporary = self.directory / (filename + "." + secrets.token_hex(8) + ".tmp")
+        try:
+            with _secure_file(temporary) as stream:
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, self.directory / filename)
+        except OSError as exc:
+            raise Abort("REVIEW_ARTIFACT_UNAVAILABLE: Cannot save LLM context") from exc
+        finally:
+            temporary.unlink(missing_ok=True)
+        self.document.setdefault("contexts", []).append({
+            "provider_id": identifier, "file": filename, "sha256": hashlib.sha256(payload).hexdigest(),
+            "bytes": len(payload),
+        })
+        self._persist()
+        return f"{self.relative_path}/{filename}"
