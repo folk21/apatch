@@ -56,6 +56,8 @@ class Config:
     review_required: bool = False
     review_timeout_seconds: int = 180
     review_max_bytes: int = 131072
+    review_artifacts_enabled: bool = False
+    review_artifact_max_bytes: int = 8388608
 
 
 @dataclass(frozen=True)
@@ -214,7 +216,8 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                           "require_review_approval", "require_required_checks", "check_timeout_seconds",
                           "check_idle_timeout_seconds", "prepare_checks", "check_worktree_policy",
                           "format_commands", "github_ci_wait_seconds", "reviewers",
-                          "review_required", "review_timeout_seconds", "review_max_bytes"}
+                          "review_required", "review_timeout_seconds", "review_max_bytes",
+                          "review_artifacts_enabled", "review_artifact_max_bytes"}
     if not isinstance(data, dict) or not required <= set(data) or set(data) - allowed:
         raise Abort("Project config must contain schema_version and checks, with supported optional settings")
     if type(data["schema_version"]) is not int or data["schema_version"] != 1:
@@ -285,6 +288,12 @@ def load_project_config(root: Path, global_config: Config) -> Config:
     review_max_bytes = data.get("review_max_bytes", 131072)
     if type(review_max_bytes) is not int or not 1024 <= review_max_bytes <= 1048576:
         raise Abort("Project review_max_bytes must be an integer from 1024 to 1048576")
+    artifacts_enabled = data.get("review_artifacts_enabled", False)
+    if type(artifacts_enabled) is not bool:
+        raise Abort("Project review_artifacts_enabled must be a YAML boolean")
+    artifact_max_bytes = data.get("review_artifact_max_bytes", 8388608)
+    if type(artifact_max_bytes) is not int or not 65536 <= artifact_max_bytes <= 67108864:
+        raise Abort("Project review_artifact_max_bytes must be an integer from 65536 to 67108864")
     configured_reviewers = data.get("reviewers", [])
     if not isinstance(configured_reviewers, list) or len(configured_reviewers) > 8:
         raise Abort("Project reviewers must be a list of at most 8 providers")
@@ -338,7 +347,9 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                    prepare_checks=tuple(prepared), check_worktree_policy=policy,
                    format_commands=tuple(format_commands), github_ci_wait_seconds=ci_wait,
                    reviewers=tuple(reviewers), review_required=review_required,
-                   review_timeout_seconds=review_timeout, review_max_bytes=review_max_bytes)
+                   review_timeout_seconds=review_timeout, review_max_bytes=review_max_bytes,
+                   review_artifacts_enabled=artifacts_enabled,
+                   review_artifact_max_bytes=artifact_max_bytes)
 
 
 def safe_relative(path: str) -> str:

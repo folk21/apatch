@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "mode": "SINGLE",
-  "selectedWorkstreamId": "operational-workflows",
+  "selectedWorkstreamId": "review-evidence",
   "workstreams": [
     {
       "id": "feature-sessions",
@@ -13,8 +13,13 @@
       "id": "operational-workflows",
       "specPath": "docs/specs/active/subspecs/subspec-04-operational-workflows.md",
       "stageId": "WM-04",
+      "phase": "ON_HOLD"
+    },
+    {
+      "id": "review-evidence",
+      "specPath": "docs/specs/active/subspecs/subspec-06-review-evidence-pipeline.md",
+      "stageId": "RE-01",
       "phase": "READY_FOR_REVIEW"
     }
   ]
 }
-

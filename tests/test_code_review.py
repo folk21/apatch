@@ -1,15 +1,20 @@
 """Black-box code-review stage and provider contract regression tests."""
 
 from tests._support import LocalGitFixture, command, json, sys, unittest
+import hashlib
+import stat
 
 
 class CodeReviewTests(LocalGitFixture):
-    def configure_reviewers(self, reviewers, *, required=False, timeout=30, max_bytes=131072):
+    def configure_reviewers(self, reviewers, *, required=False, timeout=30, max_bytes=131072,
+                            artifacts=False, artifact_max=8388608):
         data = ("schema_version: 1\n"
                 "checks:\n  - [\"./run_checks.sh\"]\n"
                 f"review_required: {str(required).lower()}\n"
                 f"review_timeout_seconds: {timeout}\n"
                 f"review_max_bytes: {max_bytes}\n"
+                f"review_artifacts_enabled: {str(artifacts).lower()}\n"
+                f"review_artifact_max_bytes: {artifact_max}\n"
                 "reviewers:\n")
         data += "".join("  - " + json.dumps(item) + "\n" for item in reviewers)
         self.configure_checks(data)
@@ -45,6 +50,117 @@ class CodeReviewTests(LocalGitFixture):
         self.assertEqual(record["code_review"]["verdict"], "PASS")
         runs = [r for r in state["operation_runs"] if r["operation"]["code"] == "REV"]
         self.assertEqual(runs[-1]["outcome"], "SUCCEEDED")
+
+    def _artifact(self):
+        directories = list((self.root / ".apatch" / "reviews").glob("review-*"))
+        self.assertEqual(len(directories), 1)
+        directory = directories[0]
+        return directory, json.loads((directory / "manifest.json").read_text())
+
+    def test_opt_in_capture_keeps_complete_script_stdout_stderr_and_private_manifest(self):
+        code = ("import sys; print('A' * 400000); "
+                "sys.stderr.write('diagnostic\\n')")
+        self.configure_reviewers([self.script(code)], artifacts=True)
+        self.ready()
+        completed = self.invoke_zip("op=REV", "skipApproves=true")
+        self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+        directory, manifest = self._artifact()
+        self.assertEqual(manifest["status"], "COMPLETED")
+        item = manifest["providers"][0]
+        stdout = (directory / item["stdout_file"]).read_bytes()
+        stderr = (directory / item["stderr_file"]).read_bytes()
+        self.assertEqual(len(stdout), 400001)
+        self.assertEqual(stderr, b"diagnostic\n")
+        self.assertEqual(item["stdout_sha256"], hashlib.sha256(stdout).hexdigest())
+        self.assertEqual(item["stderr_sha256"], hashlib.sha256(stderr).hexdigest())
+        self.assertEqual(stat.S_IMODE(directory.stat().st_mode), 0o700)
+        for path in (directory / "manifest.json", directory / item["stdout_file"],
+                     directory / item["stderr_file"]):
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+        state = json.loads(self.state_path.read_text())
+        record = next(iter(state["workflows"].values()))
+        self.assertEqual(record["code_review"]["artifact_path"],
+                         directory.relative_to(self.root).as_posix())
+        self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, " M existing.txt\n?? new.txt\n")
+
+    def test_capture_retains_failed_provider_evidence_but_never_passes(self):
+        self.configure_reviewers([self.script("import sys; print('warning'); sys.exit(5)")],
+                                 artifacts=True, required=True)
+        self.ready()
+        failed = self.invoke_zip("op=REV", "skipApproves=true")
+        self.assertEqual(failed.returncode, 2)
+        self.assertIn("REVIEW_FAILED", failed.stderr)
+        directory, manifest = self._artifact()
+        self.assertEqual(manifest["status"], "FAILED")
+        self.assertEqual(manifest["providers"][0]["exit_code"], 5)
+        self.assertIn(b"warning", (directory / "static.stdout").read_bytes())
+        blocked = self.invoke_zip("op=CMT", "skipApproves=true")
+        self.assertIn("REVIEW_REQUIRED", blocked.stderr)
+
+    def test_capture_exceeding_output_cap_fails_closed_and_marks_truncation(self):
+        self.configure_reviewers([self.script("print('B' * 200000)")], artifacts=True,
+                                 artifact_max=65536)
+        self.ready()
+        failed = self.invoke_zip("op=REV", "skipApproves=true")
+        self.assertEqual(failed.returncode, 2)
+        self.assertIn("REVIEW_OUTPUT_TOO_LARGE", failed.stderr)
+        directory, manifest = self._artifact()
+        self.assertEqual(manifest["status"], "FAILED")
+        self.assertTrue(manifest["providers"][0]["truncated"])
+        self.assertLessEqual(sum(manifest["providers"][0][key]
+                                 for key in ("stdout_bytes", "stderr_bytes")), 65536)
+
+    def test_capture_timeout_retains_bounded_partial_report(self):
+        self.configure_reviewers([self.script(
+            "import sys,time; print('started', flush=True); time.sleep(5)")],
+            artifacts=True, timeout=1)
+        self.ready()
+        failed = self.invoke_zip("op=REV", "skipApproves=true")
+        self.assertEqual(failed.returncode, 2)
+        self.assertIn("REVIEW_TIMEOUT", failed.stderr)
+        directory, manifest = self._artifact()
+        self.assertEqual(manifest["status"], "FAILED")
+        self.assertTrue(manifest["providers"][0]["timed_out"])
+        stdout = (directory / "static.stdout").read_bytes()
+        self.assertEqual(manifest["providers"][0]["stdout_bytes"], len(stdout))
+
+    def test_capture_config_validation_rejects_invalid_types_and_limits(self):
+        self.configure_reviewers([self.script()], artifacts=True)
+        original = self.project_config.read_text()
+        for value in ('"true"', '1'):
+            with self.subTest(enabled=value):
+                self.project_config.write_text(original.replace(
+                    "review_artifacts_enabled: true", "review_artifacts_enabled: " + value))
+                failed = self.invoke_zip("op=STS")
+                self.assertEqual(failed.returncode, 2)
+                self.assertIn("review_artifacts_enabled", failed.stderr)
+        self.project_config.write_text(original.replace(
+            "review_artifact_max_bytes: 8388608", "review_artifact_max_bytes: 1024"))
+        failed = self.invoke_zip("op=STS")
+        self.assertEqual(failed.returncode, 2)
+        self.assertIn("review_artifact_max_bytes", failed.stderr)
+
+    def test_symlinked_review_storage_is_rejected_before_provider_runs(self):
+        self.configure_reviewers([self.script("print('should-not-run')")], artifacts=True)
+        self.ready()
+        directory = self.root / ".apatch" / "reviews"
+        outside = self.base / "external"
+        outside.mkdir()
+        directory.symlink_to(outside, target_is_directory=True)
+        failed = self.invoke_zip("op=REV", "skipApproves=true")
+        self.assertEqual(failed.returncode, 2)
+        self.assertIn("REVIEW_ARTIFACT_UNSAFE", failed.stderr)
+        self.assertEqual(list(outside.iterdir()), [])
+
+    def test_capture_llm_still_requires_structured_verdict(self):
+        self.configure_reviewers([self.llm({"verdict": "PASS", "summary": "ok", "findings": []})],
+                                 artifacts=True)
+        self.ready()
+        result = self.invoke_zip("op=REV", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        directory, manifest = self._artifact()
+        self.assertEqual(manifest["providers"][0]["kind"], "llm")
+        self.assertIn(b'"verdict"', (directory / "gemini.stdout").read_bytes())
 
     def test_review_requires_canonical_check_and_configuration(self):
         self.ready(checked=False)
