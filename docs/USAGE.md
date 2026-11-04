@@ -786,6 +786,39 @@ reviewers:
     command: ["gemini", "--model", "{model}", "--output-format", "json", "-p", "Review the supplied diff and return only the requested JSON verdict."]
 ```
 
+Optional **local review evidence capture** preserves full raw `stdout` and
+`stderr` (within a hard, per-provider combined byte limit) without buffering
+the full stream in memory. Enable it in the same project config:
+
+```yaml
+review_artifacts_enabled: true
+review_artifact_max_bytes: 8388608
+```
+
+The default is `false`; `review_artifact_max_bytes` accepts 65,536–67,108,864
+bytes and defaults to 8 MiB. Each enabled `REV` creates an untracked, ignored
+`<repository>/.apatch/reviews/review-<random>/` directory with a versioned
+`manifest.json`, `<reviewer-id>.stdout`, and `<reviewer-id>.stderr`. Directories
+are created mode `0700` and files mode `0600`; `manifest.json` records the
+reviewed snapshot, provider IDs/kinds, exit statuses, output lengths, SHA-256
+hashes, truncation flags, and run completion status without recording the
+command, API credentials, diff contents, or model prompt. The resulting review
+checkpoint records the relative artifact path for navigation; raw output is
+never copied into the `apatch` application log. The raw output may still
+contain credentials, source code, or personal data; protect and manually
+prune it as appropriate. It is **not** evidence that a scanner succeeded.
+
+If captured output reaches the configured limit, `REV` stops the provider and
+fails closed, retaining the bounded partial output with `truncated: true`.
+A failed process, timeout, invalid model response, or worktree drift also
+blocks the review while retaining available diagnostics. The normal `script`
+exit-code and LLM JSON verdict rules still apply; failed scripts currently
+stop before subsequent LLM reviewers. Structured scanner normalization,
+compact LLM summaries, and controlled evidence-on-demand are future stages
+of [SUB-006](specs/active/subspecs/subspec-06-review-evidence-pipeline.md),
+not features supplied by raw capture alone. Review storage is a local audit
+artifact, not a sandbox or an automatic redaction service.
+
 Both providers are optional; configure only the executables you have
 installed and authenticated. A `script` reviewer runs from the repository
 root and passes when its exit code is `0`; any other exit code stops `REV`.

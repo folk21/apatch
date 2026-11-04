@@ -36,11 +36,11 @@ class SpecStateTests(unittest.TestCase):
     def test_current_state_is_valid_read_only_and_focus_is_explicit(self) -> None:
         before = STATE_PATH.read_bytes()
         result = validate_state()
-        self.assertEqual(result["selectedWorkstreamId"], "operational-workflows")
-        self.assertEqual(next(w for w in result["workstreams"]
-                              if w["id"] == "operational-workflows")["stageId"], "WM-04")
+        self.assertEqual(result["selectedWorkstreamId"], "review-evidence")
+        self.assertEqual(self.record(result, "review-evidence")["stageId"], "RE-01")
+        self.assertEqual(self.record(result, "operational-workflows")["phase"], "ON_HOLD")
         self.assertEqual({item["id"] for item in result["workstreams"]},
-                         {"feature-sessions", "operational-workflows"})
+                         {"feature-sessions", "operational-workflows", "review-evidence"})
         self.assertEqual(STATE_PATH.read_bytes(), before)
 
     def test_cli_reports_selected_focus_without_mutating_source(self) -> None:
@@ -50,7 +50,7 @@ class SpecStateTests(unittest.TestCase):
             cwd=ROOT, text=True, capture_output=True, check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("SDD STATE VALID: operational-workflows", result.stdout)
+        self.assertIn("SDD STATE VALID: review-evidence", result.stdout)
         self.assertEqual(STATE_PATH.read_bytes(), before)
 
     def test_rejects_unknown_and_missing_root_fields(self) -> None:
@@ -114,7 +114,8 @@ class SpecStateTests(unittest.TestCase):
                 self.assertFalse((active / "subspecs" / f"{stem}.md").exists())
                 self.assertFalse((active / f"{stem}-implementation-plan.md").exists())
         for stem in ("subspec-03-feature-session-planning",
-                     "subspec-04-operational-workflows"):
+                     "subspec-04-operational-workflows",
+                     "subspec-06-review-evidence-pipeline"):
             with self.subTest(active=stem):
                 self.assertTrue((active / "subspecs" / f"{stem}.md").is_file())
                 self.assertTrue((active / f"{stem}-implementation-plan.md").is_file())

@@ -34,7 +34,14 @@ history schema is required. Projects may require a fresh PASS before `CMT`,
 including guarded goals and publication macros. Review providers are
 user-trusted subprocesses; LLM providers run outside the repository root
 to reduce accidental tool access, but this is not a security sandbox or
-exfiltration barrier. The review stage never equates model output with human
+exfiltration barrier. Optional `review_artifacts_enabled` delegates bounded, streamed stdout/stderr
+capture to `apatch_lib/review_artifacts.py`. Its private, ignored per-run
+manifest and raw files are diagnostic evidence; they do not alter the verdict
+algorithm, workflow state schema, or CHK snapshot identity. The review storage
+path is registered by `apatch_lib/core/paths.py` and
+`apatch_lib/local_ignore.py`; missing ignore guarantees and symlinked storage
+fail closed. The capture layer never forwards raw scanner logs to a model.
+The review stage never equates model output with human
 acceptance or GitHub review requirements.
 
 Lifecycle actions report explicit completion evidence to

@@ -10,6 +10,7 @@ from pathlib import Path
 from .commit_scope import policy_fingerprint
 from .gitutil import current_branch, head, run, worktree_fingerprint
 from .model import Abort, safe_relative
+from .review_artifacts import ReviewArtifacts
 
 
 VERDICTS = {"PASS", "CHANGES_REQUIRED", "ESCALATE"}
@@ -63,7 +64,7 @@ def _diff_bundle(workflow):
     return b"".join(segments).decode("utf-8", "replace")
 
 
-def _execute(provider, workflow, diff_file: Path, bundle: str, cwd: Path):
+def _execute(provider, workflow, diff_file: Path, bundle: str, cwd: Path, artifacts=None):
     """Run a bounded external command and terminate its process group on timeout."""
     argv = [part.replace("{model}", provider.model).replace("{diff_file}", str(diff_file))
             for part in provider.command]
@@ -72,34 +73,54 @@ def _execute(provider, workflow, diff_file: Path, bundle: str, cwd: Path):
     env["APATCH_REVIEW_MODEL"] = provider.model
     print(f"==> REVIEW PROVIDER {provider.id} [{provider.kind}]"
           + (f" model={provider.model}" if provider.model else ""), flush=True)
-    try:
-        with subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.PIPE,
-                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                              start_new_session=True) as process:
-            try:
-                stdout, stderr = process.communicate(
-                    input=(REVIEW_PROMPT + bundle if provider.kind == "llm" else bundle).encode(),
-                    timeout=workflow.config.review_timeout_seconds)
-            except subprocess.TimeoutExpired as exc:
+    if artifacts is not None:
+        captured = artifacts.capture(
+            provider, argv, cwd, env,
+            (REVIEW_PROMPT + bundle if provider.kind == "llm" else bundle).encode(),
+            workflow.config.review_timeout_seconds)
+        stdout = captured.stdout
+        returncode = captured.exit_code
+        if captured.timed_out:
+            raise Abort(f"REVIEW_TIMEOUT: {provider.id} exceeded "
+                        f"{workflow.config.review_timeout_seconds}s")
+        if captured.truncated:
+            raise Abort(f"REVIEW_OUTPUT_TOO_LARGE: {provider.id} exceeded "
+                        "review_artifact_max_bytes")
+        if provider.kind == "llm" and captured.stdout_bytes > 262144:
+            raise Abort(f"REVIEW_OUTPUT_TOO_LARGE: {provider.id}")
+    else:
+        try:
+            with subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.PIPE,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                  start_new_session=True) as process:
                 try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    process.kill()
-                process.communicate()
-                raise Abort(f"REVIEW_TIMEOUT: {provider.id} exceeded "
-                            f"{workflow.config.review_timeout_seconds}s") from exc
-    except OSError as exc:
-        raise Abort(f"REVIEW_UNAVAILABLE: Cannot run {provider.id}: {type(exc).__name__}") from exc
-    if process.returncode != 0:
-        print(f"==> REVIEW PROVIDER {provider.id}: exit={process.returncode}")
-        raise Abort(f"REVIEW_FAILED: {provider.id} exited with {process.returncode}; "
+                    stdout, stderr = process.communicate(
+                        input=(REVIEW_PROMPT + bundle if provider.kind == "llm" else bundle).encode(),
+                        timeout=workflow.config.review_timeout_seconds)
+                except subprocess.TimeoutExpired as exc:
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        process.kill()
+                    process.communicate()
+                    raise Abort(f"REVIEW_TIMEOUT: {provider.id} exceeded "
+                                f"{workflow.config.review_timeout_seconds}s") from exc
+        except OSError as exc:
+            raise Abort(f"REVIEW_UNAVAILABLE: Cannot run {provider.id}: {type(exc).__name__}") from exc
+        returncode = process.returncode
+    if returncode != 0:
+        print(f"==> REVIEW PROVIDER {provider.id}: exit={returncode}")
+        raise Abort(f"REVIEW_FAILED: {provider.id} exited with {returncode}; "
                     "inspect the reviewer command manually")
-    if len(stdout) > 262144:
+    if artifacts is None and len(stdout) > 262144:
         raise Abort(f"REVIEW_OUTPUT_TOO_LARGE: {provider.id}")
     if provider.kind == "script":
-        result = stdout.decode("utf-8", "replace").strip()
-        if result:
-            print(result[:4000])
+        if artifacts is not None:
+            print(f"    Reviewer output saved in {artifacts.relative_path}")
+        else:
+            result = stdout.decode("utf-8", "replace").strip()
+            if result:
+                print(result[:4000])
         return {"id": provider.id, "kind": "script", "verdict": "PASS", "summary": "Exit code 0"}
     return _parse_model_result(provider.id, stdout.decode("utf-8", "replace"))
 
@@ -182,33 +203,43 @@ def run_review(workflow):
     workflow.record.pop("code_review", None)
     workflow.persist()
     results = []
-    with tempfile.TemporaryDirectory(prefix="apatch-review-") as temporary:
-        directory = Path(temporary)
-        diff_file = directory / "change.diff"
-        diff_file.write_text(bundle, encoding="utf-8")
-        for provider in workflow.config.reviewers:
-            try:
-                report = _execute(provider, workflow, diff_file, bundle,
-                                  directory if provider.kind == "llm" else workflow.root)
-            finally:
-                if _snapshot(workflow) != before:
-                    raise Abort("REVIEW_WORKTREE_CHANGED: Reviewer altered branch, index, "
-                                "worktree, or policy; edits are preserved; rerun CHK")
-            results.append(report)
-            print(f"    Verdict: {report['verdict']}")
-            if report.get("summary"):
-                print(f"    Summary: {report['summary'][:600]}")
-            for finding in report.get("findings", [])[:12]:
-                print(f"    [{finding['severity']}] {finding['file']}: "
-                      f"{finding['message'][:400]}")
-            if report["verdict"] != "PASS":
-                print("==> REVIEW: stopping before further providers to avoid unnecessary calls")
-                break
+    artifacts = (ReviewArtifacts(workflow.root, before, workflow.config.review_artifact_max_bytes)
+                 if workflow.config.review_artifacts_enabled else None)
+    completed = False
+    try:
+        with tempfile.TemporaryDirectory(prefix="apatch-review-") as temporary:
+            directory = Path(temporary)
+            diff_file = directory / "change.diff"
+            diff_file.write_text(bundle, encoding="utf-8")
+            for provider in workflow.config.reviewers:
+                try:
+                    report = _execute(provider, workflow, diff_file, bundle,
+                                      directory if provider.kind == "llm" else workflow.root,
+                                      artifacts)
+                finally:
+                    if _snapshot(workflow) != before:
+                        raise Abort("REVIEW_WORKTREE_CHANGED: Reviewer altered branch, index, "
+                                    "worktree, or policy; edits are preserved; rerun CHK")
+                results.append(report)
+                print(f"    Verdict: {report['verdict']}")
+                if report.get("summary"):
+                    print(f"    Summary: {report['summary'][:600]}")
+                for finding in report.get("findings", [])[:12]:
+                    print(f"    [{finding['severity']}] {finding['file']}: "
+                          f"{finding['message'][:400]}")
+                if report["verdict"] != "PASS":
+                    print("==> REVIEW: stopping before further providers to avoid unnecessary calls")
+                    break
+        completed = True
+    finally:
+        if artifacts is not None:
+            artifacts.finish("COMPLETED" if completed else "FAILED")
     verdict = ("ESCALATE" if any(item["verdict"] == "ESCALATE" for item in results)
                else "CHANGES_REQUIRED" if any(item["verdict"] == "CHANGES_REQUIRED"
                                       for item in results) else "PASS")
     workflow.record["code_review"] = {
         "verdict": verdict, "snapshot": list(before), "results": results,
+        **({"artifact_path": artifacts.relative_path} if artifacts is not None else {}),
     }
     workflow.persist()
     print(f"==> CODE REVIEW: {verdict} ({len(results)} reviewer(s))")

@@ -66,6 +66,9 @@ case "${1:-regular}" in
             tests.test_artifact_packaging.ArtifactPackagingTests.test_existing_output_refused_without_overwriting \
             tests.test_help_reference \
             tests.test_code_review.CodeReviewTests.test_required_review_blocks_commit_until_passed \
+            tests.test_code_review.CodeReviewTests.test_opt_in_capture_keeps_complete_script_stdout_stderr_and_private_manifest \
+            tests.test_code_review.CodeReviewTests.test_capture_exceeding_output_cap_fails_closed_and_marks_truncation \
+            tests.test_code_review.CodeReviewTests.test_symlinked_review_storage_is_rejected_before_provider_runs \
             tests.test_code_review.CodeReviewTests.test_model_response_must_have_unambiguous_verdict \
             tests.test_code_review.CodeReviewTests.test_review_script_that_changes_worktree_fails_closed \
             tests.test_code_review.CodeReviewTests.test_guarded_committed_goal_executes_review_before_commit \
