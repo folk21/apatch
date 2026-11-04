@@ -24,10 +24,14 @@ case "${1:-regular}" in
         exec "$TEST_PYTHON" -B -m tests.timeout_runner -v \
             tests.test_spec_state \
             tests.test_review_normalizer \
+            tests.test_review_context \
             tests.test_code_review.CodeReviewTests.test_structured_review_persists_normalized_report_and_blocks_high_findings \
             tests.test_code_review.CodeReviewTests.test_structured_missing_required_scanner_escalates_and_advisory_missing_warns \
             tests.test_code_review.CodeReviewTests.test_structured_zero_findings_allows_required_review_to_commit \
             tests.test_code_review.CodeReviewTests.test_structured_report_requires_capture_and_configured_scanner_policy \
+            tests.test_code_review.CodeReviewTests.test_structured_summary_llm_receives_bounded_data_not_raw_logs_or_diff \
+            tests.test_code_review.CodeReviewTests.test_structured_summary_without_scanner_fails_closed \
+            tests.test_code_review.CodeReviewTests.test_structured_summary_validates_consent_and_modes \
             tests.test_architecture_characterization \
             tests.test_explicit_action_results \
             tests.test_cli_boundaries \

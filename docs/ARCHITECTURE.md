@@ -50,6 +50,15 @@ bounded reference/verdict, not report text. Required scanner uncertainty
 escalates and high-severity findings block irrespective of subsequent model
 judgment. This does not authenticate the wrapper's truthfulness or add a
 sandbox. Legacy exit-code-based reviewers remain compatible.
+Opt-in `input_mode: structured-summary` for LLM reviewers uses
+`apatch_lib/review_context.py` to build a deterministic, bounded JSON from
+SHA-256-verified normalized reports and the same checked diff. Each scanner
+status and summary truncation is explicit; severe findings cannot disappear
+on budget overflow. The per-LLM context is indexed by digest in the private
+manifest. Finding messages and diff lines are excluded unless separately
+allowed by project policy, and a summary-mode LLM is never passed the raw
+diff via stdin or its environment. The configured executable still has the
+normal user's filesystem privileges; this is not a confidentiality sandbox.
 The capture layer never forwards raw scanner logs to a model.
 The review stage never equates model output with human
 acceptance or GitHub review requirements.

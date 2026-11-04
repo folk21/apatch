@@ -888,6 +888,61 @@ truthfully reflect their outcomes: this envelope does not sandbox or attest
 the wrapper. A single wrapper's nonzero exit still blocks `REV` before parsing;
 wrappers that need mixed scanner outcomes must report each status and exit 0.
 
+#### Compact LLM context (RE-03, explicit opt-in)
+
+A later `kind: llm` reviewer may analyze the normalized results of earlier
+structured `script` reviewers, **without receiving their raw scanner output**.
+Enable private capture and explicit disclosure consent; configure the script
+before the LLM reviewer:
+
+```yaml
+review_required: true
+review_artifacts_enabled: true
+review_context_external_consent: true
+review_context_max_bytes: 32768
+review_context_include_messages: false
+review_context_include_diff: false
+reviewers:
+  - id: static
+    kind: script
+    command: ["./scripts/code_review.sh"]
+    report_format: apatch-json-v1
+    scanners:
+      - {id: ruff, format: ruff-json, required: true}
+      - {id: semgrep, format: semgrep-json, required: false}
+  - id: model-review
+    kind: llm
+    input_mode: structured-summary
+    model: selected-model
+    command: ["./scripts/llm_review.sh", "{model}"]
+```
+
+The LLM command receives a fixed review instruction and compact JSON over
+stdin. A temporary `review-summary.json` is also made available through
+`APATCH_REVIEW_CONTEXT`; `APATCH_REVIEW_DIFF` is unset in this mode. The
+`{diff_file}` placeholder resolves to the summary file for a summary-mode
+LLM. The manifest indexes a separate private `<reviewer>.context.json` and
+its SHA-256. No scanner raw stdout/stderr or entire normalized JSON is
+attached to the model input. The JSON contains the checked snapshot digest,
+scanner statuses/counts, prioritized finding IDs, severities, rule IDs,
+relative paths/lines, and explicit omission counts. Default metadata-only
+mode sends neither finding messages nor changed diff text. To add them,
+explicitly set `review_context_include_messages: true` and/or
+`review_context_include_diff: true`. These are sensitive data, not sanitized
+or guaranteed secret-free; review them and ensure compliance with your
+organization's outbound model data rules before enabling.
+
+The complete input (including the fixed prompt) is capped by
+`review_context_max_bytes` (4,096–65,536, default 32,768). Lower-priority
+findings and diff excerpts may be omitted with explicit counts. A high or
+critical finding that cannot fit, a failed required scanner, missing earlier
+structured reports, stale evidence, or modified hashes stops `REV` before
+model invocation. As in RE-02, a blocking scanner verdict stops the reviewer
+chain rather than allowing an LLM to overrule it. No LLM is invoked implicitly:
+only an explicit `REV` or a guarded workflow requiring `REV` can run it.
+Review commands execute with normal user permissions and are **not** sandboxed.
+The legacy `kind: llm` mode without `input_mode` still receives the diff.
+
 Both providers are optional; configure only the executables you have
 installed and authenticated. A `script` reviewer runs from the repository
 root and passes when its exit code is `0`; any other exit code stops `REV`.
