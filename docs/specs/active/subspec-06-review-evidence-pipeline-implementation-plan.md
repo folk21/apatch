@@ -2,7 +2,7 @@
 
 **Status:** ADVISORY / DRAFT. **Normative owner:** [APATCH-SUB-006](subspecs/subspec-06-review-evidence-pipeline.md). **Parent:** [APATCH-SPEC-001](spec-apatch-orchestrator.md).
 
-**Current focus:** RE-01 candidate implementation, awaiting code review and developer acceptance. RE-02, RE-03, RE-04 and RE-05 are proposals only. The previous SUB-004 WM-04 and SUB-003 FS-06 checkpoints remain ON_HOLD and unaccepted. The inspected source baseline is the 2026-11-03 `apatch_files.txt` snapshot at `16038c5e3de465d282af3b43f3c8c2e1c35e121c`, with 132 contents out of 136 tracked files; `apatch.conf`, `.apatch/config.yaml`, `apatch`, and `.DS_Store` were omitted. Recheck against a newer full checkout before any merge.
+**Current focus:** RE-02 candidate implementation on the RE-01 candidate baseline, both awaiting developer acceptance; RE-03–RE-05 remain proposals. The RE-01 merge result and newest post-merge repository source have not been independently verified. The previous SUB-004 WM-04 and SUB-003 FS-06 checkpoints remain ON_HOLD and unaccepted. The inspected source baseline is the 2026-11-03 `apatch_files.txt` snapshot at `16038c5e3de465d282af3b43f3c8c2e1c35e121c`, with 132 contents out of 136 tracked files; `apatch.conf`, `.apatch/config.yaml`, `apatch`, and `.DS_Store` were omitted. Recheck against a newer full checkout before any merge.
 
 ## Architecture review and dependencies
 
@@ -32,15 +32,41 @@ Limitations identified: legacy `Popen.communicate()` retains all stdout/stderr i
 
 **Acceptance:** SUB-006 RE-01-A through RE-01-E and RE-01 acceptance matrix, with actual test results recorded at handoff. Developer sign-off remains outstanding.
 
-## RE-02 — Structured analyzer result adapters (next stage)
+## RE-02 — Structured analyzer result adapters (candidate implementation)
 
-**Dependencies:** RE-01 reviewed and accepted; valid sample outputs for representative analyzer versions; explicit blocking/advisory policy. **Owner:** new `apatch_lib/review_normalizer.py` (provisional), coordinated through `code_review.py` and `model.py` only as needed.
+**Dependencies:** RE-01 code available from the prior overlay; acceptance/merge not verified. The candidate is conditional until the current full checkout is reconciled. Real tool-version interoperability remains a release verification item. **Owner:** new `apatch_lib/review_normalizer.py` (provisional), coordinated through `code_review.py` and `model.py` only as needed.
 
 1. Define an independently versioned analyzer envelope with command outcome, scanner identity, format, raw path reference and declared blocking status. Never infer success from a wrapper exit code alone.
 2. Write type-specific parse functions for SARIF 2.1.0 and supported JSON outputs (Ruff, Bandit, Semgrep). Select format explicitly; avoid heuristics from arbitrary text. Bound input bytes, JSON nesting, findings and message length before parsing.
 3. Normalize severity, `file`/`line`, rule, source, raw hash, scanner status and stable finding ID. Validate paths against the repository; prohibit absolute and `..` paths, remote URLs as local evidence, symlink traversal and implicit file opening. Merge duplicates while preserving original evidence IDs.
 4. Extend YAML with additive `required`/`advisory` scanner policy and a structured result location only after freezing schema. Keep legacy script exit-code semantics without opt-in. Define an explicit `UNKNOWN` on missing/truncated/failed required scanners and prohibit LLM override of mandatory blockers.
 5. Tests: synthetic Git integration plus fixture files for all claimed formats, malicious/symlink paths, mixed failures, duplicate findings, malformed envelopes, enormous reports, missing executable, scan output modified after hashing and wrapper-exit ambiguity. Keep logs bounded.
+
+**Implemented file ownership:** `apatch_lib/model.py` validates opt-in reviewer
+scanner policies; `apatch_lib/review_normalizer.py` implements explicit
+Ruff/Bandit/Semgrep/SARIF adapters, bounded JSON tree validation, deduplication
+and verdict computation; `apatch_lib/review_artifacts.py` re-reads SHA-256
+verified raw stdout and stores a private normalized derivative and manifest
+index; `apatch_lib/code_review.py` wires this through the existing snapshot
+and fail-closed checkpoint gates. `tests/test_review_normalizer.py` owns
+format/attack fixtures and `tests/test_code_review.py` exercises synthetic
+Git review/commit admission. `run_tests.sh` adds selected RE-02 regressions;
+`docs/USAGE.md`, `docs/ARCHITECTURE.md` describe the opt-in contract.
+
+**Execution:** One wrapper's stdout contains a versioned JSON envelope;
+each scanner's configured ID/format/required flag is reconciled with its
+individual result. A successful status is cross-checked with actual findings;
+scanner errors, missing required scanners, truncated output or invalid bytes
+cannot produce PASS. Duplicates retain all source IDs. Manifest remains a
+private local reference and raw evidence is never transmitted to an LLM. A
+trusted wrapper still owns truthful scanner execution; no command attestation
+is claimed. Existing `script`/`llm` mode and operation IDs remain unchanged.
+
+**Focused checks:** `python3 -B -m unittest tests.test_review_normalizer -v`,
+`python3 -B -m unittest tests.test_code_review -v`,
+`python3 tools/specs/validate_state.py`, and full suites where the recovered
+snapshot supports them. When current `main`, launcher or global config are
+missing, revalidate on a real post-merge checkout before publication.
 
 **Recovery:** Never delete raw RE-01 artifacts on parse failure. Mark adapter status unknown/failed, block as policy requires, and permit explicit rerun on the checked snapshot; do not auto-repeat paid models.
 

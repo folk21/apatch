@@ -40,7 +40,17 @@ manifest and raw files are diagnostic evidence; they do not alter the verdict
 algorithm, workflow state schema, or CHK snapshot identity. The review storage
 path is registered by `apatch_lib/core/paths.py` and
 `apatch_lib/local_ignore.py`; missing ignore guarantees and symlinked storage
-fail closed. The capture layer never forwards raw scanner logs to a model.
+fail closed. The opt-in `apatch-json-v1` script mode delegates bounded JSON/SARIF
+normalization to `apatch_lib/review_normalizer.py`. The project config owns
+scanner IDs, formats and required/advisory policy. Only the SHA-256-verified
+captured stdout is parsed, with bounded complexity, findings, path validation
+and deterministic deduplication. A private normalized derivative and digest
+are indexed from the manifest; the workflow checkpoint receives only a
+bounded reference/verdict, not report text. Required scanner uncertainty
+escalates and high-severity findings block irrespective of subsequent model
+judgment. This does not authenticate the wrapper's truthfulness or add a
+sandbox. Legacy exit-code-based reviewers remain compatible.
+The capture layer never forwards raw scanner logs to a model.
 The review stage never equates model output with human
 acceptance or GitHub review requirements.
 

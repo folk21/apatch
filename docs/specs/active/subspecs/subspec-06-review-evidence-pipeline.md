@@ -1,6 +1,6 @@
 # APATCH-SUB-006 — Review Evidence Pipeline
 
-**Status:** DRAFT. RE-01 has a candidate implementation awaiting independent review and developer acceptance. RE-02–RE-05 are proposed, not implemented or accepted.
+**Status:** DRAFT. RE-01 and RE-02 have candidate implementations awaiting independent review and developer acceptance. RE-03–RE-05 are proposals, not implemented or accepted. RE-02 builds on the previous RE-01 ZIP candidate; source after remote merge is unverified.
 
 **Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Plan:** [APATCH-PLAN-006](../subspec-06-review-evidence-pipeline-implementation-plan.md). **Related:** [SUB-003](subspec-03-feature-session-planning.md), [SUB-004](subspec-04-operational-workflows.md).
 
@@ -30,13 +30,43 @@ The existing strict output parser limits LLM findings and the full diff input. T
 
 **RE-01 acceptance:** Tests prove complete 400+ KiB scripted output capture, independent stderr, private file permissions, correct digests, failed subprocess retention and blocking, overflow and timeout blocking, symlink protection, ignored/untracked output, LLM JSON compatibility, unchanged legacy REV/CHK/CMT behavior, and no real remote actions. The regular and extended test suites and state validator SHALL be attempted before handoff; any unavailable baseline files or environments SHALL be disclosed.
 
-## 4. RE-02 — Structured adapter normalization (proposed)
+## 4. RE-02 — Structured adapter normalization (candidate implementation)
 
 **RE-02-A** Accept an opt-in reviewer report envelope naming a fixed schema, adapter identity, status (`SUCCEEDED`, `FINDINGS`, `FAILED`, `TIMED_OUT`, `UNKNOWN`), output references and declared input format (`sarif`, `json`, or explicitly labelled plain text). Scanners may be invoked by a single wrapper, but individual tool outcomes MUST remain distinguishable. A wrapper SHALL NOT turn a failed mandatory scanner into PASS merely by exiting 0.
 
 **RE-02-B** Normalize supported JSON/SARIF findings into bounded records with stable local IDs, tool, rule, severity, path, line/range, message, raw evidence reference and snapshot association. Reject malformed/unsafe paths; never execute embedded content or follow links from untrusted reports. Severity mapping and unsupported formats SHALL be explicit. Deduplicate without losing source provenance; retain original raw files.
 
 **RE-02-C** A tool failure, partial report, truncation, unexpected schema, or evidence-integrity mismatch SHALL yield `UNKNOWN` or `ESCALATE`, not PASS. Advisory-only findings may warn if policy allows; mandatory/high-confidence blockers SHALL remain blocking regardless of a subsequent LLM verdict. Define exact project-level blocker policy and backward-compatible defaults before implementation.
+
+**RE-02 implementation profile (normative):** Opt-in `script` reviewers
+SHALL declare `report_format: apatch-json-v1` plus 1–16 distinct `scanners`
+entries `{id, format, required}`. `review_artifacts_enabled: true` is
+mandatory for structured mode. Allowed formats are `ruff-json`, `bandit-json`,
+`semgrep-json`, `sarif-2.1.0`; `required` is a mandatory boolean controlled by
+project YAML, never scanner stdout. Older reviewer entries retain exit-code
+semantics. The trusted script emits a single UTF-8 JSON stdout envelope
+`{schema_version: 1, tools: [...]}` with 0–16 named scanner objects containing
+`id`, `format`, `status` and `report` on success. Only `SUCCEEDED` with an
+empty parsed report and `FINDINGS` with nonempty parsed report are accepted;
+`FAILED`, `TIMED_OUT`, `UNKNOWN` omit `report`. A missing scanner is `UNKNOWN`.
+Unknown or repeated scanner IDs and mismatched formats are invalid. Wrapper
+nonzero exit, truncated raw stdout/stderr, malformed JSON, report errors, an
+unsafe path, inconsistent status or failed raw digest blocks `REV` outright.
+A `required` scanner that is unknown, failed or timed out SHALL produce
+`ESCALATE`; its `high` or `critical` finding SHALL produce `CHANGES_REQUIRED`.
+Advisory scanner failures and findings MAY warn without blocking. Existing
+`CMT` required-review gate refuses non-PASS. Ruff defaults to `medium`;
+Bandit HIGH/MEDIUM/LOW maps to high/medium/low; Semgrep
+ERROR/WARNING/INFO maps to high/medium/low; SARIF
+error/warning/note/none maps to high/medium/low/info. Raw stdout is bounded
+by RE-01; parsed JSON has a 24-level, 50,000-node and 512-finding limit,
+strict path/line/rule/message bounds and no symlink following. Reports with
+unsupported or missing information fail closed. A deterministic finding ID
+and deduplicated provenance with per-scanner source IDs SHALL be saved in a
+private `<reviewer>.normalized.json`; its digest SHALL be in the manifest,
+with the raw hash and checked snapshot recorded in the normalized report.
+Only bounded status/count/path metadata SHALL enter the workflow checkpoint.
+Raw logs and normalized findings SHALL NOT be sent to models by this stage.
 
 **RE-02 acceptance:** Synthetic fixtures for Ruff/Bandit/Semgrep/SARIF plus invalid/huge/malicious output, mixed mandatory/advisory statuses, conflicting severity, duplicate findings, manual changed files, and incomplete tools.
 

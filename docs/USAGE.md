@@ -813,11 +813,80 @@ fails closed, retaining the bounded partial output with `truncated: true`.
 A failed process, timeout, invalid model response, or worktree drift also
 blocks the review while retaining available diagnostics. The normal `script`
 exit-code and LLM JSON verdict rules still apply; failed scripts currently
-stop before subsequent LLM reviewers. Structured scanner normalization,
-compact LLM summaries, and controlled evidence-on-demand are future stages
+stop before subsequent LLM reviewers. Compact LLM summaries and controlled evidence-on-demand are future stages
 of [SUB-006](specs/active/subspecs/subspec-06-review-evidence-pipeline.md),
 not features supplied by raw capture alone. Review storage is a local audit
 artifact, not a sandbox or an automatic redaction service.
+
+#### Structured scanner results (`RE-02`, opt-in)
+
+A `script` reviewer can emit one **JSON envelope on stdout** for several tools
+instead of using exit code 0 as its only success evidence. Set
+`review_artifacts_enabled: true`, `report_format: apatch-json-v1` and an explicit
+scanner policy; no new CLI action is needed:
+
+```yaml
+review_required: true
+review_artifacts_enabled: true
+review_artifact_max_bytes: 8388608
+reviewers:
+  - id: static
+    kind: script
+    command: ["./scripts/scan_and_report.sh"]
+    report_format: apatch-json-v1
+    scanners:
+      - {id: ruff, format: ruff-json, required: true}
+      - {id: bandit, format: bandit-json, required: true}
+      - {id: semgrep, format: semgrep-json, required: false}
+```
+
+The wrapper must write exactly one UTF-8 JSON object to **stdout** and must
+reserve stderr for diagnostics. One envelope can carry several native reports:
+
+```json
+{
+  "schema_version": 1,
+  "tools": [
+    {"id": "ruff", "status": "SUCCEEDED", "format": "ruff-json", "report": []},
+    {"id": "bandit", "status": "FINDINGS", "format": "bandit-json",
+     "report": {"errors": [], "results": [{"test_id": "B602",
+       "issue_severity": "HIGH", "filename": "pkg/module.py",
+       "line_number": 42, "issue_text": "Unsafe command execution"}]}},
+    {"id": "semgrep", "status": "UNKNOWN", "format": "semgrep-json"}
+  ]
+}
+```
+
+Supported native formats are `ruff-json` (array), `bandit-json` (`results`
+array), `semgrep-json` (`results` array), and `sarif-2.1.0` (SARIF 2.1.0
+`runs[].results`). For successful scanners, `SUCCEEDED` means **no findings**
+and `FINDINGS` means **one or more findings**; `FAILED`, `TIMED_OUT`, and
+`UNKNOWN` must not contain a report. A missing scanner is treated as `UNKNOWN`.
+Every scanner ID and its expected format/required policy is configured by the
+project, **never decided by the wrapper's output**. Set `required: false` for
+advisory tools; the default is deliberately not implicit.
+
+A missing/failed/unknown required scanner causes `ESCALATE`; a `high` or
+`critical` finding from a required scanner causes `CHANGES_REQUIRED`. Lower
+severity and advisory findings are recorded without blocking on their own.
+Severity mappings are fixed: Ruff diagnostics `medium`; Bandit
+`HIGH`/`MEDIUM`/`LOW`; Semgrep `ERROR`/`WARNING`/`INFO`; SARIF
+`error`/`warning`/`note`/`none` map to high/medium/low/info. A wrapper exit
+other than 0, malformed JSON, mismatch between status and parsed results,
+scanner-reported internal errors, invalid/absolute/escaping paths, unsupported
+format, output truncation, or changed artifact hash fails closed rather than
+silently authorizing commit. Reports are limited to 512 findings and bounded
+field lengths; file paths must be repository-relative with `/` separators.
+
+The original stdout is retained as `<reviewer>.stdout`; `apatch` verifies its
+SHA-256 and writes `<reviewer>.normalized.json` (mode `0600`) alongside it.
+The manifest records the normalized filename and digest. A bounded reference,
+not the full findings, is saved in the workflow checkpoint. Normalized data is
+**not automatically sent to an LLM**; `RE-03` will add an explicitly bounded
+model context. A trusted wrapper must actually run its declared scanners and
+truthfully reflect their outcomes: this envelope does not sandbox or attest
+the wrapper. A single wrapper's nonzero exit still blocks `REV` before parsing;
+wrappers that need mixed scanner outcomes must report each status and exit 0.
 
 Both providers are optional; configure only the executables you have
 installed and authenticated. A `script` reviewer runs from the repository

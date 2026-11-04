@@ -37,7 +37,7 @@ class SpecStateTests(unittest.TestCase):
         before = STATE_PATH.read_bytes()
         result = validate_state()
         self.assertEqual(result["selectedWorkstreamId"], "review-evidence")
-        self.assertEqual(self.record(result, "review-evidence")["stageId"], "RE-01")
+        self.assertEqual(self.record(result, "review-evidence")["stageId"], "RE-02")
         self.assertEqual(self.record(result, "operational-workflows")["phase"], "ON_HOLD")
         self.assertEqual({item["id"] for item in result["workstreams"]},
                          {"feature-sessions", "operational-workflows", "review-evidence"})
