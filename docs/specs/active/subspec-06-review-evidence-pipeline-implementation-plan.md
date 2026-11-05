@@ -2,7 +2,7 @@
 
 **Status:** ADVISORY / DRAFT. **Normative owner:** [APATCH-SUB-006](subspecs/subspec-06-review-evidence-pipeline.md). **Parent:** [APATCH-SPEC-001](spec-apatch-orchestrator.md).
 
-**Current focus:** RE-04 candidate implementation pending developer acceptance. The supplied 2026-11-04 18:30 UTC `apatch_files.txt` is a clean `main` snapshot at `f5670ab56878549950ecfca6629fda8e76339a7c`: 139 file bodies of 143 tracked files. Four omitted bodies: `apatch.conf`, `.apatch/config.yaml`, `apatch`, `.DS_Store`. This is source provenance, not an independently verified full Git checkout. RE-01–RE-03 remain unaccepted candidates; SUB-003 FS-06 and SUB-004 WM-04 remain ON_HOLD. Recheck actual merged source before publication.
+**Current focus:** RE-05 candidate implementation pending developer acceptance. The 2026-11-05 10:02 UTC `apatch_files.txt` is a clean `main` snapshot at `12dc5df7536b6861963118f44b3bd2f20ca12fb9`: 141 file bodies of 145 tracked files. Omitted contents: `apatch.conf`, `.apatch/config.yaml`, `apatch`, `.DS_Store`. Snapshot provenance is not a complete checked-out Git repository; tests that need `apatch.conf` use a local substitute. RE-01–RE-04 remain unaccepted candidates; SUB-003 FS-06 and SUB-004 WM-04 remain ON_HOLD.
 
 ## Architecture review and dependencies
 
@@ -136,13 +136,74 @@ selective retrieval remain RE-05 and RE-04 respectively.
 
 **Acceptance:** SUB-006 RE-04-A–D, focused tests, required commands, actual check results and independent developer review. No migration, new dependencies or new action ID.
 
-## RE-05 — Retention and export (fourth stage)
+## RE-05 — Retention, export and recovery (candidate implementation)
 
-**Dependencies:** RE-04, reviewed privacy and operational policy. **Owners (provisional):** `review_artifacts.py`, new or existing CLI inspection module, `model.py`, tests and docs.
+**Dependencies:** RE-04 merged candidate code in the supplied `main` snapshot,
+project review-policy agreement, verified manifest schema and read-only
+retrieval helpers. No new action number, external dependency or migration.
 
-Introduce count/age/size quotas with explicit pruning, private advisory lock and never delete unknown user files. Export only explicit redacted summary references, not raw logs by default. Model interruptions, concurrent runs, disk-full errors, partial manifests, stale hashes and manual deletions shall be tested. No implicit background polling, retries, remote writes or forced cleanup.
+| Owner | Implemented candidate work |
+| --- | --- |
+| `apatch_lib/model.py` | Add strict opt-in toggle and bounded count/size/age YAML policy, with safe defaults. |
+| `apatch_lib/review_retention.py` (new) | Lock private storage, validate full run inventories/digests, select eligible terminal runs, journal/resume safe deletions, provide explicit default-preview pruning and consent-gated metadata-only export. |
+| `apatch_lib/review_artifacts.py` | Reserve count/byte quota and clean up eligible old artifacts under the same project-local lock before creating each new enabled-capture run. |
+| `apatch_lib/code_review.py` | Pass policy and provider count to capture; preserve checked-snapshot and review gates. |
+| `tests/test_review_retention.py` (new), `tests/test_code_review.py` | Exercise standalone retention, export, tampering, concurrency, partial failure recovery and a synthetic Git REV lifecycle. |
+| `run_tests.sh`, `tests/test_spec_state.py` | Include selected focused regressions and move only the selected review-evidence stage checkpoint at the developer-directed boundary. |
+| `docs/USAGE.md`, `docs/ARCHITECTURE.md`, SUB-006, plan and index | Describe opt-in deletion, safe recovery, export limitations and acceptance boundaries. |
+
+**Execution sequence:**
+
+1. Load project YAML before `REV`; strict schema limits prevent accidental
+   policy activation. Existing unchecked contexts and all modes remain intact.
+2. After successful CHK/snapshot guards, ensure private ignored reviews
+   directory; open a no-follow exclusive `.retention.lock` under it.
+3. When `review_retention_enabled`, inspect at most 512 store entries; for each
+   24-hex review directory require 0700 permissions, a terminal manifest and
+   complete expected 0600 regular-file inventory, no hardlinks, and matching
+   stored sizes/SHA-256. Count protected unknown runs toward the run quota.
+4. Use stable oldest-first order to choose runs older than the age limit or
+   needed to satisfy count/byte budgets, including the upcoming run reservation.
+   Protected entries cannot be removed; if they block allocation, abort before
+   provider launch. In dry-run return the proposed deletions without unlinking.
+5. Before deleting eligible data, write and fsync a bounded per-run pruning
+   intent journal with exact expected names, lengths and hashes; rename the
+   run to the reserved `pruning-<24-hex>` namespace. Revalidate remaining
+   members, unlink only listed files, then the intent journal and empty run.
+   Later explicit maintenance resumes a recognized, still-valid partial intent.
+   Unexpected files or hash changes preserve the run for manual repair.
+6. For an explicit diagnostic export, require `consent=True`, open and verify
+   the exact run under the same lock and emit at most 8 KiB of metadata-only
+   JSON. Do not expose the checked Git snapshot, file paths, messages or logs;
+   the caller explicitly owns any subsequent external transmission.
+7. Capture and verdict persistence proceed through existing `REV`. A missing
+   or expired artifact never rewrites CHK or a historical PASS; new evidence
+   requests requiring it remain blocked. An interrupted provider stays STARTED
+   or FAILED, with no automatic model retries or charges.
+
+**Negative/recovery cases:** Unsafe/missing/symlinked storage or lock,
+malformed provider entry, duplicate/unlisted member, hardlink, truncated stdout,
+modified SHA, `STARTED` manifest, disk-full or write/unlink failure, concurrent
+maintainers, deleted export target, and interrupted or malicious pruning
+journals. Retain unknown evidence, do not infer success, and require explicit
+operator review where automatic recovery cannot prove provenance.
+
+**Verification:**
+`python3 -B -m unittest tests.test_review_retention -v`,
+`python3 -B -m unittest tests.test_code_review.CodeReviewTests.test_retention_enabled_prunes_old_completed_review_before_next_capture -v`,
+`sh ./run_tests.sh`, `sh ./run_rare_checks.sh`,
+`python3 tools/specs/validate_state.py`, `python3 -m compileall -q apatch_lib tests`,
+`sh -n run_tests.sh` and ZIP metadata/integrity checks.
+The filtered snapshot excludes the installed global `apatch.conf`; any
+reconstructed-checkout run must disclose the local substitute. Linux checks
+never count as macOS verification.
+
+**Acceptance:** SUB-006 RE-05-A–D, above negative/recovery matrix, no regression
+in required-review commit or GitHub gates, actual command results and
+independent developer acceptance. Do not archive SUB-006 before acceptance.
 
 ## Stage order / sign-off
 
 `RE-01 -> RE-02 -> RE-03 -> RE-04 -> RE-05`. Do not claim any later stage complete from RE-01 tests. Before moving the selected checkpoint, record review evidence and obtain developer direction. Archive SUB-006 with its entire plan only after all scoped stages are accepted, then reconcile index, umbrella and checkpoint. Existing SUB-003 / SUB-004 acceptance is independent.
+
 

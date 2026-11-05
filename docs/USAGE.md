@@ -805,17 +805,16 @@ hashes, truncation flags, and run completion status without recording the
 command, API credentials, diff contents, or model prompt. The resulting review
 checkpoint records the relative artifact path for navigation; raw output is
 never copied into the `apatch` application log. The raw output may still
-contain credentials, source code, or personal data; protect and manually
-prune it as appropriate. It is **not** evidence that a scanner succeeded.
+contain credentials, source code, or personal data; protect it and use explicit
+retention only after evaluating the deletion policy. It is **not** evidence that a scanner succeeded.
 
 If captured output reaches the configured limit, `REV` stops the provider and
 fails closed, retaining the bounded partial output with `truncated: true`.
 A failed process, timeout, invalid model response, or worktree drift also
 blocks the review while retaining available diagnostics. The normal `script`
 exit-code and LLM JSON verdict rules still apply; failed scripts currently
-stop before subsequent LLM reviewers. Compact LLM summaries and controlled evidence-on-demand are future stages
-of [SUB-006](specs/active/subspecs/subspec-06-review-evidence-pipeline.md),
-not features supplied by raw capture alone. Review storage is a local audit
+stop before subsequent LLM reviewers. Structured summaries, selective lookup and retention are separately opt-in
+features of [SUB-006](specs/active/subspecs/subspec-06-review-evidence-pipeline.md). Review storage is a local audit
 artifact, not a sandbox or an automatic redaction service.
 
 #### Structured scanner results (`RE-02`, opt-in)
@@ -1117,3 +1116,57 @@ To keep runtime files out of patches and commits, `apatch` checks the repository
 Branch creation, committing, publishing, and merging require deliberate user actions. The tool does not force-push, bypass required checks, approve pull requests, or perform an unguarded direct merge. A partial extraction must be inspected before continuing; do not repeat extraction over an unexpectedly modified working tree.
 
 
+
+
+
+#### Review artifact retention and diagnostic export (RE-05, opt-in)
+
+Review evidence is **never pruned automatically by default**. To prune before
+allocating the next captured `REV`, configure in the target's `.apatch/config.yaml`:
+
+```yaml
+review_artifacts_enabled: true
+review_retention_enabled: true
+review_retention_max_runs: 100
+review_retention_max_bytes: 536870912
+review_retention_max_age_days: 30
+```
+
+Allowed limits: 1–10,000 runs, 1 MiB–10 GiB, and 1–3,650 days. With retention
+enabled, `REV` reserves capacity for all configured reviewers, then deletes
+only eligible **completed or failed** runs as needed. The count and size
+limits are conservative allocation checks, not exact disk quotas; a protected
+incomplete or unrecognized entry blocks new captures until it is safely
+reconciled. `STARTED` runs, unknown names, extra
+files, bad manifests, SHA-256 mismatches, links, or unsafe permissions are
+**never deleted** by ordinary pruning. No saved CHK, review verdict, Git
+record or PR state is pruned. After interruption, a recognized pruning journal
+is resumed only if all remaining files still match the recorded manifest;
+otherwise preserve it for manual inspection. Do not manually remove ambiguous
+state without first investigating the original capture.
+
+For a read-only preview, invoke the internal Python API from the trusted local
+application environment (no new CLI operation exists):
+
+```python
+from pathlib import Path
+from apatch_lib.review_retention import prune_review_artifacts, export_review_summary
+
+project = Path("/path/to/target-repository")
+preview = prune_review_artifacts(project)
+# Inspect preview.removed and preview.protected before enabling deletion.
+result = prune_review_artifacts(project, dry_run=False)
+report = export_review_summary(project, "review-0123456789abcdef01234567", consent=True)
+```
+
+`dry_run=False` explicitly authorizes deletion under `.apatch/reviews` using
+the given defaults, independently of the YAML opt-in. `export_review_summary`
+requires explicit consent and emits at most 8 KiB of deterministic metadata:
+review ID, status, relative evidence reference, manifest SHA-256, provider IDs,
+kind, exit status, timeout, truncation, and normalized-report presence. It
+never embeds raw stdout/stderr, paths, source lines, findings, Git snapshot or
+LLM prompts. Failed/incomplete integrity checks block export. No network or
+external model is called. Caller-controlled provider IDs may still disclose
+project terminology; approve the JSON before transferring it elsewhere.
+Missing artifacts block new retrieval/export without undoing an independently
+successful earlier CHK or a previously recorded review verdict.

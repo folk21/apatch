@@ -232,7 +232,9 @@ def run_review(workflow):
     workflow.record.pop("code_review", None)
     workflow.persist()
     results = []
-    artifacts = (ReviewArtifacts(workflow.root, before, workflow.config.review_artifact_max_bytes)
+    artifacts = (ReviewArtifacts(workflow.root, before, workflow.config.review_artifact_max_bytes,
+                                   retention=workflow.config,
+                                   provider_count=len(workflow.config.reviewers))
                  if workflow.config.review_artifacts_enabled else None)
     completed = False
     try:
@@ -298,3 +300,4 @@ def run_review(workflow):
     if verdict != "PASS":
         raise Abort(f"REVIEW_{verdict}: Resolve findings, rerun CHK then REV")
     return True
+

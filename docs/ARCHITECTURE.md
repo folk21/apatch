@@ -409,3 +409,14 @@ The project YAML parser accepts optional `prepare_checks` argv lists and `check_
 Before adding an operation or changing a mode, inspect the owning helper, CLI parsing, status messages, state/history implications, and black-box tests. Update the public operation matrix in Usage and regression coverage together. For significant behavior changes, establish a normative SDD spec first; the initial spec will be introduced separately.
 
 
+
+
+RE-05 uses `apatch_lib/review_retention.py` for conservative, disabled-by-default
+review storage retention and consent-gated metadata export. The `REV` capture
+path reserves capacity and performs optional pruning under a no-follow,
+project-local file lock before allocating a new private review directory.
+Only terminal, fully inventoried and hashed runs can be pruned. A private
+per-run intent journal supports resumption of interrupted deletions while
+unknown files and incomplete runs are protected; this cannot bypass review,
+CHK, Git or GitHub gates. A separate read-only export emits bounded reference
+metadata, not captured streams or finding text, and never initiates transport.
