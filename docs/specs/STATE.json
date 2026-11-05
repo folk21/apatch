@@ -18,8 +18,9 @@
     {
       "id": "review-evidence",
       "specPath": "docs/specs/active/subspecs/subspec-06-review-evidence-pipeline.md",
-      "stageId": "RE-04",
+      "stageId": "RE-05",
       "phase": "READY_FOR_REVIEW"
     }
   ]
 }
+

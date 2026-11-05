@@ -62,6 +62,10 @@ class Config:
     review_context_external_consent: bool = False
     review_context_include_messages: bool = False
     review_context_include_diff: bool = False
+    review_retention_enabled: bool = False
+    review_retention_max_runs: int = 100
+    review_retention_max_bytes: int = 536870912
+    review_retention_max_age_days: int = 30
 
 
 @dataclass(frozen=True)
@@ -233,7 +237,9 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                           "review_required", "review_timeout_seconds", "review_max_bytes",
                           "review_artifacts_enabled", "review_artifact_max_bytes",
                           "review_context_max_bytes", "review_context_external_consent",
-                          "review_context_include_messages", "review_context_include_diff"}
+                          "review_context_include_messages", "review_context_include_diff",
+                          "review_retention_enabled", "review_retention_max_runs",
+                          "review_retention_max_bytes", "review_retention_max_age_days"}
     if not isinstance(data, dict) or not required <= set(data) or set(data) - allowed:
         raise Abort("Project config must contain schema_version and checks, with supported optional settings")
     if type(data["schema_version"]) is not int or data["schema_version"] != 1:
@@ -324,6 +330,19 @@ def load_project_config(root: Path, global_config: Config) -> Config:
          context_options["review_context_include_diff"])
             and not context_options["review_context_external_consent"]):
         raise Abort("Review context source text requires review_context_external_consent=true")
+    retention_enabled = data.get("review_retention_enabled", False)
+    if type(retention_enabled) is not bool:
+        raise Abort("Project review_retention_enabled must be a YAML boolean")
+    retention_limits = {}
+    for key, default, minimum, maximum in (
+        ("review_retention_max_runs", 100, 1, 10000),
+        ("review_retention_max_bytes", 536870912, 1048576, 10737418240),
+        ("review_retention_max_age_days", 30, 1, 3650),
+    ):
+        value = data.get(key, default)
+        if type(value) is not int or not minimum <= value <= maximum:
+            raise Abort(f"Project {key} must be an integer from {minimum} to {maximum}")
+        retention_limits[key] = value
     configured_reviewers = data.get("reviewers", [])
     if not isinstance(configured_reviewers, list) or len(configured_reviewers) > 8:
         raise Abort("Project reviewers must be a list of at most 8 providers")
@@ -410,7 +429,8 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                    review_artifacts_enabled=artifacts_enabled,
                    review_artifact_max_bytes=artifact_max_bytes,
                    review_context_max_bytes=context_max_bytes,
-                   **context_options)
+                   review_retention_enabled=retention_enabled,
+                   **retention_limits, **context_options)
 
 
 def safe_relative(path: str) -> str:
@@ -463,4 +483,5 @@ def parse_handoff_payload(payload, *, embedded=False) -> Handoff:
         raise Abort("delete_paths must be a list of repository-relative paths")
     return Handoff(repo, branch, patch, msg.rstrip() + "\n", base, digest,
                    tuple(safe_relative(p) for p in paths))
+
 

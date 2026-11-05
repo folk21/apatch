@@ -25,6 +25,38 @@ class CodeReviewTests(LocalGitFixture):
                 "command": [sys.executable, "-c", "print(" + repr(payload) + ")"],
                 "report_format": "apatch-json-v1", "scanners": scanner_specs}
 
+    def test_retention_enabled_prunes_old_completed_review_before_next_capture(self):
+        self.configure_reviewers([self.script()], artifacts=True, required=True)
+        self.configure_checks(
+            self.project_config.read_text() +
+            "review_retention_enabled: true\nreview_retention_max_runs: 1\n"
+            "review_retention_max_bytes: 536870912\nreview_retention_max_age_days: 30\n")
+        self.ready()
+        first = self.invoke_zip("op=REV", "skipApproves=true")
+        self.assertEqual(first.returncode, 0, first.stderr + first.stdout)
+        old_dir, _ = self._artifact()
+        second = self.invoke_zip("op=REV", "skipApproves=true")
+        self.assertEqual(second.returncode, 0, second.stderr + second.stdout)
+        self.assertFalse(old_dir.exists())
+        directories = list((self.root / ".apatch" / "reviews").glob("review-*"))
+        self.assertEqual(len(directories), 1)
+        self.assertEqual(json.loads((directories[0] / "manifest.json").read_text())["status"],
+                         "COMPLETED")
+
+    def test_review_retention_config_rejects_invalid_values(self):
+        self.configure_reviewers([self.script()], artifacts=True)
+        for fragment in ("review_retention_enabled: 1\n",
+                         "review_retention_max_runs: true\n",
+                         "review_retention_max_bytes: 10\n",
+                         "review_retention_max_age_days: -1\n"):
+            with self.subTest(fragment=fragment):
+                original = self.project_config.read_text()
+                self.project_config.write_text(original + fragment)
+                result = self.invoke_cli("op=CHK")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("Project review_retention_", result.stderr)
+                self.project_config.write_text(original)
+
     def test_structured_review_persists_normalized_report_and_blocks_high_findings(self):
         scanners = [{"id": "bandit", "format": "bandit-json", "required": True}]
         report = {"id": "bandit", "status": "FINDINGS", "format": "bandit-json", "report": {
@@ -398,3 +430,4 @@ class CodeReviewTests(LocalGitFixture):
 
 if __name__ == "__main__":
     unittest.main()
+

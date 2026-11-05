@@ -13,6 +13,7 @@ from pathlib import Path
 
 from .gitutil import run
 from .model import Abort
+from .review_retention import review_storage_lock, _retention_locked
 
 
 @dataclass(frozen=True)
@@ -61,7 +62,8 @@ def _atomic_json(path: Path, data: dict):
 class ReviewArtifacts:
     """Capture one run under an ignored, private, non-symlinked runtime directory."""
 
-    def __init__(self, root: Path, snapshot: tuple, max_output_bytes: int):
+    def __init__(self, root: Path, snapshot: tuple, max_output_bytes: int,
+                 retention=None, provider_count: int = 0):
         parent = root / ".apatch" / "reviews"
         if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
             raise Abort("REVIEW_ARTIFACT_UNSAFE: reviews path is not a normal directory")
@@ -76,8 +78,21 @@ class ReviewArtifacts:
             parent.mkdir(mode=0o700, exist_ok=True)
             if parent.is_symlink():
                 raise Abort("REVIEW_ARTIFACT_UNSAFE: reviews directory became a symlink")
-            self.directory = parent / ("review-" + secrets.token_hex(12))
-            self.directory.mkdir(mode=0o700)
+            with review_storage_lock(root) as reviews_fd:
+                if retention is not None and retention.review_retention_enabled:
+                    result = _retention_locked(
+                        reviews_fd, max_runs=retention.review_retention_max_runs,
+                        max_bytes=retention.review_retention_max_bytes,
+                        max_age_days=retention.review_retention_max_age_days,
+                        dry_run=False, reserve_runs=1,
+                        reserve_bytes=provider_count * (max_output_bytes + 1114112))
+                    if (result.protected or
+                            result.total_runs > retention.review_retention_max_runs or
+                            result.total_bytes > retention.review_retention_max_bytes):
+                        raise Abort("REVIEW_RETENTION_QUOTA: Protected or incomplete evidence "
+                                    "prevents allocating a new review")
+                self.directory = parent / ("review-" + secrets.token_hex(12))
+                os.mkdir(self.directory.name, 0o700, dir_fd=reviews_fd)
         except OSError as exc:
             raise Abort(f"REVIEW_ARTIFACT_UNAVAILABLE: Cannot create private storage: {type(exc).__name__}") from exc
         self.max_output_bytes = max_output_bytes
@@ -316,3 +331,4 @@ class ReviewArtifacts:
         })
         self._persist()
         return f"{self.relative_path}/{filename}"
+
