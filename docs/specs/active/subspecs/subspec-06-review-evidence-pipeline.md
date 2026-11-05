@@ -1,6 +1,6 @@
 # APATCH-SUB-006 — Review Evidence Pipeline
 
-**Status:** DRAFT. RE-01 through RE-03 have candidate implementations awaiting independent review and developer acceptance. RE-04–RE-05 remain proposals, not implemented or accepted. RE-03 builds on the prior RE-01/RE-02 ZIP candidates; source after remote merge is unverified.
+**Status:** DRAFT. RE-01 through RE-04 have candidate implementations pending independent acceptance. RE-05 remains proposed. The RE-04 source baseline is the clean 2026-11-04 `main` snapshot (`f5670ab56878549950ecfca6629fda8e76339a7c`); this Git identity is snapshot provenance, not an independently inspected local checkout or developer acceptance.
 
 **Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Plan:** [APATCH-PLAN-006](../subspec-06-review-evidence-pipeline-implementation-plan.md). **Related:** [SUB-003](subspec-03-feature-session-planning.md), [SUB-004](subspec-04-operational-workflows.md).
 
@@ -116,9 +116,17 @@ LLM CLI is nominally local. No HTTP call is added by `apatch` itself.
 
 **RE-03 acceptance:** Assert exact context size, no raw-log leakage, deterministic priority, blocked incomplete input, changed-line relevance, model JSON parsing, confidentiality guardrails and required-review commit gate.
 
-## 6. RE-04 — Selective evidence retrieval (proposed)
+## 6. RE-04 — Selective evidence retrieval (candidate implementation)
 
-Expose a read-only, bounded `review_id` + `finding_id` lookup of one verified raw excerpt or source slice. Validate path containment without symlink traversal; cap requests, bytes and lines; attach evidence hashes and source snapshots. Requests from the model remain advisory data requests, not command execution or file writes. No implicit tools/network access. Malformed IDs, stale snapshots, deleted artifacts and unexpected file types fail closed. Test traversal, TOCTOU, rate bounds and partial reports.
+**RE-04-A** Expose `ReviewEvidenceSession.get_review_evidence(review_id, finding_id, context_lines)` as a **local, read-only** internal Python interface. The caller SHALL bind the session to a single repository root, review ID, expected checked snapshot and a live snapshot reader. The API SHALL NOT register a new CLI action, execute scripts, invoke a model, perform network access or write application state. Requests SHALL identify an exact existing 24-hex finding ID from a SHA-256-verified normalized report. The completed manifest and normalized result SHALL match the requested review and expected snapshot. A non-PASS scanner result MAY be retrieved for diagnostics, but it SHALL never authorize a PASS or bypass a required scanner gate.
+
+**RE-04-B** Evidence lookup SHALL open `.apatch/reviews/<review_id>/` through file-descriptor-relative, no-follow directory traversal. Review/run directories MUST have mode `0700`; manifest, raw stdout and normalized JSON MUST be private regular files with mode `0600`. The provider's raw stdout byte count/hash and the normalized JSON digest, snapshot, reviewer identity and raw source digest SHALL be reverified for every request. Unknown, ambiguous, malformed, truncated, symlinked, missing or modified evidence SHALL fail closed with `REVIEW_EVIDENCE_UNKNOWN`. A partial or `STARTED`/`FAILED` run SHALL NOT be used for lookup. Manifest hash references are integrity checks, not independent cryptographic attestation against a privileged actor who can replace both file and manifest.
+
+**RE-04-C** Source retrieval SHALL follow only the normalized finding's repository-relative path. `.git` and `.apatch` are prohibited; traversal and symlinked path components SHALL be refused. Each file SHALL be an ordinary UTF-8 text file of at most 1 MiB; a missing finding line or source file SHALL be `UNKNOWN`. An excerpt SHALL include only the specified line and at most 20 surrounding lines in each direction. The response SHALL include review and finding IDs, the original scanner verdict, snapshot SHA-256, relative source path, selected line numbers/text, source content SHA-256, normalized evidence SHA-256 and raw stdout SHA-256. The snapshot reader SHALL match before and after retrieval; a changed file descriptor or checked Git state fails closed. Source excerpts can contain secrets and SHALL NOT be automatically forwarded to any LLM.
+
+**RE-04-D** A session SHALL allow at most 1–8 requests (default 4), with each JSON response capped at 1,024–8,192 bytes (default 8,192) and total output capped at the session's configured 8,192–65,536 bytes (default 16,384). Invalid requests and exhausted budgets SHALL not fetch additional evidence. Valid requests consume a call quota even if the report is missing or oversized. Output construction SHALL remain deterministic and shall never silently truncate a returned source line. Budgets are per in-process session, not a persistent global rate limit; future model tool-routing requires separate authorization and enforcement.
+
+**RE-04 acceptance:** Tests for exact lookup, privacy, SHA-256 and snapshot binding, severity-independent diagnostics, no process/network calls, output and request quotas, malformed/partial manifests, symlinked directories/files, traversal, missing and oversized source, binary input, ambiguous IDs and drift before/after retrieval. `run_tests.sh`, `run_rare_checks.sh` and `tools/specs/validate_state.py` SHALL be attempted and reported. This candidate does not implement an external LLM tool-call dispatcher; that integration requires a separately reviewed disclosure and invocation contract.
 
 ## 7. RE-05 — Retention, export and recovery (proposed)
 
@@ -126,4 +134,5 @@ Introduce configurable count/size/time retention with conservative defaults, pro
 
 ## 8. Compatibility and acceptance boundary
 
-RE-01 is additive to current `REV` and has no migration of existing recorded reviews, operation IDs, handoff state or Git history. RE-04–RE-05 require further design and implementation checkpoints; RE-01–RE-03 are unaccepted candidates, not proof of publication or remote merge. Review evidence is not human approval or GitHub status. Each stage requires focused regression evidence, source review and explicit developer acceptance. SUB-003/004 remain active and unaccepted; switching the SDD focus is not their acceptance.
+RE-01 is additive to current `REV` and has no migration of existing recorded reviews, operation IDs, handoff state or Git history. RE-05 and any external model tool dispatcher require further design and implementation checkpoints; RE-01–RE-04 remain unaccepted candidates. Review evidence is not human approval or GitHub status. Each stage requires focused regression evidence, source review and explicit developer acceptance. SUB-003/004 remain active and unaccepted; switching the SDD focus is not their acceptance.
+

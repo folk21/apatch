@@ -16,7 +16,7 @@ see [Development](../DEVELOPMENT.md).
 | [APATCH-SPEC-001 — Orchestrator](active/spec-apatch-orchestrator.md) | [Future umbrella stages](active/apatch-orchestrator-implementation-plan.md) | DRAFT; future proposals |
 | [SUB-003 — Feature Sessions](active/subspecs/subspec-03-feature-session-planning.md) | [PLAN-003](active/subspec-03-feature-session-planning-implementation-plan.md) | FS-06 review; acceptance pending |
 | [SUB-004 — Operational Workflows](active/subspecs/subspec-04-operational-workflows.md) | [PLAN-004](active/subspec-04-operational-workflows-implementation-plan.md) | WM-01–WM-04 implemented; WM-04 review; WM-05 proposed |
-| [SUB-006 — Review Evidence Pipeline](active/subspecs/subspec-06-review-evidence-pipeline.md) | [PLAN-006](active/subspec-06-review-evidence-pipeline-implementation-plan.md) | RE-01–RE-03 candidates; acceptance pending; RE-04+ proposed |
+| [SUB-006 — Review Evidence Pipeline](active/subspecs/subspec-06-review-evidence-pipeline.md) | [PLAN-006](active/subspec-06-review-evidence-pipeline-implementation-plan.md) | RE-01–RE-04 candidates; acceptance pending; RE-05 proposed |
 
 Active sub-specifications live in `active/subspecs/`; **their active plans live
 directly in `active/`**, with matching `subspec-XX-...-implementation-plan.md`
@@ -48,9 +48,10 @@ python3 tools/specs/validate_state.py
 sh ./run_tests.sh
 ```
 
-The current selected workstream is SUB-006 / RE-03 at `READY_FOR_REVIEW`;
+The current selected workstream is SUB-006 / RE-04 at `READY_FOR_REVIEW`;
 SUB-004 / WM-04 and SUB-003 / FS-06 remain `ON_HOLD`, unaccepted.
 The checkpoint may advance at a developer-directed stage boundary.
 Product behavior is documented in [Usage](../USAGE.md) and
 [Architecture](../ARCHITECTURE.md).
+
 
