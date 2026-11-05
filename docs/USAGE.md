@@ -943,6 +943,33 @@ only an explicit `REV` or a guarded workflow requiring `REV` can run it.
 Review commands execute with normal user permissions and are **not** sandboxed.
 The legacy `kind: llm` mode without `input_mode` still receives the diff.
 
+#### Read-only selective evidence lookup (RE-04, internal API)
+
+`apatch_lib.review_evidence_api.ReviewEvidenceSession` exposes a local
+`get_review_evidence(review_id, finding_id, context_lines)` method. It reads a
+**completed** review from `.apatch/reviews/<review_id>` and returns a single
+verified source excerpt with raw/normalized/source SHA-256 references and the
+original scanner verdict. It does not run scanner commands, modify Git, or
+contact a model; no automatic LLM tool-calling route is provided in RE-04.
+
+The caller must supply the repository root, the expected five-field CHK/REV
+snapshot and a callable that re-reads that same live snapshot. The adapter
+checks both before and after reading. IDs, source paths and the private files
+are validated through no-follow directory descriptors. `.git` and `.apatch`
+files, symlinks, missing or binary sources, changed hashes and incomplete
+runs fail closed. Raw stdout is only hash-verified; it is never included in the
+returned JSON. By default the lookup allows four requests, each at most
+8,192 bytes, with a cumulative 16,384-byte budget and at most 20 surrounding
+lines in each direction. Responses larger than the budget are rejected rather
+than silently truncated. These are in-process limits, not a persistent rate
+limiter for external clients.
+
+Source excerpts can contain passwords or other sensitive text. The API does
+**not** send that text to a model and does not grant outbound disclosure
+consent; any future LLM tool dispatcher needs an explicit separate consent and
+security contract. Reviewing a blocking scanner finding does not make its
+`CHANGES_REQUIRED` or `ESCALATE` verdict eligible for `PASS`.
+
 Both providers are optional; configure only the executables you have
 installed and authenticated. A `script` reviewer runs from the repository
 root and passes when its exit code is `0`; any other exit code stops `REV`.
@@ -1088,4 +1115,5 @@ To keep runtime files out of patches and commits, `apatch` checks the repository
 `apatch` checks actual Git and GitHub state before important actions; its saved progress is not treated as authorization or proof of approval. It stops on an unexpected working-tree change, source or remote drift, unsafe archive content, conflicting branch, ambiguous pull request, or failed verification.
 
 Branch creation, committing, publishing, and merging require deliberate user actions. The tool does not force-push, bypass required checks, approve pull requests, or perform an unguarded direct merge. A partial extraction must be inspected before continuing; do not repeat extraction over an unexpectedly modified working tree.
+
 

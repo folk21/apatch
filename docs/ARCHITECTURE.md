@@ -60,6 +60,14 @@ allowed by project policy, and a summary-mode LLM is never passed the raw
 diff via stdin or its environment. The configured executable still has the
 normal user's filesystem privileges; this is not a confidentiality sandbox.
 The capture layer never forwards raw scanner logs to a model.
+`apatch_lib/review_evidence_api.py` provides RE-04's separate, internal
+read-only selective lookup. A caller supplies the exact saved review ID,
+24-hex finding ID and a live checked-snapshot reader. The adapter re-verifies
+completed private manifest, raw stdout digest and normalized report digest,
+then uses no-follow directory descriptors to read only the source path named
+by that finding. Source excerpts and output quotas are strict; the API does
+not mutate state, launch a subprocess or automatically disclose source to an
+LLM. The original scanner verdict remains authoritative for security gates.
 The review stage never equates model output with human
 acceptance or GitHub review requirements.
 
@@ -399,4 +407,5 @@ The project YAML parser accepts optional `prepare_checks` argv lists and `check_
 ## Extension points
 
 Before adding an operation or changing a mode, inspect the owning helper, CLI parsing, status messages, state/history implications, and black-box tests. Update the public operation matrix in Usage and regression coverage together. For significant behavior changes, establish a normative SDD spec first; the initial spec will be introduced separately.
+
 
