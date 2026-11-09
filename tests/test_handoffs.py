@@ -97,6 +97,95 @@ class HandoffsTests(LocalGitFixture):
         self.assertEqual(json.loads((self.root / ".apatch/params.json").read_text())["patch_file"],
                          second.name)
 
+    def test_clean_committed_multi_zip_branch_accepts_explicit_followup(self):
+        first = self.make_self_contained_zip()
+        second = self.make_followup_zip()
+        initial = self.invoke_zip("opSeq=APL,BRN,APL,CHK,CMT,STS",
+                                  f"handoffSeq={first},{second.stem}", "skipApproves=true")
+        self.assertEqual(initial.returncode, 0, initial.stdout + initial.stderr)
+        committed_head = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, "")
+        third = self.make_followup_zip(
+            filename="example_service-PATCH-committed-followup.zip",
+            extra_files={"third.txt": "third patch\n"})
+        implicit = self.invoke_zip("op=APL", "skipApproves=true", selection=third.stem)
+        self.assertEqual(implicit.returncode, 2, implicit.stdout + implicit.stderr)
+        self.assertIn("followup=true", implicit.stderr)
+        self.assertFalse((self.root / "third.txt").exists())
+
+        result = self.invoke_zip("followup=true", "opSeq=APL,CHK,STS",
+                                 "skipApproves=true", selection=third.stem)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(),
+                         committed_head)
+        self.assertEqual((self.root / "third.txt").read_text(), "third patch\n")
+        self.assertEqual(len(AppliedPatchHistory(self.history_path).entries), 3)
+        state = json.loads(self.state_path.read_text())
+        phases = {item["patch_file"]: item["phase"] for item in state["workflows"].values()}
+        self.assertEqual(phases[first + ".zip"], "committed")
+        self.assertEqual(phases[second.name], "committed")
+        self.assertEqual(phases[third.name], "verified")
+
+    def test_clean_committed_followup_refuses_head_drift(self):
+        first = self.make_self_contained_zip()
+        initial = self.invoke_zip("opSeq=APL,BRN,CHK,CMT", "skipApproves=true",
+                                  selection=first)
+        self.assertEqual(initial.returncode, 0, initial.stdout + initial.stderr)
+        second = self.make_followup_zip()
+        state = json.loads(self.state_path.read_text())
+        prior = next(iter(state["workflows"].values()))
+        prior["commit_sha"] = "a" * 40
+        self.state_path.write_text(json.dumps(state))
+        history_before = self.history_path.read_bytes()
+        result = self.invoke_zip("followup=true", "op=APL", "skipApproves=true",
+                                 selection=second.stem)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("latest commit checkpoint", result.stderr)
+        self.assertEqual(self.history_path.read_bytes(), history_before)
+        self.assertFalse((self.root / "second.txt").exists())
+
+    def test_clean_committed_followup_requires_application_journal(self):
+        first = self.make_self_contained_zip()
+        initial = self.invoke_zip("opSeq=APL,BRN,CHK,CMT", "skipApproves=true",
+                                  selection=first)
+        self.assertEqual(initial.returncode, 0, initial.stdout + initial.stderr)
+        second = self.make_followup_zip()
+        state = json.loads(self.state_path.read_text())
+        state["operation_runs"] = [run for run in state["operation_runs"]
+                                   if run["operation"]["number"] != 3]
+        self.state_path.write_text(json.dumps(state))
+        history_before = self.history_path.read_bytes()
+        result = self.invoke_zip("followup=true", "op=APL", "skipApproves=true",
+                                 selection=second.stem)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("journal proof", result.stderr)
+        self.assertEqual(self.history_path.read_bytes(), history_before)
+        self.assertFalse((self.root / "second.txt").exists())
+
+    def test_clean_committed_followup_refuses_unknown_remote_and_pending_workflow(self):
+        first = self.make_self_contained_zip()
+        initial = self.invoke_zip("opSeq=APL,BRN,CHK,CMT", "skipApproves=true",
+                                  selection=first)
+        self.assertEqual(initial.returncode, 0, initial.stdout + initial.stderr)
+        second = self.make_followup_zip()
+        command("git", "remote", "set-url", "origin", str(self.base / "moved.git"),
+                cwd=self.root)
+        changed_remote = self.invoke_zip("followup=true", "op=APL", "skipApproves=true",
+                                         selection=second.stem)
+        self.assertEqual(changed_remote.returncode, 2)
+        self.assertIn("remote identity has changed", changed_remote.stderr)
+        command("git", "remote", "set-url", "origin", str(self.remote), cwd=self.root)
+        state = json.loads(self.state_path.read_text())
+        duplicate = dict(next(iter(state["workflows"].values())))
+        duplicate.update(patch_file="unfinished.zip", phase="verified")
+        state["workflows"]["pending-legacy"] = duplicate
+        self.state_path.write_text(json.dumps(state))
+        unfinished = self.invoke_zip("followup=true", "op=APL", "skipApproves=true",
+                                     selection=second.stem)
+        self.assertEqual(unfinished.returncode, 2)
+        self.assertIn("unresolved earlier feature workflow", unfinished.stderr)
+        self.assertFalse((self.root / "second.txt").exists())
+
     def test_failed_followup_does_not_relabel_previous_workflow(self):
         first = self.make_self_contained_zip()
         initial = self.invoke_zip("opSeq=APL,BRN", "skipApproves=true", selection=first)
@@ -480,3 +569,4 @@ class HandoffsTests(LocalGitFixture):
                 self.assertEqual(result.returncode, 2)
                 self.assertFalse(self.state_path.exists())
                 self.assertFalse(self.history_path.exists())
+

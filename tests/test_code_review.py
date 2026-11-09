@@ -266,6 +266,55 @@ class CodeReviewTests(LocalGitFixture):
         self.assertLessEqual(sum(manifest["providers"][0][key]
                                  for key in ("stdout_bytes", "stderr_bytes")), 65536)
 
+    def test_capture_output_limit_survives_denied_process_group_signal(self):
+        """A denied killpg must fall back to the child and preserve overflow evidence."""
+        import os
+        import time
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from apatch_lib.review_artifacts import ReviewArtifacts
+
+        self.ready()
+        artifacts = ReviewArtifacts(self.root, ("test",), 65536)
+        provider = SimpleNamespace(id="static", kind="script")
+        code = ("import sys,time; sys.stdout.write('B'*250000); "
+                "sys.stdout.flush(); time.sleep(5)")
+        started = time.monotonic()
+        with patch("apatch_lib.review_artifacts.os.killpg",
+                   side_effect=PermissionError("denied")) as denied:
+            capture = artifacts.capture(provider, [sys.executable, "-c", code],
+                                        self.root, os.environ.copy(), b"", timeout=10)
+        self.assertTrue(denied.called)
+        self.assertLess(time.monotonic() - started, 4)
+        self.assertTrue(capture.truncated)
+        self.assertFalse(capture.timed_out)
+        self.assertLessEqual(capture.stdout_bytes + capture.stderr_bytes, 65536)
+        self.assertEqual(artifacts.document["providers"][0]["truncated"], True)
+        self.assertEqual((artifacts.directory / "static.stdout").stat().st_size,
+                         capture.stdout_bytes)
+
+    def test_capture_output_limit_survives_disappeared_process_group(self):
+        """ESRCH for a group does not preclude killing a still-running child."""
+        import os
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from apatch_lib.review_artifacts import ReviewArtifacts
+
+        self.ready()
+        artifacts = ReviewArtifacts(self.root, ("test",), 65536)
+        provider = SimpleNamespace(id="static", kind="script")
+        code = ("import sys,time; sys.stdout.write('C'*250000); "
+                "sys.stdout.flush(); time.sleep(5)")
+        with patch("apatch_lib.review_artifacts.os.killpg",
+                   side_effect=ProcessLookupError("missing")) as missing:
+            capture = artifacts.capture(provider, [sys.executable, "-c", code],
+                                        self.root, os.environ.copy(), b"", timeout=10)
+        self.assertTrue(missing.called)
+        self.assertTrue(capture.truncated)
+        self.assertLessEqual(capture.stdout_bytes + capture.stderr_bytes, 65536)
+
     def test_capture_timeout_retains_bounded_partial_report(self):
         self.configure_reviewers([self.script(
             "import sys,time; print('started', flush=True); time.sleep(5)")],

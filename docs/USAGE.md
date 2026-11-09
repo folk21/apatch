@@ -260,7 +260,7 @@ applications. Resume only after checking Git state and the relevant ZIP
 checkpoint. Applying an additional ZIP on the feature branch in a later invocation
 requires the explicit `followup=true` option described below.
 
-### Unplanned repair ZIP on an unfinished feature branch (`followup=true`)
+### Explicit LOOSE follow-up ZIP on an existing feature branch (`followup=true`)
 
 When an earlier standalone ZIP has completed `APL,BRN` but remains uncommitted,
 a separately generated repair ZIP can be applied without replaying the first:
@@ -271,19 +271,39 @@ a separately generated repair ZIP can be applied without replaying the first:
 ```
 
 `followup=true` is LOOSE-only and separate from `handoffSeq`. It requires a
-newly selected self-contained ZIP, a leading `APL`, the exact planned feature
-branch, existing uncommitted changes, and a matching previous `patch_applied`
-or `verified` workflow at the current HEAD and Git remote. An initial ZIP on
-the base branch, unrelated dirty feature branch, already committed predecessor,
-or STRICT/FORCE invocation cannot use this option. The guard runs before
-any earlier workflow is linked to the newly applied patch. A rejected,
+newly selected self-contained ZIP, a leading `APL`, and the exact planned
+feature branch. Two predecessor states are supported:
+
+- **Uncommitted:** existing changed paths and a matching previous
+  `patch_applied` or `verified` workflow at the current HEAD and Git remote.
+- **Committed and clean:** the last applied ZIP in the private history belongs
+  to this branch, has a `committed` workflow whose recorded commit is exactly
+  the current HEAD, and has successful application-journal evidence. The
+  index and worktree must be clean, the base must be an ancestor, the remote
+  must have verified identity and no unverified drift, and no incomplete
+  workflow or active feature session may own this branch. This path does not
+  automatically adopt or create a feature session.
+
+An initial ZIP on the base branch, unrelated branch, unverified/published
+predecessor, or STRICT/FORCE invocation cannot use this option. A rejected,
 cancelled or failed application preserves earlier workflow relationships.
+The guard is rechecked before extraction, including after confirmation.
+
+To apply a new ZIP after a local commit, stay on the existing feature branch
+and omit `BRN`:
+
+```bash
+/path/to/apatch/apatch.sh next-patch followup=true \
+  opSeq=APL,FMT,CHK,STS skipApproves=true
+```
 
 Overlapping uncommitted files are backed up before approved replacement.
 With `skipApproves=true`, overlap confirmation is automatic: inspect the incoming
 ZIP first. A successful follow-up registers both ZIPs as separately applied;
-a later single `CMT` associates both with the combined commit. The repair ZIP
-supplies the commit message and becomes the cached handoff. Resume with `CHK`,
+a later single `CMT` associates both with the combined commit when the
+predecessor was uncommitted. After a previous local commit, that earlier commit
+remains unchanged; a later `CMT` commits only subsequent changes. The repair ZIP
+supplies the next commit message and becomes the cached handoff. Resume with `CHK`,
 not another `BRN`; do not reset a branch to fit the initial ZIP workflow.
 
 `followup=true` is needed only for the **first** application of a new repair ZIP.
@@ -805,16 +825,17 @@ hashes, truncation flags, and run completion status without recording the
 command, API credentials, diff contents, or model prompt. The resulting review
 checkpoint records the relative artifact path for navigation; raw output is
 never copied into the `apatch` application log. The raw output may still
-contain credentials, source code, or personal data; protect it and use explicit
-retention only after evaluating the deletion policy. It is **not** evidence that a scanner succeeded.
+contain credentials, source code, or personal data; protect and manually
+prune it as appropriate. It is **not** evidence that a scanner succeeded.
 
 If captured output reaches the configured limit, `REV` stops the provider and
 fails closed, retaining the bounded partial output with `truncated: true`.
 A failed process, timeout, invalid model response, or worktree drift also
 blocks the review while retaining available diagnostics. The normal `script`
 exit-code and LLM JSON verdict rules still apply; failed scripts currently
-stop before subsequent LLM reviewers. Structured summaries, selective lookup and retention are separately opt-in
-features of [SUB-006](specs/active/subspecs/subspec-06-review-evidence-pipeline.md). Review storage is a local audit
+stop before subsequent LLM reviewers. Compact LLM summaries and controlled evidence-on-demand are future stages
+of [SUB-006](specs/active/subspecs/subspec-06-review-evidence-pipeline.md),
+not features supplied by raw capture alone. Review storage is a local audit
 artifact, not a sandbox or an automatic redaction service.
 
 #### Structured scanner results (`RE-02`, opt-in)
@@ -1117,56 +1138,3 @@ Branch creation, committing, publishing, and merging require deliberate user act
 
 
 
-
-
-#### Review artifact retention and diagnostic export (RE-05, opt-in)
-
-Review evidence is **never pruned automatically by default**. To prune before
-allocating the next captured `REV`, configure in the target's `.apatch/config.yaml`:
-
-```yaml
-review_artifacts_enabled: true
-review_retention_enabled: true
-review_retention_max_runs: 100
-review_retention_max_bytes: 536870912
-review_retention_max_age_days: 30
-```
-
-Allowed limits: 1–10,000 runs, 1 MiB–10 GiB, and 1–3,650 days. With retention
-enabled, `REV` reserves capacity for all configured reviewers, then deletes
-only eligible **completed or failed** runs as needed. The count and size
-limits are conservative allocation checks, not exact disk quotas; a protected
-incomplete or unrecognized entry blocks new captures until it is safely
-reconciled. `STARTED` runs, unknown names, extra
-files, bad manifests, SHA-256 mismatches, links, or unsafe permissions are
-**never deleted** by ordinary pruning. No saved CHK, review verdict, Git
-record or PR state is pruned. After interruption, a recognized pruning journal
-is resumed only if all remaining files still match the recorded manifest;
-otherwise preserve it for manual inspection. Do not manually remove ambiguous
-state without first investigating the original capture.
-
-For a read-only preview, invoke the internal Python API from the trusted local
-application environment (no new CLI operation exists):
-
-```python
-from pathlib import Path
-from apatch_lib.review_retention import prune_review_artifacts, export_review_summary
-
-project = Path("/path/to/target-repository")
-preview = prune_review_artifacts(project)
-# Inspect preview.removed and preview.protected before enabling deletion.
-result = prune_review_artifacts(project, dry_run=False)
-report = export_review_summary(project, "review-0123456789abcdef01234567", consent=True)
-```
-
-`dry_run=False` explicitly authorizes deletion under `.apatch/reviews` using
-the given defaults, independently of the YAML opt-in. `export_review_summary`
-requires explicit consent and emits at most 8 KiB of deterministic metadata:
-review ID, status, relative evidence reference, manifest SHA-256, provider IDs,
-kind, exit status, timeout, truncation, and normalized-report presence. It
-never embeds raw stdout/stderr, paths, source lines, findings, Git snapshot or
-LLM prompts. Failed/incomplete integrity checks block export. No network or
-external model is called. Caller-controlled provider IDs may still disclose
-project terminology; approve the JSON before transferring it elsewhere.
-Missing artifacts block new retrieval/export without undoing an independently
-successful earlier CHK or a previously recorded review verdict.

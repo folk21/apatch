@@ -20,7 +20,8 @@ from .gitutil import (branch_exists, confirm, current_branch, head, output,
 from .model import Abort, CheckWorktreeChanged
 from .patch import apply, inspect
 from .patch_history import locked_history
-from .session_continuation import require_session_continuation
+from .session_continuation import (require_committed_loose_followup,
+                                   require_session_continuation)
 from .session import record_session_commit
 from .state import save
 
@@ -124,7 +125,9 @@ class LooseActions:
         if branch != w.handoff.branch:
             raise Abort(f"Follow-up ZIP targets {w.handoff.branch}, but current branch is {branch}")
         if not status_paths(w.root):
-            raise Abort("followup=true requires previous uncommitted changes on the feature branch")
+            require_committed_loose_followup(w.root, w.config, w.handoff, w.state,
+                                             archive=archive)
+            return
         current_head = head(w.root)
         current_remote_url = output(["git", "remote", "get-url", w.config.remote], w.root)
         matching = any(
@@ -197,6 +200,8 @@ class LooseActions:
                 raise Abort("Overlapping changed paths changed during confirmation; review and retry")
             if session_id is not None:
                 self.assert_session_continuation(archive=archive)
+            else:
+                self.assert_followup_selection(archive=archive)
             backup = self._backup_overlaps(overlap)
             w.record.update(
                 phase="applying", applied_branch=branch,
@@ -619,4 +624,5 @@ class LooseActions:
 
     def sync(self):
         return self.w.force_actions.sync()
+
 

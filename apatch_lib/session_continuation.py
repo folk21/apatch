@@ -177,3 +177,87 @@ def require_session_continuation(
         raise Abort("Session continuation overlaps locally modified paths: " + ", ".join(collisions))
     return SessionContinuationEvidence(session_id, predecessor_key, previous["phase"],
                                        current_head, branch, tuple(sorted(changed)))
+
+def require_committed_loose_followup(
+    root: Path, config: Config, handoff: Handoff, state: dict, *,
+    archive: Archive | None = None,
+) -> str:
+    """Verify a clean, committed legacy LOOSE predecessor without adopting a session.
+
+    Applied-history order selects the predecessor, never dictionary insertion order.
+    This is an explicit APL-only guard and does not authorize guarded goals or
+    future Git publication.
+    """
+    root = root.resolve(strict=True)
+    branch = local_git(root, "branch", "--show-current").strip()
+    current_head = local_git(root, "rev-parse", "HEAD").strip()
+    if (handoff.repository != root.name or not handoff.patch_sha256
+            or branch != handoff.branch or branch == config.base
+            or not _SHA.fullmatch(current_head)
+            or Path(local_git(root, "rev-parse", "--show-toplevel").strip()).resolve() != root):
+        raise Abort("Committed follow-up requires the exact repository and checked-out feature branch")
+    if status_paths(root):
+        raise Abort("Committed follow-up requires a clean worktree and index")
+    for session in state.get("feature_sessions", {}).values():
+        if (session.get("status") == "active" and session.get("repository") == str(root)
+                and session.get("feature_branch") == branch):
+            raise Abort("Committed follow-up is linked to an active feature session; use a guarded goal")
+
+    history_text = safe_text(config.applied_patches_path, MAX_HISTORY_BYTES)
+    entries = parse_history(history_text or "")
+    latest = entries[-1] if entries else None
+    if (latest is None or latest.planned_branch != branch
+            or latest.real_branch != branch
+            or any(item.patch == handoff.patch for item in entries)
+            or sum(item.patch == latest.patch for item in entries) != 1):
+        raise Abort("Committed follow-up requires a unique last applied ZIP on the feature branch")
+    previous_key = workflow_key(root, branch, latest.patch)
+    previous = state["workflows"].get(previous_key)
+    if (not isinstance(previous, dict) or previous.get("phase") != "committed"
+            or previous.get("patch_file") != latest.patch
+            or previous.get("repository") != str(root)
+            or previous.get("branch") != branch
+            or previous.get("applied_branch") != branch
+            or previous.get("commit_sha") != current_head
+            or previous.get("superseded_by")
+            or previous.get("continued_by")
+            or previous.get("session_id") is not None
+            or not isinstance(previous.get("archive_sha256"), str)
+            or not re.fullmatch(r"[a-f0-9]{64}", previous["archive_sha256"])):
+        raise Abort("Committed follow-up has no uniquely verified latest commit checkpoint")
+    if workflow_key(root, branch, handoff.patch) in state["workflows"]:
+        raise Abort("Committed follow-up ZIP already has a workflow checkpoint")
+    if any(isinstance(record, dict) and key != previous_key
+           and record.get("repository") == str(root)
+           and record.get("applied_branch") == branch
+           and record.get("phase") in {"applying", "patch_applied", "verified"}
+           for key, record in state["workflows"].items()):
+        raise Abort("Committed follow-up has an unresolved earlier feature workflow")
+    if not any(
+        run.get("workflow_key") == previous_key
+        and run.get("repository") == str(root)
+        and run.get("patch") == latest.patch
+        and run.get("operation", {}).get("number") in (2, 3)
+        and run.get("outcome") == "SUCCEEDED"
+        and run.get("verified_facts", {}).get("archive_sha256") == previous["archive_sha256"]
+        for run in state.get("operation_runs", [])
+    ):
+        raise Abort("Committed follow-up predecessor has no successful application journal proof")
+    url = local_git(root, "remote", "get-url", config.remote).strip()
+    if previous.get("remote_url") != url:
+        raise Abort("Committed follow-up Git remote identity has changed")
+    if not _ancestor(root, f"refs/heads/{config.base}", current_head):
+        raise Abort("Committed follow-up HEAD is not a descendant of the configured local base")
+    remote_sha = _remote_feature_head(root, config, branch)
+    if remote_sha is not None and remote_sha != current_head:
+        historical_pushed = {record.get("pushed_sha") for record in state["workflows"].values()
+                             if isinstance(record, dict)
+                             and record.get("repository") == str(root)
+                             and record.get("applied_branch") == branch}
+        if remote_sha not in historical_pushed or not _ancestor(root, remote_sha, current_head):
+            raise Abort("Committed follow-up remote branch has unverified drift")
+    archive = archive or inspect(config, handoff, root)
+    if archive.embedded_handoff is None or archive.sha256 != handoff.patch_sha256:
+        raise Abort("Committed follow-up requires the exact self-contained ZIP")
+    return previous_key
+
