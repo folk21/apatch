@@ -124,8 +124,12 @@ HEAD, remote revision, and a unique open PR when present. The guarded
 `Workflow.apply_session_zip()` API invokes one new LOOSE `APL`, then links its
 successful application to the same session without modifying prior patch,
 commit, or PR records. Local changes overlapping the incoming ZIP are blocked
-before extraction; disjoint developer edits are preserved. The legacy
-`followup=true` path and direct CLI commands retain their previous behavior.
+before extraction; disjoint developer edits are preserved. The direct LOOSE `followup=true` path retains its uncommitted behavior and
+also accepts a clean, locally committed historical predecessor when the latest
+structured applied-history entry, exact HEAD, successful APL journal evidence,
+remote identity and ancestry are verified, with no pending workflow or active
+session. It does not silently create/adopt a feature session or authorize PR
+publication.
 The guarded goal dispatcher exposes the verified internal continuation
 guard only for a uniquely linked committed session. FS-06 adds independent
 publication guards for the exact commit and remote, fast-forward push,
@@ -240,14 +244,16 @@ patch checkpoints. The cache is updated only after each successful APL, so
 `STS` and later invocations use the latest successfully applied handoff. A
 failed action stops the sequence without undoing earlier effects.
 
-A separately selected repair ZIP may use explicit LOOSE `followup=true` after
-an earlier invocation has applied its predecessor and moved uncommitted files
-onto the planned feature branch. Before accepting that new application,
-the tool requires a matching pending workflow at the same HEAD and remote,
-uncommitted changes, and the current planned feature branch. Extraction still
-uses the normal overlapping-file approval, backups, registry ordering and
-per-ZIP checkpoints. This is not an implicit multi-ZIP replay and cannot
-be combined with `handoffSeq`.
+A separately selected repair ZIP may use explicit LOOSE `followup=true` on
+the existing planned feature branch, either with a matching uncommitted
+predecessor or after a clean local commit. The clean path selects only the
+last ordered applied-history entry, verifies its committed workflow and
+successful APL journal, exact HEAD, base ancestry, remote identity, and
+absence of conflicting unfinished workflows or active feature sessions.
+A failed guard cannot relabel earlier checkpoints or extract new bytes.
+Extraction retains overlapping-file approval, backups, registry ordering and
+per-ZIP checkpoints. This is not an implicit multi-ZIP replay, does not
+repeat BRN, and cannot be combined with `handoffSeq`.
 
 Applied-ZIP history prevents accidental replay: unattended `APL` checks for
 duplicates before previous-cycle reconciliation, overlap approvals, or file
@@ -410,13 +416,3 @@ Before adding an operation or changing a mode, inspect the owning helper, CLI pa
 
 
 
-
-RE-05 uses `apatch_lib/review_retention.py` for conservative, disabled-by-default
-review storage retention and consent-gated metadata export. The `REV` capture
-path reserves capacity and performs optional pruning under a no-follow,
-project-local file lock before allocating a new private review directory.
-Only terminal, fully inventoried and hashed runs can be pruned. A private
-per-run intent journal supports resumption of interrupted deletions while
-unknown files and incomplete runs are protected; this cannot bypass review,
-CHK, Git or GitHub gates. A separate read-only export emits bounded reference
-metadata, not captured streams or finding text, and never initiates transport.

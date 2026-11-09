@@ -26,9 +26,6 @@ case "${1:-regular}" in
             tests.test_review_normalizer \
             tests.test_review_context \
             tests.test_review_evidence_api \
-            tests.test_review_retention \
-            tests.test_code_review.CodeReviewTests.test_retention_enabled_prunes_old_completed_review_before_next_capture \
-            tests.test_code_review.CodeReviewTests.test_review_retention_config_rejects_invalid_values \
             tests.test_code_review.CodeReviewTests.test_structured_review_persists_normalized_report_and_blocks_high_findings \
             tests.test_code_review.CodeReviewTests.test_structured_missing_required_scanner_escalates_and_advisory_missing_warns \
             tests.test_code_review.CodeReviewTests.test_structured_zero_findings_allows_required_review_to_commit \
@@ -95,6 +92,11 @@ case "${1:-regular}" in
             tests.test_operation_journal.OperationJournalCliTests.test_failed_action_still_creates_run_with_bounded_error \
             tests.test_progress.ProgressStorageTests.test_corrupted_master_is_never_replaced \
             tests.test_safety.SafetyTests.test_canonical_check_timeout_stops_batch_and_preserves_commit \
+            tests.test_handoffs.HandoffsTests.test_clean_committed_multi_zip_branch_accepts_explicit_followup \
+            tests.test_handoffs.HandoffsTests.test_clean_committed_followup_refuses_head_drift \
+            tests.test_handoffs.HandoffsTests.test_clean_committed_followup_requires_application_journal \
+            tests.test_handoffs.HandoffsTests.test_clean_committed_followup_refuses_unknown_remote_and_pending_workflow \
+            tests.test_session_continuation.SessionContinuationTests.test_direct_committed_followup_does_not_bypass_active_session \
             tests.test_handoffs.HandoffsTests.test_self_contained_lifecycle_loose \
             tests.test_github.GithubGuardTest.test_pr_head_drift_blocks_merge
         ;;

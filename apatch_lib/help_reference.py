@@ -121,8 +121,9 @@ HELP_EPILOG = dedent("""
       MERGE (CMT through SYN), RUN_ALL (full guarded workflow).
       Goals: CHECKED, COMMITTED, PUSHED, PR_CREATED, MERGED.
       Use handoffSeq=zip1.zip,zip2.zip for multiple explicit APL entries.
-      Use followup=true only when intentionally applying a repair ZIP to an
-      unfinished matching LOOSE feature session. featureBranch=feature/new
+      Use followup=true for an explicit new ZIP on a matching LOOSE feature
+      branch with pending edits or a verified clean local commit; omit BRN.
+      featureBranch=feature/new
       can safely reassign a pending ZIP before BRN where allowed.
 
       If CHK or REV fails: correct the reported files, run STS, then resume
@@ -249,3 +250,4 @@ PREFLIGHT_HELP_EPILOG = dedent("""
       source drift before publishing the archive. CHK remains mandatory in
       the destination repository after ZIP application.
 """).strip()
+

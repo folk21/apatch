@@ -29,6 +29,7 @@ class CapturedOutput:
 
 
 def _kill_group(process):
+    """Stop a reviewer even when the platform refuses process-group signalling."""
     if process.poll() is not None:
         return
     if os.name == "posix":
@@ -36,8 +37,15 @@ def _kill_group(process):
             os.killpg(process.pid, signal.SIGKILL)
             return
         except ProcessLookupError:
-            return
-    process.kill()
+            pass
+        except PermissionError:
+            # macOS can reject signalling the entire process group.
+            # The direct child must still be terminated; review remains failed.
+            pass
+    try:
+        process.kill()
+    except ProcessLookupError:
+        pass
 
 
 def _secure_file(path: Path):
@@ -151,7 +159,7 @@ class ReviewArtifacts:
                             counts[name] += len(portion)
                             if name == "stdout" and len(preview) < 262145:
                                 preview.extend(portion[:262145 - len(preview)])
-            except OSError:
+            except (OSError, ValueError):
                 failed.set()
             finally:
                 pipe.close()
@@ -169,6 +177,7 @@ class ReviewArtifacts:
             stderr_file = _secure_file(stderr_path)
         except OSError as exc:
             raise Abort(f"REVIEW_ARTIFACT_UNAVAILABLE: Cannot open output files: {type(exc).__name__}") from exc
+        threads = []
         try:
             with subprocess.Popen(argv, cwd=cwd, env=env, stdin=subprocess.PIPE,
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -178,25 +187,30 @@ class ReviewArtifacts:
                     threading.Thread(target=reader, args=(process.stderr, stderr_file, "stderr"), daemon=True),
                     threading.Thread(target=writer, args=(process.stdin,), daemon=True),
                 ]
-                for thread in threads:
-                    thread.start()
-                deadline = time.monotonic() + timeout
-                timed_out = False
-                while process.poll() is None:
-                    if exceeded.is_set() or failed.is_set():
+                try:
+                    for thread in threads:
+                        thread.start()
+                    deadline = time.monotonic() + timeout
+                    timed_out = False
+                    while process.poll() is None:
+                        if exceeded.is_set() or failed.is_set():
+                            _kill_group(process)
+                            break
+                        if time.monotonic() >= deadline:
+                            timed_out = True
+                            _kill_group(process)
+                            break
+                        try:
+                            process.wait(timeout=min(0.05, max(0.001, deadline - time.monotonic())))
+                        except subprocess.TimeoutExpired:
+                            pass
+                    process.wait()
+                finally:
+                    if process.poll() is None:
                         _kill_group(process)
-                        break
-                    if time.monotonic() >= deadline:
-                        timed_out = True
-                        _kill_group(process)
-                        break
-                    try:
-                        process.wait(timeout=min(0.05, max(0.001, deadline - time.monotonic())))
-                    except subprocess.TimeoutExpired:
-                        pass
-                process.wait()
-                for thread in threads:
-                    thread.join(timeout=2)
+                    for thread in threads:
+                        if thread.ident is not None:
+                            thread.join(timeout=2)
                 incomplete = any(thread.is_alive() for thread in threads)
                 result = CapturedOutput(bytes(preview), process.returncode, timed_out,
                                         exceeded.is_set(), counts["stdout"], counts["stderr"],

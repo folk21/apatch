@@ -33,7 +33,7 @@ the original ZIP, digest, changed paths and applied-history provenance are kept.
 Continue with `apatch opSeq=FMT,CHK,STS skipApproves=true` if formatters are
 configured, or `apatch goal=CHECKED skipApproves=true` otherwise.
 
-For an unexpected repair ZIP while earlier patch changes remain uncommitted on their feature branch, use explicit LOOSE `followup=true` with the new ZIP and `APL` instead of replaying or resetting the previous patch. See [Usage](docs/USAGE.md#unplanned-repair-zip-on-an-unfinished-feature-branch-followuptrue).
+For an additional ZIP on the existing feature branch, use explicit LOOSE `followup=true` with `APL` (without `BRN`) when the previous changes are uncommitted or the latest recorded ZIP has a verified clean local commit. See [Usage](docs/USAGE.md#explicit-loose-follow-up-zip-on-an-existing-feature-branch-followuptrue).
 
 To inspect recorded activity across all projects from any directory, use `apatch.sh info=PROGRESS`. This read-only summary does not require a Git repository or a handoff.
 
@@ -73,3 +73,4 @@ or resumed ZIP lifecycles. Both reuse the verified feature-session planner and
 stop on uncertain GitHub operations. See [Usage](docs/USAGE.md#guarded-workflow-macros-wm-03-and-wm-05).
 
 On 2026-10-28 the developer also accepted and archived [SUB-002 — Execution History and Audit](docs/specs/archive/subspecs/subspec-02-state-history-audit.md) and [SUB-005 — Architectural Simplification](docs/specs/archive/subspecs/subspec-05-architectural-simplification.md), together with their plans. [SUB-003 — Feature Sessions](docs/specs/active/subspecs/subspec-03-feature-session-planning.md) and [SUB-004 — Operational Workflows](docs/specs/active/subspecs/subspec-04-operational-workflows.md) remain active. See the [SDD index](docs/specs/README.md) for the plan mapping and the [SDD agent rules](docs/specs/AGENTS.md) for lifecycle and archiving policy. [STATE.json](docs/specs/STATE.json) records only the developer-controlled processing focus and can be checked with `python3 tools/specs/validate_state.py`.
+

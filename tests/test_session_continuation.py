@@ -124,13 +124,13 @@ class SessionContinuationTests(LocalGitFixture):
         self.assertEqual(self.history_path.read_bytes(), before_history)
         self.assertFalse((self.root / "second.txt").exists())
 
-    def test_legacy_followup_after_commit_still_requires_uncommitted_predecessor(self):
+    def test_direct_committed_followup_does_not_bypass_active_session(self):
         self.prepare_session()
         new = self.make_followup_zip()
         result = self.invoke_zip("op=APL", "followup=true", "skipApproves=true",
                                  selection=new.stem)
         self.assertEqual(result.returncode, 2)
-        self.assertIn("previous uncommitted changes", result.stderr)
+        self.assertIn("active feature session", result.stderr)
         self.assertFalse((self.root / "second.txt").exists())
 
     def test_modified_collision_blocks_before_history_or_source_writes(self):
@@ -308,3 +308,4 @@ class SessionContinuationTests(LocalGitFixture):
             linked = workflow.attach_session(session_id)
         self.assertEqual(len(linked.patch_workflow_keys), 2)
         self.assertEqual(len(self.history_path.read_text().split("Date: ")) - 1, 2)
+
