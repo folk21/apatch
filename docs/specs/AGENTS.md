@@ -23,6 +23,47 @@ ownership and lifecycle.
    README, and processing checkpoint valid after every move or rename. Plans
    must not silently acquire normative authority.
 
+## Iterative specification design and implementation planning
+
+1. **Review and approve the specification before implementation.** Treat
+   specification authoring as an iterative design process, not a one-shot
+   document generation task. Discuss scope, intended behavior, constraints,
+   and acceptance criteria with the developer; obtain explicit approval of
+   the specification as the implementation baseline. Approval of a proposed
+   design is separate from acceptance of completed implementation work.
+2. **Refine requirements through feedback.** Start with the developer's goals
+   and verified product context, make assumptions and unresolved questions
+   visible, and revise the draft in reviewable increments. Do not silently
+   turn a first suggestion into a normative decision or present it as the
+   only reasonable solution. Preserve developer decisions across revisions.
+3. **Research comparable solutions when useful.** For uncertain workflows,
+   interfaces, or product behavior, examine relevant existing applications,
+   UI patterns, APIs, and prior solutions. Compare what works and what does
+   not, record evidence and applicability, and use findings to propose
+   improvements to the specification's UI or logic. Do not copy designs
+   blindly or require external research for straightforward changes.
+4. **Treat the implementation plan as engineering research.** Inspect the
+   verified codebase and its contracts before selecting an architecture.
+   Explore plausible algorithms, module boundaries, storage approaches,
+   libraries, and integration patterns; consider alternative languages or
+   stacks when that choice is genuinely open. Compare options on safety,
+   correctness, recovery, performance, portability, testability, maintenance,
+   and implementation complexity. Validate material assumptions with focused
+   research or prototypes when warranted.
+5. **Discuss consequential choices.** Present meaningful alternatives,
+   trade-offs, and a reasoned recommendation to the developer before fixing
+   high-impact architectural, interface, dependency, or migration decisions
+   in the plan. Leave unresolved choices explicitly provisional. Do not
+   assume the model's first implementation plan is uniquely optimal, and
+   avoid prolonging design discussions over low-impact details.
+6. **Iterate the plan together with the specification.** Maintain a separate,
+   linked advisory implementation plan with concrete incremental stages,
+   dependencies, verified code ownership, failure/recovery handling, and
+   validation evidence as required below. Revise it when research, developer
+   feedback, or normative requirements change materially. Draft planning may
+   proceed alongside specification review, but no provisional plan authorizes
+   implementation of unapproved requirements.
+
 ## SDD processing and evidence
 
 1. Inspect the current source, tests, repository/worktree revision, owning
@@ -80,3 +121,4 @@ ownership and lifecycle.
 
 Do not silently promote, archive, or rewrite a partially verified sub-spec.
 Developer acceptance and normative requirements outrank advisory plans.
+
