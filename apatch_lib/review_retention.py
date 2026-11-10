@@ -301,6 +301,11 @@ def _retention_locked(reviews_fd: int, *, max_runs: int, max_bytes: int,
         selected.append((name, files))
         runs -= 1
         used -= bytes_used
+    if (not dry_run and (reserve_runs or reserve_bytes)
+            and (protected or runs > max_runs or used > max_bytes)):
+        # Never destroy verified history for a new review that cannot be admitted.
+        raise Abort("REVIEW_RETENTION_QUOTA: Protected or incomplete evidence "
+                    "prevents allocating a new review")
     if not dry_run:
         for name, files in selected:
             _delete_known_run(reviews_fd, name, files)

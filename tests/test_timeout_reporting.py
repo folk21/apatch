@@ -11,10 +11,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from apatch_lib.gitutil import _check_failure_summary
-from tests._support import run_bounded
-from tests.timeout_runner import (IsolatedResult, TimeoutSummaryRunner, configured_workers,
-                                  configured_serial_retries, is_timeout_error,
-                                  run_isolated_test_ids)
+from tests._support import configured_fixture_timeout, run_bounded
+from tests.timeout_runner import (IsolatedResult, TimeoutSummaryRunner, classify_test_process_result,
+                                  configured_workers,
+                                  configured_serial_retries, configured_test_timeout,
+                                  is_timeout_error, main, run_isolated_test_ids)
 
 
 class IsolatedSampleCases(unittest.TestCase):
@@ -25,6 +26,10 @@ class IsolatedSampleCases(unittest.TestCase):
 
     def case_stall(self):
         time.sleep(20)
+
+    def case_nested_bounded_timeout(self):
+        run_bounded([sys.executable, "-c", "import time; time.sleep(10)"],
+                    cwd=Path(__file__).resolve().parent, timeout_seconds=0.2)
 
     def case_gh_offline(self):
         result = subprocess.run(["gh", "auth", "status"],
@@ -91,6 +96,47 @@ class TimeoutReportingTests(unittest.TestCase):
             with self.subTest(invalid=invalid):
                 with self.assertRaisesRegex(ValueError, "APATCH_TEST_WORKERS"):
                     configured_workers(invalid, platform="darwin")
+
+    def test_case_timeout_is_platform_aware_and_can_be_bounded_explicitly(self):
+        self.assertEqual(configured_test_timeout(platform="darwin"), 90)
+        self.assertEqual(configured_test_timeout(platform="linux"), 30)
+        self.assertEqual(configured_test_timeout("60", platform="darwin"), 60)
+        self.assertEqual(configured_test_timeout("180", platform="linux"), 180)
+        for invalid in ("", "0", "181", "-1", "1.5", " 90", "090", "nan", "９０"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaisesRegex(ValueError, "APATCH_TEST_TIMEOUT_SECONDS"):
+                    configured_test_timeout(invalid, platform="darwin")
+
+    def test_main_passes_configured_case_timeout_to_isolated_runner(self):
+        test_id = f"{__name__}.IsolatedSampleCases.case_success"
+        passed = IsolatedResult(test_id, "OK", 0.01, "", "")
+        with patch.dict(os.environ, {"APATCH_TEST_TIMEOUT_SECONDS": "75"}), \
+             patch.object(sys, "argv", ["timeout_runner", test_id]), \
+             patch("tests.timeout_runner.run_isolated_test_ids", return_value=[passed]) as run:
+            self.assertEqual(main(), 0)
+        self.assertEqual(run.call_args.kwargs["timeout_seconds"], 75)
+
+    def test_fixture_subprocess_deadline_preserves_outer_macos_budget(self):
+        self.assertEqual(configured_fixture_timeout(platform="darwin"), 75)
+        self.assertEqual(configured_fixture_timeout(platform="linux"), 30)
+        self.assertLess(configured_fixture_timeout(platform="darwin"),
+                        configured_test_timeout(platform="darwin"))
+
+    def test_nested_subprocess_timeout_is_retryable_but_other_errors_are_not(self):
+        traceback = ("ERROR: test_slow (tests.example.Tests.test_slow)\n"
+                     "subprocess.TimeoutExpired: Command '['/tmp/python', 'apatch.py']' "
+                     "timed out after 30 seconds\n")
+        self.assertEqual(classify_test_process_result(1, traceback), "TIMEOUT")
+        self.assertEqual(classify_test_process_result(0, traceback), "OK")
+        self.assertEqual(classify_test_process_result(
+            1, "\x1b[31msubprocess.TimeoutExpired: Command ['python'] "
+               "timed out after 0.2 seconds\x1b[0m"), "TIMEOUT")
+        self.assertEqual(classify_test_process_result(1, "AssertionError: timeout policy"),
+                         "FAILED")
+        self.assertEqual(classify_test_process_result(1, "ValueError: invalid input"),
+                         "FAILED")
+        self.assertEqual(classify_test_process_result(1, "subprocess.TimeoutExpired: "
+                         "timeout described without a deadline"), "FAILED")
 
     def test_default_retry_budget_is_platform_aware(self):
         self.assertEqual(configured_serial_retries(platform="darwin"), 8)
@@ -172,7 +218,7 @@ class TimeoutReportingTests(unittest.TestCase):
         output = StringIO()
         results = run_isolated_test_ids(
             [f"{prefix}.case_stall", f"{prefix}.case_success"],
-            timeout_seconds=2, workers=2, stream=output)
+            timeout_seconds=8, workers=2, stream=output)
         outcomes = {result.test_id: result.outcome for result in results}
         self.assertEqual(outcomes[f"{prefix}.case_stall"], "TIMEOUT")
         self.assertEqual(outcomes[f"{prefix}.case_success"], "OK")
@@ -186,6 +232,38 @@ class TimeoutReportingTests(unittest.TestCase):
                                        timeout_seconds=5, workers=1,
                                        stream=StringIO())
         self.assertEqual(result[0].outcome, "OK")
+
+    def test_isolated_runner_classifies_real_nested_subprocess_timeout(self):
+        test_id = f"{__name__}.IsolatedSampleCases.case_nested_bounded_timeout"
+        output = StringIO()
+        result = run_isolated_test_ids([test_id], timeout_seconds=8,
+                                       workers=1, max_serial_retries=0, stream=output)
+        self.assertEqual(result[0].outcome, "TIMEOUT")
+        self.assertIn("TIMEOUT-AFFECTED TESTS: 1", output.getvalue())
+        self.assertIn("not retried (retry cap reached)", output.getvalue())
+
+    @unittest.skipUnless(os.name == "posix", "Process groups are POSIX-only")
+    def test_nested_fixture_timeout_survives_denied_group_signal(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            started = time.monotonic()
+            with patch("tests._process_termination.os.killpg",
+                       side_effect=PermissionError("group signal denied")):
+                with self.assertRaises(subprocess.TimeoutExpired):
+                    run_bounded([sys.executable, "-c", "import time; time.sleep(10)"],
+                                cwd=Path(temporary), timeout_seconds=0.2)
+            self.assertLess(time.monotonic() - started, 4)
+
+    @unittest.skipUnless(os.name == "posix", "Process groups are POSIX-only")
+    def test_isolated_runner_timeout_survives_denied_group_signal(self):
+        test_id = f"{__name__}.IsolatedSampleCases.case_stall"
+        output = StringIO()
+        with patch("tests._process_termination.os.killpg",
+                   side_effect=PermissionError("group signal denied")):
+            results = run_isolated_test_ids([test_id], timeout_seconds=0.2,
+                                            workers=1, max_serial_retries=0,
+                                            stream=output)
+        self.assertEqual(results[0].outcome, "TIMEOUT")
+        self.assertIn("TIMEOUT-AFFECTED TESTS: 1", output.getvalue())
 
     def test_bounded_fixture_command_preserves_output_and_failure_status(self):
         cwd = Path(__file__).resolve().parent

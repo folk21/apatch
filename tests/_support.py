@@ -6,7 +6,6 @@ import os
 import re
 import shlex
 import shutil
-import signal
 import stat
 import subprocess
 import sys
@@ -20,6 +19,8 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
+from tests._process_termination import terminate_test_process
+
 TOOL = Path(__file__).resolve().parents[1]
 from apatch_lib.model import Abort, RemoteOutcomeUnknown, load_handoff, load_project_config, safe_relative
 from apatch_lib.patch import inspect
@@ -30,7 +31,13 @@ from apatch_lib.sequence import OperationSequence, execute_sequence
 from apatch_lib.workflow import outcome_label
 
 
-TEST_COMMAND_TIMEOUT_SECONDS = 30
+def configured_fixture_timeout(*, platform=None):
+    """Leave cleanup time inside the isolated test deadline on slower macOS hosts."""
+    platform = sys.platform if platform is None else platform
+    return 75 if platform == "darwin" else 30
+
+
+TEST_COMMAND_TIMEOUT_SECONDS = configured_fixture_timeout()
 
 
 def run_bounded(argv, *, cwd, input=None, check=False,
@@ -44,13 +51,7 @@ def run_bounded(argv, *, cwd, input=None, check=False,
         try:
             stdout, stderr = process.communicate(input=input, timeout=timeout_seconds)
         except subprocess.TimeoutExpired as exc:
-            if os.name == "posix":
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-            else:
-                process.kill()
+            terminate_test_process(process)
             try:
                 stdout, stderr = process.communicate(timeout=2)
             except subprocess.TimeoutExpired:

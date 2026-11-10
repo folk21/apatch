@@ -4,7 +4,6 @@ import argparse
 import os
 import re
 import shlex
-import signal
 import subprocess
 import sys
 import tempfile
@@ -14,9 +13,13 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 
+from tests._process_termination import terminate_test_process
+
 
 _TIMEOUT_TEXT = re.compile(r"\b(?:timed?\s*out|timeout|stalled with no output)\b", re.IGNORECASE)
 TEST_CASE_TIMEOUT_SECONDS = 30
+MACOS_TEST_CASE_TIMEOUT_SECONDS = 90
+MAX_CONFIGURED_TEST_TIMEOUT_SECONDS = 180
 MAX_OUTPUT_CHARACTERS = 8000
 MAX_TEST_WORKERS = 4
 MAX_SERIAL_RETRIES = 3
@@ -26,6 +29,18 @@ FAILURE_SUMMARY_LIMIT = 8
 FAILURE_REASON_LIMIT = 180
 RUNNER_HEARTBEAT_SECONDS = 10
 _ERROR_LINE = re.compile(r"(?:AssertionError|[A-Za-z_][A-Za-z_0-9.]*Error|[A-Za-z_][A-Za-z_0-9.]*Exception):")
+_NESTED_TIMEOUT_ERROR = re.compile(
+    r"^subprocess\.TimeoutExpired: Command .+ timed out after \d+(?:\.\d+)? seconds?\s*$",
+    re.MULTILINE,
+)
+_ANSI_SGR = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def classify_test_process_result(returncode, stderr):
+    """Retry only a failed unittest that actually raised a subprocess timeout."""
+    if returncode == 0:
+        return "OK"
+    return "TIMEOUT" if _NESTED_TIMEOUT_ERROR.search(_ANSI_SGR.sub("", stderr)) else "FAILED"
 
 
 def configured_workers(value=None, *, platform=None):
@@ -40,6 +55,21 @@ def configured_workers(value=None, *, platform=None):
     if str(count) != str(value) or not 1 <= count <= MAX_TEST_WORKERS:
         raise ValueError("APATCH_TEST_WORKERS must be an integer from 1 to 4")
     return count
+
+
+def configured_test_timeout(value=None, *, platform=None):
+    """Choose a bounded wall-clock deadline for subprocess-heavy test cases."""
+    platform = sys.platform if platform is None else platform
+    if value is None:
+        return (MACOS_TEST_CASE_TIMEOUT_SECONDS if platform == "darwin"
+                else TEST_CASE_TIMEOUT_SECONDS)
+    if (not isinstance(value, str) or len(value) > 3 or not value.isascii()
+            or not value.isdecimal() or value.startswith("0")):
+        raise ValueError("APATCH_TEST_TIMEOUT_SECONDS must be an integer from 1 to 180")
+    timeout = int(value)
+    if not 1 <= timeout <= MAX_CONFIGURED_TEST_TIMEOUT_SECONDS:
+        raise ValueError("APATCH_TEST_TIMEOUT_SECONDS must be an integer from 1 to 180")
+    return timeout
 
 
 def configured_serial_retries(*, platform=None):
@@ -166,20 +196,14 @@ def _run_test_in_process(test_id, root, env, timeout_seconds):
             try:
                 stdout, stderr = process.communicate(timeout=timeout_seconds)
             except subprocess.TimeoutExpired as exc:
-                if os.name == "posix":
-                    try:
-                        os.killpg(process.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
-                else:
-                    process.kill()
+                terminate_test_process(process)
                 try:
                     stdout, stderr = process.communicate(timeout=2)
                 except subprocess.TimeoutExpired:
                     stdout, stderr = exc.stdout or "", exc.stderr or ""
                 return IsolatedResult(test_id, "TIMEOUT", time.monotonic() - started,
                                       stdout or "", stderr or "")
-        outcome = "OK" if process.returncode == 0 else "FAILED"
+        outcome = classify_test_process_result(process.returncode, stderr)
         return IsolatedResult(test_id, outcome, time.monotonic() - started,
                               stdout, stderr)
     except OSError as exc:
@@ -296,10 +320,11 @@ def main():
     test_ids = list(_flatten_test_ids(suite))
     try:
         workers = configured_workers(os.environ.get("APATCH_TEST_WORKERS"))
+        timeout_seconds = configured_test_timeout(os.environ.get("APATCH_TEST_TIMEOUT_SECONDS"))
     except ValueError as exc:
         parser.error(str(exc))
     results = run_isolated_test_ids(
-        test_ids, workers=workers,
+        test_ids, workers=workers, timeout_seconds=timeout_seconds,
         max_serial_retries=configured_serial_retries())
     return 0 if all(item.outcome == "OK" for item in results) else 1
 
