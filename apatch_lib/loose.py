@@ -118,6 +118,8 @@ class LooseActions:
         if branch == w.config.base:
             if w.allow_followup_zip:
                 raise Abort("followup=true requires the existing feature branch, not the base branch")
+            if w.record.get("reassigned_branch") is not None:
+                w.branch_patch.assert_new_branch_available()
             return
         if not w.allow_followup_zip:
             raise Abort("A new self-contained ZIP on an unfinished feature branch requires "
@@ -125,8 +127,10 @@ class LooseActions:
         if branch != w.handoff.branch:
             raise Abort(f"Follow-up ZIP targets {w.handoff.branch}, but current branch is {branch}")
         if not status_paths(w.root):
-            require_committed_loose_followup(w.root, w.config, w.handoff, w.state,
-                                             archive=archive)
+            require_committed_loose_followup(
+                w.root, w.config, w.handoff, w.state,
+                archive=archive if archive is not None else inspect(
+                    w.config, w.source_handoff, w.root))
             return
         current_head = head(w.root)
         current_remote_url = output(["git", "remote", "get-url", w.config.remote], w.root)
@@ -155,7 +159,7 @@ class LooseActions:
     def apply_patch(self):
         w = self.w
         branch = self.branch()
-        archive = inspect(w.config, w.handoff, w.root)
+        archive = inspect(w.config, w.source_handoff, w.root)
         before = status_paths(w.root)
         zip_first = archive.embedded_handoff is not None and branch == w.config.base
         session_id = getattr(w, "_session_continuation_id", None)
@@ -219,11 +223,11 @@ class LooseActions:
             w.record["preexisting_staged_paths"] = sorted(
                 path for path, code in before.items() if code[0] not in {" ", "?"})
             w.persist()
-            apply(w.config, w.handoff, w.root, archive)
+            apply(w.config, w.source_handoff, w.root, archive)
             _, paths = worktree_fingerprint(w.root)
             w.record.update(phase=WorkflowPhase.PATCH_APPLIED.value, changed_paths=sorted(paths))
             persist_registry(w.root, archive.created_registry)
-            history.append(w.handoff.patch, w.handoff.branch, branch)
+            history.append(w.handoff.patch, w.source_handoff.branch, branch)
             w.persist()
         print("Patch applied. Keep editing, apply another ZIP, run checks, or commit when ready.")
         return True

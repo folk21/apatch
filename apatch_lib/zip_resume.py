@@ -59,7 +59,9 @@ def verify_applied_zip(
             not isinstance(target, str) or not BRANCH_PATTERN.fullmatch(target)
             or ".." in target or target.endswith("/") or target == handoff.branch
             or target == config.base or record.get("source_branch") != handoff.branch
-            or record.get("zip_first") is not True):
+            or not (record.get("zip_first") is True
+                    or (record.get("zip_first") is False and
+                        record.get("branch_override_kind") == "followup"))):
         raise Abort(f"{reason} Invalid stored feature branch reassignment.")
     if record.get("superseded_by") or record.get("continued_by"):
         raise Abort(f"{reason} The recorded patch has a newer continuation.")
