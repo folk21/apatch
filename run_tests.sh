@@ -87,6 +87,7 @@ case "${1:-regular}" in
             tests.test_branch_reassignment.PendingZipBranchReassignmentTests.test_reassign_existing_planned_branch_and_resume_fmt_chk \
             tests.test_branch_reassignment.PendingZipBranchReassignmentTests.test_target_local_or_remote_collision_does_not_mutate_checkpoint \
             tests.test_branch_reassignment.PendingZipBranchReassignmentTests.test_goal_checked_can_continue_on_reassigned_branch \
+            tests.test_branch_reassignment.UpfrontZipBranchSelectionTests \
             tests.test_zip_resume.ExplicitZipResumeTests.test_symlinked_cache_refuses_reselection_without_touching_target \
             tests.test_operation_journal.OperationJournalStorageTests.test_invalid_v2_fails_without_overwriting_bytes \
             tests.test_operation_journal.OperationJournalCliTests.test_failed_action_still_creates_run_with_bounded_error \

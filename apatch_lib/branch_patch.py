@@ -33,7 +33,7 @@ class BranchPatchActions:
         if history is None:
             with locked_history(w.config.applied_patches_path) as locked:
                 return self.assert_patch_order(locked, archive)
-        archive = archive or inspect(w.config, w.handoff, w.root, before_apply=False)
+        archive = archive or inspect(w.config, w.source_handoff, w.root, before_apply=False)
         return assert_patch_order(w.root, w.handoff.patch, history, archive.created_registry)
 
     def assert_new_branch_available(self):
@@ -224,10 +224,10 @@ class BranchPatchActions:
             before_patch_head=head(w.root),
         )
         w.persist()
-        apply(w.config, w.handoff, w.root, archive)
+        apply(w.config, w.source_handoff, w.root, archive)
         w.assert_expected_paths()
         persist_registry(w.root, archive.created_registry)
-        history.append(w.handoff.patch, w.handoff.branch, patch_branch)
+        history.append(w.handoff.patch, w.source_handoff.branch, patch_branch)
         w.record["phase"] = "patch_applied"
         w.persist()
         print("Patch applied. Run verification before committing.")

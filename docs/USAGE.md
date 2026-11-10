@@ -260,6 +260,58 @@ applications. Resume only after checking Git state and the relevant ZIP
 checkpoint. Applying an additional ZIP on the feature branch in a later invocation
 requires the explicit `followup=true` option described below.
 
+### Reuse an unchanged ZIP with `featureBranch` during `APL`
+
+When the ZIP names an outdated feature branch, its source files and embedded
+metadata can remain unchanged. In LOOSE mode, select the actual destination
+branch explicitly, retaining the original ZIP digest and planned-branch
+identity in the application checkpoint and history.
+
+**Create a new feature branch from the current base:** start on a clean,
+up-to-date configured base branch (normally `main`). The replacement branch
+must not exist locally or on the remote. No previous unfinished feature work
+may be bypassed. The new `featureBranch` applies to both `APL` and `BRN`:
+
+```bash
+/path/to/apatch/apatch.sh original-patch \
+  featureBranch=feature/new-work \
+  opSeq=APL,BRN,CHK,STS skipApproves=true
+```
+
+An `op=APL` invocation with `featureBranch` can also be followed by a separate
+`op=BRN`; the target selection is recorded in the checkpoint. The previously
+supported `op=BRN featureBranch=feature/new-work` remains available after an
+ordinary apply-first ZIP, before `BRN`.
+
+**Continue an existing LOOSE feature branch:** check out that branch before
+invoking the selected new ZIP. Supply the exact checked-out branch and
+`followup=true`, without `BRN`:
+
+```bash
+/path/to/apatch/apatch.sh next-patch \
+  featureBranch=feature/current-work followup=true \
+  opSeq=APL,FMT,CHK,STS skipApproves=true
+```
+
+This form still requires the existing follow-up predecessor checks: either
+verified pending changes from a previous ZIP at the current HEAD or a clean,
+locally committed predecessor with matching Git remote, history, operation
+journal, and ancestry. It cannot adopt unrelated work, silently select a
+branch, or bypass overlap review and backups. `skipApproves=true` removes
+prompts but not safeguards. Omit `FMT` when no formatter is configured.
+
+The ZIP's `.apatch/params.json` remains authoritative for the **source**
+planned branch; the project's ignored cached params preserve that original
+identity as well. `featureBranch` sets only the **effective** destination.
+The unchanged ZIP name and SHA-256 still identify the applied archive.
+Recovery and explicit ZIP resume validate both the original identity and the
+persisted effective branch. A different effective branch cannot be selected
+mid-workflow. A mismatching `base_commit` is not silently rewritten.
+
+Upfront `featureBranch` for `APL` is only supported with a directly selected
+self-contained ZIP in LOOSE mode. It is not supported for `handoffSeq`, legacy
+JSON, goals, STRICT/FORCE `APL`, or a follow-up sequence containing `BRN`.
+
 ### Explicit LOOSE follow-up ZIP on an existing feature branch (`followup=true`)
 
 When an earlier standalone ZIP has completed `APL,BRN` but remains uncommitted,
@@ -271,8 +323,9 @@ a separately generated repair ZIP can be applied without replaying the first:
 ```
 
 `followup=true` is LOOSE-only and separate from `handoffSeq`. It requires a
-newly selected self-contained ZIP, a leading `APL`, and the exact planned
-feature branch. Two predecessor states are supported:
+newly selected self-contained ZIP, a leading `APL`, and either the planned
+feature branch or a deliberate `featureBranch=...` override matching the
+checked-out branch. Two predecessor states are supported:
 
 - **Uncommitted:** existing changed paths and a matching previous
   `patch_applied` or `verified` workflow at the current HEAD and Git remote.

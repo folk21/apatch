@@ -42,7 +42,7 @@ PHASES = PHASE_VALUES
 class Workflow(OperationPresentation):
     def __init__(self, root: Path, config, handoff, state, *, force=False, loose=False,
                  skip_previous_cycles=False, zip_selected=False, allow_followup_zip=False,
-                 progress_recorder=None):
+                 selected_branch=None, progress_recorder=None):
         self.root = root
         self.config = config
         self.source_handoff = handoff
@@ -66,14 +66,35 @@ class Workflow(OperationPresentation):
         self.key = hashlib.sha256(key_data.encode()).hexdigest()
         self.record = state["workflows"].get(self.key, {})
         reassigned = self.record.get("reassigned_branch")
+        pending_override = {}
+        if selected_branch is not None:
+            if not loose or force or not zip_selected:
+                raise Abort("An upfront featureBranch requires a selected ZIP in LOOSE")
+            if reassigned is not None and reassigned != selected_branch:
+                raise Abort("featureBranch conflicts with the recorded effective branch")
+            if (selected_branch != handoff.branch and reassigned is None
+                    and self.record.get("phase", "new") != "new"):
+                raise Abort("Cannot change the target of an already applied ZIP")
+            if selected_branch != handoff.branch and reassigned is None:
+                if self.record:
+                    raise Abort("Cannot reassign an existing workflow checkpoint during APL")
+                pending_override = dict(
+                    source_branch=handoff.branch,
+                    reassigned_branch=selected_branch,
+                    branch_override_kind="followup" if allow_followup_zip else "new")
+                reassigned = selected_branch
+        recorded = {**self.record, **pending_override}
         if reassigned is not None:
-            if (self.record.get("zip_first") is not True
-                    or self.record.get("source_branch") != handoff.branch
+            if (recorded.get("source_branch") != handoff.branch
                     or not isinstance(reassigned, str)
                     or not BRANCH_PATTERN.fullmatch(reassigned)
                     or ".." in reassigned or reassigned.endswith("/")
-                    or reassigned in {handoff.branch, config.base}):
-                raise Abort("Invalid pending ZIP branch reassignment checkpoint")
+                    or reassigned in {handoff.branch, config.base}
+                    or (recorded.get("zip_first") is not True
+                        and recorded.get("branch_override_kind") != "followup"
+                        and not (selected_branch == reassigned
+                                 and recorded.get("branch_override_kind") == "new"))):
+                raise Abort("Invalid ZIP branch reassignment checkpoint")
             self.handoff = replace(handoff, branch=reassigned)
         LOGGER.info("workflow loaded feature=%s patch=%s phase=%s", handoff.branch, handoff.patch, self.record.get("phase", "new"))
         signature = handoff_signature(handoff)
@@ -100,6 +121,7 @@ class Workflow(OperationPresentation):
         self.force_actions = ForceActions(self)
         self.loose_actions = LooseActions(self)
         self.skip_previous_cycles = skip_previous_cycles
+        self.record.update(pending_override)
 
     def create_session(self):
         """Explicitly initialize a session; ordinary CLI actions do not invoke this."""

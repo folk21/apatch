@@ -206,17 +206,19 @@ def require_committed_loose_followup(
     history_text = safe_text(config.applied_patches_path, MAX_HISTORY_BYTES)
     entries = parse_history(history_text or "")
     latest = entries[-1] if entries else None
-    if (latest is None or latest.planned_branch != branch
-            or latest.real_branch != branch
+    if (latest is None or latest.real_branch != branch
             or any(item.patch == handoff.patch for item in entries)
             or sum(item.patch == latest.patch for item in entries) != 1):
         raise Abort("Committed follow-up requires a unique last applied ZIP on the feature branch")
-    previous_key = workflow_key(root, branch, latest.patch)
+    previous_key = workflow_key(root, latest.planned_branch, latest.patch)
     previous = state["workflows"].get(previous_key)
     if (not isinstance(previous, dict) or previous.get("phase") != "committed"
             or previous.get("patch_file") != latest.patch
             or previous.get("repository") != str(root)
             or previous.get("branch") != branch
+            or (latest.planned_branch != branch and
+                (previous.get("source_branch") != latest.planned_branch
+                 or previous.get("reassigned_branch") != branch))
             or previous.get("applied_branch") != branch
             or previous.get("commit_sha") != current_head
             or previous.get("superseded_by")

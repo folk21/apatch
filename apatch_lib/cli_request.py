@@ -134,7 +134,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--followup", type=parse_boolean, default=False, metavar="{true,false}",
                         help="Explicitly apply a new ZIP to a matching unfinished LOOSE feature branch")
     parser.add_argument("--feature-branch", "--featureBranch", metavar="feature/NAME",
-                        help="Reassign a pending, already applied ZIP to a new feature branch during BRN")
+                        help="Select the effective feature branch for a new ZIP at APL "
+                             "(LOOSE), or reassign a pending applied ZIP at BRN")
     parser.add_argument("--patch", metavar="NAME.zip",
                         help="Filter read-only STS by ZIP basename")
     parser.add_argument("--verify-remote", type=parse_boolean, default=False,
@@ -177,13 +178,23 @@ def validate_repository_request(request: CliRequest) -> None:
         if (not BRANCH_PATTERN.fullmatch(target) or ".." in target
                 or target.endswith("/") or target.endswith(".lock")):
             raise Abort("featureBranch must be a valid feature/NAME Git branch")
+        branch_action = (request.op in {"BRN", "1"} or
+                         (request.op_seq is not None and request.op_seq.actions[0] == 1))
+        zip_action = (request.op in {"APL", "3"} or
+                      (request.op_seq is not None and request.op_seq.actions[0] == 3))
         if (request.mode == "force" or request.handoff_seq is not None
-                or request.followup or request.goal is not None
-                or request.op in MACRO_OPERATIONS
-                or not ((request.op in {"BRN", "1"}) or
-                        (request.op_seq is not None and request.op_seq.actions[0] == 1))):
-            raise Abort("featureBranch is only supported with op=BRN or opSeq starting with BRN "
-                        "in LOOSE/STRICT (no FORCE, goal, macro or new ZIP application)")
+                or request.goal is not None or request.op in MACRO_OPERATIONS
+                or not (branch_action or zip_action)):
+            raise Abort("featureBranch requires BRN, or a new ZIP starting with APL "
+                        "(no FORCE, goal, macro or handoffSeq)")
+        if zip_action and (request.mode != "loose" or request.handoff is None
+                           or request.handoff.endswith(".json")
+                           or (request.followup and request.op_seq is not None
+                               and 1 in request.op_seq.actions)):
+            raise Abort("featureBranch with APL requires a selected self-contained ZIP "
+                        "in LOOSE; followup=true must omit BRN")
+        if branch_action and request.followup:
+            raise Abort("featureBranch with followup=true must start with APL, not BRN")
     if request.op in MACRO_OPERATIONS and (
             request.handoff_seq is not None or request.followup
             or request.patch is not None or request.verify_remote):

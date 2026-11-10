@@ -130,7 +130,9 @@ def _execute_lifecycle(
     """Run exactly one workflow coordinator for normal single-handoff requests."""
     root, config, tool_dir = context.root, context.config, context.tool_dir
     handoff = selection.handoff
-    if request.feature_branch is not None:
+    is_initial_apl = (request.op in {"APL", "3"} or
+                      (request.op_seq is not None and request.op_seq.actions[0] == 3))
+    if request.feature_branch is not None and not is_initial_apl:
         with locked_state(config.state_path) as state:
             reassign_pending_branch(root, config, handoff, state, request.feature_branch)
     ensure_runtime_ignored(root, config.log_directory, LOG_FILENAME,
@@ -158,7 +160,9 @@ def _execute_lifecycle(
             workflow = Workflow(root, config, handoff, state,
                                 force=request.mode == "force", loose=request.mode == "loose",
                                 zip_selected=selection.zip_selected,
-                                allow_followup_zip=request.followup, progress_recorder=recorder)
+                                allow_followup_zip=request.followup,
+                                selected_branch=request.feature_branch if is_initial_apl else None,
+                                progress_recorder=recorder)
             if request.op_seq is not None:
                 handoffs = iter(selection.sequence)
 
@@ -178,7 +182,7 @@ def _execute_lifecycle(
                     select_workflow=select_for_apply if selection.sequence else None,
                     on_satisfied=(lambda action, active: active.verified_resume_step(action))
                     if resume_selected else None,
-                    on_completed=lambda action, active: save_cached_handoff(root, active.handoff)
+                    on_completed=lambda action, active: save_cached_handoff(root, active.source_handoff)
                     if active.zip_selected and
                     (action == 3 or (recover_cache and action == 1)) else None)
             else:

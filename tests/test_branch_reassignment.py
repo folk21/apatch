@@ -4,7 +4,7 @@ import hashlib
 import json
 import zipfile
 
-from tests._support import LocalGitFixture, command
+from tests._support import LocalGitFixture, command, AppliedPatchHistory
 
 
 class PendingZipBranchReassignmentTests(LocalGitFixture):
@@ -147,3 +147,176 @@ class PendingZipBranchReassignmentTests(LocalGitFixture):
         self.assertIn("Unfinished local feature branch feature/unrelated", attempted.stderr)
         self.assertEqual(self.state_path.read_bytes(), before)
 
+
+
+class UpfrontZipBranchSelectionTests(LocalGitFixture):
+    TARGET = "feature/destination-selected-at-apply"
+
+    def test_new_branch_from_base_uses_original_zip_and_preserves_identity(self):
+        stem = self.make_self_contained_zip()
+        original_sha = hashlib.sha256(self.zip.read_bytes()).hexdigest()
+        started = self.invoke_zip(stem, f"featureBranch={self.TARGET}",
+                                  "opSeq=APL,BRN,CHK,STS", "skipApproves=true")
+        self.assertEqual(started.returncode, 0, started.stderr + started.stdout)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         self.TARGET)
+        self.assertEqual(hashlib.sha256(self.zip.read_bytes()).hexdigest(), original_sha)
+        self.assertEqual(json.loads((self.root / ".apatch/params.json").read_text())[
+            "feature_branch"], self.payload["feature_branch"])
+        state = json.loads(self.state_path.read_text())
+        record = next(iter(state["workflows"].values()))
+        self.assertEqual(record["branch"], self.TARGET)
+        self.assertEqual(record["source_branch"], self.payload["feature_branch"])
+        self.assertEqual(record["reassigned_branch"], self.TARGET)
+        self.assertTrue(record["zip_first"])
+        self.assertEqual(record["archive_sha256"], original_sha)
+        self.assertEqual(record["phase"], "verified")
+        self.assert_history(real_branch=self.TARGET)
+        self.assertEqual(len([r for r in state["operation_runs"]
+                              if r["operation"]["number"] == 3
+                              and r["outcome"] == "SUCCEEDED"]), 1)
+        resumed = self.invoke_zip(stem, "opSeq=APL,BRN,CHK,STS", "skipApproves=true")
+        self.assertEqual(resumed.returncode, 0, resumed.stderr + resumed.stdout)
+        self.assertIn("Already satisfied: 3 [APL], 1 [BRN]", resumed.stdout)
+        self.assert_history(real_branch=self.TARGET)
+
+    def test_apl_then_brn_from_cached_source_preserves_destination(self):
+        stem = self.make_self_contained_zip()
+        result = self.invoke_zip(stem, f"featureBranch={self.TARGET}",
+                                 "op=APL", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         "main")
+        result = self.invoke_zip("opSeq=BRN,CHK,STS", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         self.TARGET)
+        self.assert_history(real_branch=self.TARGET)
+
+    def test_existing_branch_followup_overrides_different_embedded_branch(self):
+        self.make_self_contained_zip()
+        first = self.invoke_zip(self.zip.stem, "opSeq=APL,BRN", "skipApproves=true")
+        self.assertEqual(first.returncode, 0, first.stderr + first.stdout)
+        second = self.make_followup_zip(override={"feature_branch": "feature/outdated-proposal"})
+        original_sha = hashlib.sha256(second.read_bytes()).hexdigest()
+        result = self.invoke_zip(second.stem, "followup=true",
+                                 "featureBranch=feature/test-local-handoff",
+                                 "opSeq=APL,CHK,STS", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(hashlib.sha256(second.read_bytes()).hexdigest(), original_sha)
+        history = AppliedPatchHistory(self.history_path).entries
+        self.assertEqual([(e.planned_branch, e.real_branch) for e in history], [
+            ("feature/test-local-handoff", "feature/test-local-handoff"),
+            ("feature/outdated-proposal", "feature/test-local-handoff"),
+        ])
+        state = json.loads(self.state_path.read_text())
+        record = next(rec for rec in state["workflows"].values()
+                      if rec["patch_file"] == second.name)
+        self.assertEqual(record["branch"], "feature/test-local-handoff")
+        self.assertEqual(record["source_branch"], "feature/outdated-proposal")
+        self.assertEqual(record["branch_override_kind"], "followup")
+        self.assertFalse(record["zip_first"])
+        self.assertEqual(record["phase"], "verified")
+        self.assertEqual(json.loads((self.root / ".apatch/params.json").read_text())[
+            "feature_branch"], "feature/outdated-proposal")
+        resumed = self.invoke_zip(second.stem, "opSeq=CHK,STS", "skipApproves=true")
+        self.assertEqual(resumed.returncode, 0, resumed.stderr + resumed.stdout)
+
+    def test_clean_committed_predecessor_allows_alternate_source_branch(self):
+        self.make_self_contained_zip()
+        first = self.invoke_zip(self.zip.stem, "opSeq=APL,BRN,CHK,CMT",
+                                "skipApproves=true")
+        self.assertEqual(first.returncode, 0, first.stderr + first.stdout)
+        second = self.make_followup_zip(override={"feature_branch": "feature/outdated-proposal"})
+        result = self.invoke_zip(second.stem, "followup=true",
+                                 "featureBranch=feature/test-local-handoff",
+                                 "opSeq=APL,CHK,STS", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(AppliedPatchHistory(self.history_path).entries[-1].planned_branch,
+                         "feature/outdated-proposal")
+
+    def test_wrong_feature_and_unproven_predecessor_fail_closed(self):
+        self.make_self_contained_zip()
+        first = self.invoke_zip(self.zip.stem, "opSeq=APL,BRN", "skipApproves=true")
+        self.assertEqual(first.returncode, 0, first.stderr + first.stdout)
+        second = self.make_followup_zip(override={"feature_branch": "feature/outdated-proposal"})
+        before = self.state_path.read_bytes()
+        history = self.history_path.read_bytes()
+        result = self.invoke_zip(second.stem, "followup=true",
+                                 f"featureBranch={self.TARGET}",
+                                 "op=APL", "skipApproves=true")
+        self.assertEqual(result.returncode, 2, result.stderr + result.stdout)
+        self.assertIn("current branch", result.stderr + result.stdout)
+        self.assertEqual((self.root / "existing.txt").read_text(), "updated\n")
+        self.assertFalse((self.root / "second.txt").exists())
+        self.assertEqual(self.history_path.read_bytes(), history)
+        self.assertEqual(json.loads(self.state_path.read_bytes())["workflows"],
+                         json.loads(before)["workflows"])
+        command("git", "switch", "-c", self.TARGET, cwd=self.root)
+        not_proven = self.invoke_zip(second.stem, "followup=true",
+                                     f"featureBranch={self.TARGET}", "op=APL",
+                                     "skipApproves=true")
+        self.assertEqual(not_proven.returncode, 2)
+        self.assertIn("matching unfinished", not_proven.stderr)
+        self.assertFalse((self.root / "second.txt").exists())
+
+    def test_committed_predecessor_with_reassigned_branch_allows_followup(self):
+        stem = self.make_self_contained_zip()
+        started = self.invoke_zip(stem, f"featureBranch={self.TARGET}",
+                                  "opSeq=APL,BRN,CHK,CMT", "skipApproves=true")
+        self.assertEqual(started.returncode, 0, started.stderr + started.stdout)
+        second = self.make_followup_zip(override={"feature_branch": "feature/obsolete"})
+        followup = self.invoke_zip(second.stem, f"featureBranch={self.TARGET}",
+                                   "followup=true", "opSeq=APL,CHK,STS",
+                                   "skipApproves=true")
+        self.assertEqual(followup.returncode, 0, followup.stderr + followup.stdout)
+        entries = AppliedPatchHistory(self.history_path).entries
+        self.assertEqual([(item.planned_branch, item.real_branch) for item in entries], [
+            ("feature/test-local-handoff", self.TARGET),
+            ("feature/obsolete", self.TARGET),
+        ])
+
+    def test_old_feature_reference_already_merged_does_not_require_repacking(self):
+        stem = self.make_self_contained_zip()
+        source = self.payload["feature_branch"]
+        command("git", "branch", source, cwd=self.root)
+        command("git", "push", "origin", source, cwd=self.root)
+        before = hashlib.sha256(self.zip.read_bytes()).hexdigest()
+        result = self.invoke_zip(stem, f"featureBranch={self.TARGET}",
+                                 "opSeq=APL,BRN,CHK,STS", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertEqual(before, hashlib.sha256(self.zip.read_bytes()).hexdigest())
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         self.TARGET)
+
+    def test_existing_destination_branch_blocks_new_zip_before_extraction(self):
+        stem = self.make_self_contained_zip()
+        command("git", "branch", self.TARGET, cwd=self.root)
+        result = self.invoke_zip(stem, f"featureBranch={self.TARGET}",
+                                 "opSeq=APL,BRN,CHK,STS", "skipApproves=true")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("already exists", result.stderr + result.stdout)
+        self.assertEqual((self.root / "existing.txt").read_text(), "old\n")
+        self.assertFalse((self.root / "new.txt").exists())
+        self.assertFalse(self.history_path.exists())
+
+    def test_unsupported_overrides_are_rejected_without_application(self):
+        stem = self.make_self_contained_zip()
+        for args in (
+            ("--strict", "opSeq=APL,BRN"),
+            ("--force", "op=APL"),
+            ("op=CHK",),
+            ("opSeq=APL,BRN,APL", f"handoffSeq={stem},{stem}"),
+            ("followup=true", "opSeq=APL,BRN"),
+            ("goal=CHECKED",),
+        ):
+            with self.subTest(args=args):
+                command_line = [f"featureBranch={self.TARGET}", "skipApproves=true", *args]
+                result = self.invoke_zip(stem, *command_line)
+                self.assertEqual(result.returncode, 2, result.stderr + result.stdout)
+                self.assertEqual((self.root / "existing.txt").read_text(), "old\n")
+                self.assertFalse((self.root / "new.txt").exists())
+        legacy = self.invoke_zip(str(self.params), f"featureBranch={self.TARGET}",
+                                 "op=APL", "skipApproves=true")
+        self.assertEqual(legacy.returncode, 2)
+        self.assertIn("self-contained ZIP", legacy.stderr + legacy.stdout)

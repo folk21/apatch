@@ -30,6 +30,30 @@ HELP_EPILOG = dedent("""
       Omit FMT if format_commands are absent. Omit REV unless requested or
       review_required=true. STS is safe to run independently.
 
+    REUSE AN UNCHANGED ZIP WITH A DIFFERENT FEATURE BRANCH (LOOSE)
+      If the branch embedded in the ZIP was already merged, start on a clean,
+      current main. This creates a DIFFERENT new branch without repacking:
+        apatch.sh original-patch featureBranch=feature/new-work \\
+          opSeq=APL,BRN,CHK,STS skipApproves=true
+
+      If work continues on an existing feature branch, check it out first.
+      The original ZIP may name another branch; prove a matching unfinished
+      or verified locally committed predecessor before applying the next ZIP:
+        apatch.sh next-patch featureBranch=feature/current-work \\
+          followup=true opSeq=APL,FMT,CHK,STS skipApproves=true
+      Omit FMT when format_commands are not configured; NEVER add BRN for a
+      follow-up. These two forms require an explicitly selected new ZIP and
+      LOOSE mode. An initial APL-only invocation is also supported; BRN can
+      be resumed separately. Existing post-APL, pre-BRN reassignment stays
+      available with: apatch.sh op=BRN featureBranch=feature/new-work.
+
+      The selected ZIP, embedded params.json, archive hash and original
+      planned-branch identity do NOT change. State and applied history record
+      the explicitly selected effective branch. No arbitrary branch switch,
+      bypass of base/HEAD/remote checks or duplicate application is allowed.
+      featureBranch cannot accompany a legacy JSON, handoffSeq, goal,
+      STRICT/FORCE APL or a follow-up containing BRN.
+
     CONFIGURE PROJECT CHECKS AND FORMATTERS
       Create <target-repository>/.apatch/config.yaml with schema_version: 1.
       The checks list is REQUIRED. Examples (adapt paths to your project):

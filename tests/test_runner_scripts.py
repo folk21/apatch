@@ -68,6 +68,8 @@ class RunnerScriptsTests(unittest.TestCase):
                 self.assertIn(
                     "tests.test_handoffs.HandoffsTests.test_self_contained_lifecycle_loose",
                     args)
+                self.assertIn(
+                    "tests.test_branch_reassignment.UpfrontZipBranchSelectionTests", args)
                 self.assertNotIn("tests.test_publication_goals", args)
                 self.assertLess(len(args), 90)
 
