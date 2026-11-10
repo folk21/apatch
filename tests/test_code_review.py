@@ -43,6 +43,30 @@ class CodeReviewTests(LocalGitFixture):
         self.assertEqual(json.loads((directories[0] / "manifest.json").read_text())["status"],
                          "COMPLETED")
 
+    def test_automatic_retention_failure_keeps_completed_review(self):
+        self.configure_reviewers([self.script()], artifacts=True, required=True)
+        self.configure_checks(
+            self.project_config.read_text() +
+            "review_retention_enabled: true\nreview_retention_max_runs: 1\n"
+            "review_retention_max_bytes: 536870912\nreview_retention_max_age_days: 30\n")
+        self.ready()
+        first = self.invoke_zip("op=REV", "skipApproves=true")
+        self.assertEqual(first.returncode, 0, first.stderr + first.stdout)
+        old_dir, _ = self._artifact()
+        original_manifest = (old_dir / "manifest.json").read_bytes()
+        incomplete = old_dir.parent / ("review-" + "f" * 24)
+        incomplete.mkdir(mode=0o700)
+        pending = incomplete / "manifest.json"
+        pending.write_text(json.dumps({"schema_version": 1, "status": "STARTED"}))
+        pending.chmod(0o600)
+
+        failed = self.invoke_zip("op=REV", "skipApproves=true")
+        self.assertEqual(failed.returncode, 2, failed.stderr + failed.stdout)
+        self.assertIn("REVIEW_RETENTION_QUOTA", failed.stderr)
+        self.assertEqual((old_dir / "manifest.json").read_bytes(), original_manifest)
+        self.assertTrue(pending.exists())
+        self.assertEqual(len(list(old_dir.parent.glob("review-*"))), 2)
+
     def test_review_retention_config_rejects_invalid_values(self):
         self.configure_reviewers([self.script()], artifacts=True)
         for fragment in ("review_retention_enabled: 1\n",

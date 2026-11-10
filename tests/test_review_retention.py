@@ -12,8 +12,8 @@ from pathlib import Path
 from unittest import mock
 
 from apatch_lib.model import Abort
-from apatch_lib.review_retention import (export_review_summary, prune_review_artifacts,
-                                         review_storage_lock)
+from apatch_lib.review_retention import (_retention_locked, export_review_summary,
+                                         prune_review_artifacts, review_storage_lock)
 
 
 class ReviewRetentionTests(unittest.TestCase):
@@ -95,6 +95,50 @@ class ReviewRetentionTests(unittest.TestCase):
                                         max_age_days=365, dry_run=True,
                                         reserve_bytes=1048576)
         self.assertEqual(preview.removed, (old.name, newer.name))
+
+    def test_automatic_reservation_rejects_protected_history_without_pruning(self):
+        old = self.run_dir(1)
+        incomplete = self.run_dir(2, status="STARTED")
+        os.utime(old, (time.time() - 90 * 86400,) * 2)
+        old_contents = (old / "manifest.json").read_bytes()
+        with review_storage_lock(self.root) as fd:
+            with self.assertRaisesRegex(Abort, "REVIEW_RETENTION_QUOTA"):
+                _retention_locked(fd, max_runs=1, max_bytes=1048576,
+                                  max_age_days=30, dry_run=False, reserve_runs=1)
+        self.assertEqual((old / "manifest.json").read_bytes(), old_contents)
+        self.assertTrue(incomplete.exists())
+        self.assertEqual(sorted(path.name for path in self.reviews.iterdir()),
+                         sorted([".retention.lock", incomplete.name, old.name]))
+
+    def test_automatic_reservation_beyond_quota_preserves_verified_history(self):
+        old = self.run_dir(1)
+        os.utime(old, (time.time() - 90 * 86400,) * 2)
+        old_contents = (old / "manifest.json").read_bytes()
+        with review_storage_lock(self.root) as fd:
+            with self.assertRaisesRegex(Abort, "REVIEW_RETENTION_QUOTA"):
+                _retention_locked(fd, max_runs=1, max_bytes=1048576,
+                                  max_age_days=30, dry_run=False,
+                                  reserve_runs=1, reserve_bytes=1048577)
+        self.assertEqual((old / "manifest.json").read_bytes(), old_contents)
+
+    def test_feasible_automatic_reservation_prunes_only_verified_history(self):
+        old = self.run_dir(1)
+        with review_storage_lock(self.root) as fd:
+            result = _retention_locked(fd, max_runs=1, max_bytes=1048576,
+                                       max_age_days=365, dry_run=False, reserve_runs=1)
+        self.assertEqual(result.removed, (old.name,))
+        self.assertFalse(old.exists())
+
+    def test_explicit_pruning_remains_independent_of_reservation_admission(self):
+        old = self.run_dir(1)
+        incomplete = self.run_dir(2, status="STARTED")
+        os.utime(old, (time.time() - 90 * 86400,) * 2)
+        result = prune_review_artifacts(self.root, max_runs=1, max_age_days=30,
+                                        dry_run=False)
+        self.assertEqual(result.removed, (old.name,))
+        self.assertIn(incomplete.name, result.protected)
+        self.assertFalse(old.exists())
+        self.assertTrue(incomplete.exists())
 
     def test_unknown_and_incomplete_directories_never_pruned(self):
         incomplete = self.run_dir(1, status="STARTED")
