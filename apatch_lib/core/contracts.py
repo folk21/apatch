@@ -1,14 +1,15 @@
-"""Typed views of persisted workflow data and GitHub PR responses.
+"""Legacy workflow state and action-result types; GitHub PR types are aliases.
 
-The JSON boundaries validate these fields before exposing mutable dictionaries
-to existing workflow consumers. Unknown persistence extensions are retained.
+JSON boundaries validate stored fields before mutable records reach consumers.
 """
 
 from dataclasses import dataclass
 from typing import TypedDict
 
 from .enums import OperationOutcome
-from ..model import RemoteOutcomeUnknown
+from ..publication.api import (GitHubPr as GitHubPr,
+                               GitHubPrIdentity as GitHubPrIdentity,
+                               RemoteOutcomeUnknown as RemoteOutcomeUnknown)
 
 
 class WorkflowRecord(TypedDict, total=False):
@@ -53,24 +54,6 @@ class StateDocument(_OptionalStateFields):
     schema_version: int
     workflows: dict[str, WorkflowRecord]
     operation_runs: list[dict[str, object]]
-
-
-class GitHubPrIdentity(TypedDict):
-    number: int
-    state: str
-    headRefName: str
-    baseRefName: str
-    headRefOid: str | None
-
-
-class GitHubPr(GitHubPrIdentity, total=False):
-    url: str
-    mergedAt: str | None
-    mergeCommit: dict[str, str] | None
-    reviewDecision: str | None
-    mergeable: str | None
-    mergeStateStatus: str | None
-    statusCheckRollup: list[dict[str, str | None]] | None
 
 
 @dataclass(frozen=True)
@@ -124,3 +107,4 @@ class ActionResult:
         if self.outcome == OperationOutcome.ERROR:
             return "FAILED"
         return self.outcome.value
+
