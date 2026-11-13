@@ -34,6 +34,8 @@ case "${1:-regular}" in
             tests.test_code_review.CodeReviewTests.test_structured_summary_without_scanner_fails_closed \
             tests.test_code_review.CodeReviewTests.test_structured_summary_validates_consent_and_modes \
             tests.test_architecture_characterization \
+            tests.test_configuration_architecture \
+            tests.test_domain_model_boundaries \
             tests.test_explicit_action_results \
             tests.test_cli_boundaries \
             tests.test_action_applicability \
@@ -109,5 +111,6 @@ case "${1:-regular}" in
         exit 2
         ;;
 esac
+
 
 
