@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from .core.contracts import ActionResult
+from .workflows.api import ActionResult
 from .gitutil import confirmation_was_declined
 from .model import Abort
 

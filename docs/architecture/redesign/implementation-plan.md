@@ -70,10 +70,10 @@ moving Git, ZIP or remote code.
 | Verified source | Per-file responsibility in the migration |
 | --- | --- |
 | `apatch_lib/model.py:Config`, `load_config`, `load_project_config`, `validate_base_branch`, `validate_runtime_filename`, `validate_log_subdirectory` | Create `configuration/models.py`, `loaders.py`, `validators.py`, `api.py`, `constants.py`. Preserve defaults, precedence, errors, tuple command shapes and source labels. Make old import names thin aliases after parity tests. |
-| `apatch_lib/model.py:Abort`, `RemoteOutcomeUnknown`, `CheckWorktreeChanged` | Put neutral base error in `core/errors.py`; put remote uncertainty in `publication/errors.py`, check drift in `workflow/errors.py`. Retain compatible exception identity or documented subtype aliases during transition. |
+| `apatch_lib/model.py:Abort`, `RemoteOutcomeUnknown`, `CheckWorktreeChanged` | Put neutral base error in `core/errors.py`; put remote uncertainty in `publication/errors.py`, check drift in `workflows/errors.py`. Retain compatible exception identity or documented subtype aliases during transition. |
 | `apatch_lib/model.py:Handoff`, `parse_handoff_payload`, `load_handoff` | Stage pure Handoff DTO/regex/decoder into `handoff/models.py`, `constants.py`, `parsing.py`; keep original `model.py` entry points as adapters. Delay ZIP/filesystem effect migration until R3. |
 | `apatch_lib/model.py:ReviewProvider`, `ScannerPolicy` | Move review-domain value objects to `review/models.py` with a validated configuration adapter. Keep historical constructor values unchanged. |
-| `apatch_lib/core/contracts.py` and `core/enums.py` | Move GitHub PR types to `publication/models.py`; state records, `WorkflowPhase`, `OperationOutcome`, `ActionResult` to `workflow/models.py`. Keep old import compatibility and ensure no `core` import of `model.py`. |
+| `apatch_lib/core/contracts.py` and `core/enums.py` | Move GitHub PR types to `publication/models.py`; state records, `WorkflowPhase`, `OperationOutcome`, `ActionResult` to `workflows/models.py`. Keep old import compatibility and ensure no `core` import of `model.py`. |
 | `apatch_lib/core/paths.py`, `storage/locking.py` | Keep reserved runtime identifiers owned by handoff/configuration and reviewed secure locking functions in the shared storage adapter; extract into `common/` only genuine multi-domain pure utilities. |
 | `apatch_lib/application.py`, `cli_request.py`, `state.py`, `github.py`, `review_*.py`, tests | Migrate call sites in batches to configuration public API and domain DTOs; do not update all callers in one unreviewable diff. |
 
@@ -96,6 +96,20 @@ fingerprints on synthetic targets, regular + full opt-in gates pass.
 isolated new ZIP in a disposable checkout when needed. For the user's target,
 stop before CMT and use apatch state/status plus a reviewed corrective ZIP;
 never discard manual changes.
+
+### R2.3 completed value slice
+
+`apatch_lib/workflows/` now owns the passive state declarations, phase/action
+enums, operation identifiers, `ActionResult` normalization and verification
+error class. Compatibility modules in `core` and `model` remain identity aliases.
+Six internal consumer modules now import the owning public API. The name is
+plural to avoid conflicting with the current `apatch_lib/workflow.py` engine.
+The future R5 engine path is `workflows/engine.py`, not a new `workflow/`
+package; changing the legacy entrypoint requires an independent gated slice.
+The actual feature/session state store, action execution and persistence still
+need extraction; value ownership alone does not satisfy all R2 architectural
+exit criteria. Run regular, extended and characterization gates before
+considering this slice accepted.
 
 ## R3 — Git adapter and handoff/producer boundaries
 
@@ -178,9 +192,9 @@ APIs, with all models and load functions at their owners.
 
 | Verified source | Exact migration direction |
 | --- | --- |
-| `apatch_lib/workflow.py:Workflow`, `loose.py:LooseActions`, `force.py:ForceActions` | Split `workflow/engine.py`, `modes/loose.py`, `modes/force.py`, `api.py`, `models.py`. Keep one state-machine owner; remove arbitrary cross-domain private calls via explicit ports. |
-| `apatch_lib/planner.py:build_plan`, `execute_goal`, `sequence.py:OperationSequence`, `macros.py:execute_macro` | Move to `workflow/planning.py`, `sequencing.py`, `macros.py`; reuse one action execution/result path, not a second executor or bypass of phase checks. |
-| `apatch_lib/state.py`, `operation_events.py`, `session.py`, `session_continuation.py`, `commit_scope.py` | Move to `workflow/state_store.py`, `journal.py`, `sessions.py`, `commit_scope.py`; maintain schema-v2 and v1 upgrade, atomic locks, exact original ZIP/commit provenance. |
+| `apatch_lib/workflow.py:Workflow`, `loose.py:LooseActions`, `force.py:ForceActions` | Split `workflows/engine.py`, `modes/loose.py`, `modes/force.py`, `api.py`, `models.py`. Keep one state-machine owner; remove arbitrary cross-domain private calls via explicit ports. |
+| `apatch_lib/planner.py:build_plan`, `execute_goal`, `sequence.py:OperationSequence`, `macros.py:execute_macro` | Move to `workflows/planning.py`, `sequencing.py`, `macros.py`; reuse one action execution/result path, not a second executor or bypass of phase checks. |
+| `apatch_lib/state.py`, `operation_events.py`, `session.py`, `session_continuation.py`, `commit_scope.py` | Move to `workflows/state_store.py`, `journal.py`, `sessions.py`, `commit_scope.py`; maintain schema-v2 and v1 upgrade, atomic locks, exact original ZIP/commit provenance. |
 | `apatch_lib/application.py:execute_request`, `cli_request.py:parse_request`, `help_reference.py`, `cli_inspection.py`, `presentation/execution.py` | Move to `runtime/api.py`, `cli.py`, `help.py`, `inspection.py`, `presentation.py`; retain historical `apatch.py` and shell commands without new flags. |
 | `apatch_lib/core/actions.py`, `core/contracts.py`, `model.py`, `gitutil.py` | Finish migration of remaining domain symbols, trim compatibility modules only after full consumer inventory and deliberate public compatibility decision. |
 | `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`, `docs/USAGE.md`, `AGENTS.md`, module `contract.md` | Update implementation description and tests; keep `README.md` concise. Move each approved `docs/architecture/redesign/contracts/.../contract.md` into its implemented domain path with a single canonical copy. |

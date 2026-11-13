@@ -12,9 +12,9 @@ from .action_applicability import (ActionFacts, action_unavailable,
 from .branch_patch import BranchPatchActions
 from .console import outcome_label, terminal_style
 from .code_review import run_review, require_fresh_review
-from .core.actions import ACTION_CODES, action_number
-from .core.enums import PHASE_VALUES, WorkflowPhase
-from .core.contracts import ActionResult
+from .workflows.api import ACTION_CODES, action_number
+from .workflows.api import PHASE_VALUES, WorkflowPhase
+from .workflows.api import ActionResult
 from .force import ForceActions
 from .formatting import run_formatters
 from .loose import LooseActions
