@@ -16,6 +16,4 @@ from .handoff.api import (BASENAME_PATTERN as BASENAME_PATTERN,
 from .publication.api import RemoteOutcomeUnknown as RemoteOutcomeUnknown
 from .review.api import ReviewProvider as ReviewProvider, ScannerPolicy as ScannerPolicy
 
-
-class CheckWorktreeChanged(Abort):
-    """Canonical checks changed repository bytes and invalidated verification."""
+from .workflows.api import CheckWorktreeChanged as CheckWorktreeChanged

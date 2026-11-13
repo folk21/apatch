@@ -9,11 +9,11 @@ specifications merely to align an internal Python package layout.
 
 | Existing feature / stage ownership | Verified current symbols and files | Proposed public owner/API | Focused test sources |
 | --- | --- | --- | --- |
-| SUB-001 / P0 workflow control | `cli_request.CliRequest`, `application.execute_request`, `branch_patch.BranchPatchActions`, `core.actions.ACTION_CODES` | `runtime.api` request interface; `workflow.api` phase/action engine; `handoff.api` ZIP selection | `test_cli_boundaries.py`, `test_handoffs.py`, `test_sequences.py`, `char_cli_contracts.py` |
-| SUB-002 / P1.1–P1.2 operation history and audit | `operation_events.OperationRun`, `state.read_state_snapshot`, `audit_rules.reconcile_workflow_records`, `reconciliation.audit_repository` | `workflow.api` state/journal read; `audit.api` read-only reconcile | `test_operation_journal.py`, `test_audit.py`, `test_history.py` |
-| SUB-003 / FS-00R, FS-01–FS-06 | `session.FeatureSession`, `context.ContextReport`, `session_continuation.SessionContinuationEvidence`, `planner.build_plan`, `commit_scope.CommitScope`, `zip_resume.verify_applied_zip` | `workflow.api` sessions/goals, `handoff.api` ZIP evidence; Git through `git.api` | `test_feature_sessions.py`, `test_session_continuation.py`, `test_guarded_commit.py`, `test_zip_resume.py`, `char_recovery.py` |
-| SUB-004 / WM-01–WM-06 | `progress.ProgressEvent`, `macros.execute_macro`, `formatting`, `loose.LooseActions`, `github.merge_pr`, `github.sync_base` | `audit.api` progress, `workflow.api` macros/checks, `publication.api` merge/sync | `test_progress.py`, `test_macros.py`, `test_remote_macros.py`, `test_formatting.py` |
-| SUB-005 / AS-01–AS-07 (accepted) | `core.contracts.ActionResult`, `action_executor.execute_workflow_action`, `audit_collectors.collect_local_evidence`, `cli_request.parse_request` | `workflow.models` result and execution, `audit.api` collectors, `runtime.api` grammar | `test_architecture_characterization.py`, `test_explicit_action_results.py`, `test_audit_rules.py` |
+| SUB-001 / P0 workflow control | `cli_request.CliRequest`, `application.execute_request`, `branch_patch.BranchPatchActions`, `core.actions.ACTION_CODES` | `runtime.api` request interface; `workflows.api` phase/action engine; `handoff.api` ZIP selection | `test_cli_boundaries.py`, `test_handoffs.py`, `test_sequences.py`, `char_cli_contracts.py` |
+| SUB-002 / P1.1–P1.2 operation history and audit | `operation_events.OperationRun`, `state.read_state_snapshot`, `audit_rules.reconcile_workflow_records`, `reconciliation.audit_repository` | `workflows.api` state/journal read; `audit.api` read-only reconcile | `test_operation_journal.py`, `test_audit.py`, `test_history.py` |
+| SUB-003 / FS-00R, FS-01–FS-06 | `session.FeatureSession`, `context.ContextReport`, `session_continuation.SessionContinuationEvidence`, `planner.build_plan`, `commit_scope.CommitScope`, `zip_resume.verify_applied_zip` | `workflows.api` sessions/goals, `handoff.api` ZIP evidence; Git through `git.api` | `test_feature_sessions.py`, `test_session_continuation.py`, `test_guarded_commit.py`, `test_zip_resume.py`, `char_recovery.py` |
+| SUB-004 / WM-01–WM-06 | `progress.ProgressEvent`, `macros.execute_macro`, `formatting`, `loose.LooseActions`, `github.merge_pr`, `github.sync_base` | `audit.api` progress, `workflows.api` macros/checks, `publication.api` merge/sync | `test_progress.py`, `test_macros.py`, `test_remote_macros.py`, `test_formatting.py` |
+| SUB-005 / AS-01–AS-07 (accepted) | `core.contracts.ActionResult`, `action_executor.execute_workflow_action`, `audit_collectors.collect_local_evidence`, `cli_request.parse_request` | `workflows.api` result and execution, `audit.api` collectors, `runtime.api` grammar | `test_architecture_characterization.py`, `test_explicit_action_results.py`, `test_audit_rules.py` |
 | SUB-006 / RE-01 | `code_review.run_review`, `review_artifacts.ReviewArtifacts` | `review.api.run_review`, provider/evidence adapters | `test_code_review.py`, `test_review_retention.py` |
 | SUB-006 / RE-02 | `review_normalizer.normalize_report`, `review_artifacts.ReviewArtifacts.verified_normalized` | `review.api` normalized reports | `test_review_normalizer.py`, `test_code_review.py` |
 | SUB-006 / RE-03 | `review_context.build_review_context`, `code_review.run_review` | `review.api` bounded reviewer contexts | `test_review_context.py`, `test_code_review.py` |
@@ -55,3 +55,15 @@ The existing SDD stage identifiers have not changed. Runtime action ownership
 remains in the existing adapters; R2.2 changes only type/metadata ownership.
 The next migration must address `core.contracts.ActionResult` and workflow
 state types without creating an import-name collision with `workflow.py`.
+
+### R2.3 workflow value ownership (behavior-preserving extraction)
+
+| Existing capability | Implemented public owner | Compatibility import | Test |
+| --- | --- | --- | --- |
+| SUB-001 / P0 action identifiers and phases | `workflows.api.ACTION_CODES`, `action_number`, `WorkflowPhase`, `PHASE_VALUES` | `core.actions`, `core.enums` | `test_workflow_domain_boundaries.py`, `test_sequences.py` |
+| SUB-005 / AS-03 completion evidence | `workflows.api.ActionResult`, `OperationOutcome` | `core.contracts.ActionResult`, `core.enums.OperationOutcome` | `test_workflow_domain_boundaries.py`, `test_explicit_action_results.py` |
+| SUB-002 / P1 persisted workflow views | `workflows.api.WorkflowRecord`, `StateDocument` | `core.contracts` | `test_workflow_domain_boundaries.py`, `test_operation_journal.py` |
+| SUB-004 / WM verification drift | `workflows.api.CheckWorktreeChanged` | `model.CheckWorktreeChanged` | `test_workflow_domain_boundaries.py`, `test_modes.py` |
+
+The plural package name avoids shadowing the legacy `workflow.py` engine.
+No SDD ID, checkpoint, action number, or on-disk schema changes in this slice.

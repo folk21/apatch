@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from .core.enums import WorkflowPhase
+from .workflows.api import WorkflowPhase
 
 
 @dataclass(frozen=True)

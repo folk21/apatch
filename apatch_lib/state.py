@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator, cast
 
-from .core.contracts import StateDocument, WorkflowRecord
+from .workflows.api import StateDocument, WorkflowRecord
 from .model import Abort
 from .operation_events import MAX_RUNS, OperationRun, validate_runs
 from .session import validate_feature_sessions
