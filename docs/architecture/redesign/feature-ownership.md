@@ -67,3 +67,27 @@ state types without creating an import-name collision with `workflow.py`.
 
 The plural package name avoids shadowing the legacy `workflow.py` engine.
 No SDD ID, checkpoint, action number, or on-disk schema changes in this slice.
+
+### R3.1 Git read-only worktree ownership (behavior-preserving extraction)
+
+| Existing capability | Implemented public owner | Compatibility import | Test |
+| --- | --- | --- | --- |
+| SUB-001 / P0 worktree inspection before ZIP application | `git.api.inspect_repository`, `inspect_worktree`, `WorktreeSnapshot` | Legacy runner and status observations remain in `gitutil` | `test_git_domain_boundaries.py`, `test_safety.py` |
+| SUB-003 / FS-05 scope and SUB-004 / WM-04 verification drift | `git.api.WorktreeEntry`, `worktree_inventory`, `worktree_change_details` | `gitutil.WorktreeEntry`, `worktree_inventory`, `worktree_change_details` are identical aliases | `test_git_domain_boundaries.py`, `test_artifact_preflight.py` |
+| Producer-side ZIP verification and packaging | `git.api.current_branch`, `head`, `worktree_fingerprint`, `worktree_inventory` | `gitutil.run` and `output` remain legacy command ports | `test_artifact_packaging.py`, `test_artifact_preflight.py` |
+
+The new read-only snapshot APIs do not grant mutation authority and must be
+revalidated by the caller before any write. No feature ID, SDD checkpoint,
+ZIP payload, or persistence field changes in R3.1.
+
+### R3.2 subprocess command execution ownership
+
+The existing argv-only runner, bounded canonical-check stdout and failure
+summary, redacted logging, and command deadlines are owned by
+`apatch_lib.git.commands`. Historical `gitutil.run`, `display_command`,
+`command_description`, and `_check_failure_summary` are identical object
+exports. `gitutil.output` continues to call its locally patchable `run` name.
+No new `git.api` mutation methods, SDD features, state schema, or permissions
+are introduced. Safety, timeout and Git boundary regressions remain the
+acceptance tests, with `tests/test_git_command_boundaries.py` added for
+the new owner.

@@ -12,8 +12,9 @@ import zipfile
 
 from .artifact_preflight import PreflightResult, preflight
 from .core.paths import PARAMS_MEMBER, is_protected_runtime_path
-from .gitutil import (current_branch, head, output, run, worktree_fingerprint,
+from .git.api import (current_branch, head, worktree_fingerprint,
                       worktree_inventory)
+from .gitutil import output, run
 from .model import (Abort, BASENAME_PATTERN, load_config, load_project_config,
                     parse_handoff_payload, safe_relative)
 
