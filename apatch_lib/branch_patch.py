@@ -3,14 +3,15 @@
 import logging
 
 from .branch_guard import assert_no_unfinished_feature_branches
-from .created_patches import assert_patch_order, persist_registry
 from .gitutil import (branch_exists, confirm, current_branch, head, remote_head,
                       require_branch, require_clean, run, skip_approvals_enabled,
                       worktree_fingerprint)
 from .core.enums import WorkflowPhase
 from .model import Abort
-from .patch import apply, inspect
-from .patch_history import locked_history
+from .handoff.history.registry import assert_patch_order, persist_registry
+from .handoff.history.journal import locked_history
+from .handoff.api import (ArchiveOperations, PatchLedgerOperations,
+                          ProjectPatchLedger, ZipArchiveOperations)
 
 
 LOGGER = logging.getLogger("apatch.branch_patch")
@@ -19,22 +20,31 @@ LOGGER = logging.getLogger("apatch.branch_patch")
 class BranchPatchActions:
     """Bounded branch and patch operations sharing the Workflow checkpoint owner."""
 
-    def __init__(self, workflow):
+    def __init__(self, workflow, archive_ops: ArchiveOperations | None = None,
+                 ledger_ops: PatchLedgerOperations | None = None):
         self.workflow = workflow
+        self.archive_ops: ArchiveOperations = (archive_ops if archive_ops is not None
+                                               else ZipArchiveOperations())
+        self.ledger_ops: PatchLedgerOperations = (ledger_ops if ledger_ops is not None
+                                                  else ProjectPatchLedger(
+                                                      lock=lambda path: locked_history(path),
+                                                      order=lambda *args: assert_patch_order(*args),
+                                                      persist=lambda *args: persist_registry(*args)))
 
     def assert_history_well_formed(self):
         """Validate the journal before any feature-branch switch or creation."""
-        with locked_history(self.workflow.config.applied_patches_path):
+        with self.ledger_ops.locked(self.workflow.config.applied_patches_path):
             pass
 
     def assert_patch_order(self, history=None, archive=None):
         """Guard application using the authoritative applied-patch journal."""
         w = self.workflow
         if history is None:
-            with locked_history(w.config.applied_patches_path) as locked:
+            with self.ledger_ops.locked(w.config.applied_patches_path) as locked:
                 return self.assert_patch_order(locked, archive)
-        archive = archive or inspect(w.config, w.source_handoff, w.root, before_apply=False)
-        return assert_patch_order(w.root, w.handoff.patch, history, archive.created_registry)
+        archive = archive or self.archive_ops.inspect(w.config, w.source_handoff, w.root, before_apply=False)
+        return self.ledger_ops.assert_order(
+            w.root, w.handoff.patch, history, archive.created_registry)
 
     def assert_new_branch_available(self):
         """Reject existing local and remote refs, including non-checked-out branches."""
@@ -61,7 +71,7 @@ class BranchPatchActions:
             raise Abort("Local base HEAD differs from the configured remote base branch")
         archive = w.assert_patch_identity() if with_patch else None
         if with_patch:
-            with locked_history(w.config.applied_patches_path) as history:
+            with self.ledger_ops.locked(w.config.applied_patches_path) as history:
                 self.assert_patch_order(history, archive)
                 if not self.warn_if_previously_applied(history):
                     return
@@ -141,7 +151,7 @@ class BranchPatchActions:
         w.record.update(applied_branch=w.handoff.branch, branch_origin=origin,
                         branch_base=expected_head, extracted_on_branch=w.config.base)
         w.persist()
-        with locked_history(w.config.applied_patches_path) as history:
+        with self.ledger_ops.locked(w.config.applied_patches_path) as history:
             history.record_commit_branch(w.handoff.patch, w.source_handoff.branch,
                                          w.handoff.branch)
         print(f"Patch changes now reside on {w.handoff.branch}; run CHK next.")
@@ -175,13 +185,13 @@ class BranchPatchActions:
         """Reject replay before previous-cycle updates or overlap confirmation."""
         if not skip_approvals_enabled():
             return
-        with locked_history(self.workflow.config.applied_patches_path) as history:
+        with self.ledger_ops.locked(self.workflow.config.applied_patches_path) as history:
             self.warn_if_previously_applied(history)
 
     def unpack(self, archive=None, *, history=None, history_confirmed=False):
         w = self.workflow
         if history is None:
-            with locked_history(w.config.applied_patches_path) as locked:
+            with self.ledger_ops.locked(w.config.applied_patches_path) as locked:
                 return self.unpack(archive, history=locked)
         self.assert_patch_order(history, archive)
         if w.phase not in {WorkflowPhase.NEW, WorkflowPhase.BRANCH_CREATED}:
@@ -224,9 +234,9 @@ class BranchPatchActions:
             before_patch_head=head(w.root),
         )
         w.persist()
-        apply(w.config, w.source_handoff, w.root, archive)
+        self.archive_ops.apply(w.config, w.source_handoff, w.root, archive)
         w.assert_expected_paths()
-        persist_registry(w.root, archive.created_registry)
+        self.ledger_ops.persist_registry(w.root, archive.created_registry)
         history.append(w.handoff.patch, w.source_handoff.branch, patch_branch)
         w.record["phase"] = "patch_applied"
         w.persist()

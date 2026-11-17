@@ -9,7 +9,7 @@ from .core.contracts import StateDocument
 from .gitutil import (current_branch, head, output, remote_head,
                       status_paths, worktree_fingerprint)
 from .model import Abort, BRANCH_PATTERN, Config, Handoff
-from .patch_history import AppliedPatchHistory
+from .handoff.history.journal import AppliedPatchHistory
 from .status import workflow_key
 
 
@@ -123,3 +123,4 @@ def verify_applied_zip(
         raise Abort(f"{reason} The local commit differs from the recorded revision.")
 
     return AppliedZipEvidence(handoff.patch, phase, branch, pending_branch)
+

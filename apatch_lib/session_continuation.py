@@ -11,8 +11,8 @@ from pathlib import Path
 from .audit_collectors import local_git, remote_snapshot, safe_text
 from .gitutil import status_paths
 from .model import Abort, Config, Handoff
-from .patch import Archive, inspect
-from .patch_history import MAX_HISTORY_BYTES, parse_history
+from .handoff.api import Archive, inspect
+from .handoff.history.journal import MAX_HISTORY_BYTES, parse_history
 from .session import SESSION_ID, remote_identity
 from .state import read_state_snapshot
 from .status import workflow_key
@@ -262,4 +262,5 @@ def require_committed_loose_followup(
     if archive.embedded_handoff is None or archive.sha256 != handoff.patch_sha256:
         raise Abort("Committed follow-up requires the exact self-contained ZIP")
     return previous_key
+
 

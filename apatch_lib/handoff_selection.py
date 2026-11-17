@@ -10,7 +10,7 @@ from .cli_request import CliRequest
 from .model import (Abort, BASENAME_PATTERN, Config, Handoff,
                     load_handoff)
 from .params_cache import load_cached_handoff
-from .patch import handoff_from_zip
+from .handoff.api import handoff_from_zip
 from .sequence import parse_handoff_sequence, validate_multi_handoff_actions
 
 
@@ -155,3 +155,4 @@ def resolve_handoffs(request: CliRequest, config: Config, root: Path) -> Handoff
             and sum(action in {2, 3} for action in request.op_seq.actions) > 1):
         raise Abort("Multiple APL actions require explicit handoffSeq ZIP selections")
     return resolve_selected_handoff(request.handoff, config, root)
+

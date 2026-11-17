@@ -12,7 +12,8 @@ from .core.contracts import ActionResult
 from .gitutil import (branch_exists, confirm, current_branch, head, output, remote_head,
                       require_clean, run, worktree_fingerprint)
 from .model import Abort
-from .patch import PARAMS_MEMBER, REGISTRY_MEMBER, apply, inspect, patch_file
+from .core.paths import PARAMS_MEMBER, REGISTRY_MEMBER
+from .handoff.api import apply, inspect, patch_file
 from .patch_history import locked_history
 
 
@@ -493,3 +494,4 @@ class ForceActions:
                         pr_number=pr["number"], local_base_head=local_base_head)
         print(f"GitHub confirmed PR #{pr['number']} merged; workflow synchronization is complete.")
         return True
+
