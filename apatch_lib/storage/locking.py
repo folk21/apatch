@@ -7,7 +7,7 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from ..model import Abort
+from ..core.errors import Abort
 
 
 @contextmanager
@@ -37,3 +37,4 @@ def exclusive_file_lock(path: Path, *, label: str, wait_seconds: float = 0):
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
     except OSError as exc:
         raise Abort(f"Cannot access {label} lock {path}: {exc}") from exc
+

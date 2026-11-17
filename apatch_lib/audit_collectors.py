@@ -10,9 +10,9 @@ from typing import Callable
 
 from . import github
 from .core.contracts import GitHubPr, StateDocument
-from .created_patches import MAX_REGISTRY_BYTES, registry_path
+from .handoff.history.registry import MAX_REGISTRY_BYTES, registry_path
 from .model import Abort, BASENAME_PATTERN, Config
-from .patch_history import MAX_HISTORY_BYTES
+from .handoff.history.journal import MAX_HISTORY_BYTES
 from .state import read_state_snapshot
 from .status import _branch_present, _commit_present, local_branch, local_repository
 

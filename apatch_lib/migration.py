@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .local_ignore import ensure_runtime_ignored
 from .logging_setup import LOG_FILENAME
-from .patch_history import locked_history
+from .handoff.history.journal import locked_history
 from .state import locked_state, save
 
 
@@ -65,3 +65,4 @@ def migrate_legacy_artifacts(root: Path, tool_directory: Path, config, state: di
             LOGGER.info("imported %d applied patch history entries from %s", imported, source)
             print(f"Imported {imported} applied-patch history entry/entries; old file retained.")
         break
+

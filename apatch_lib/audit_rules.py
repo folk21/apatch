@@ -8,7 +8,8 @@ from typing import Mapping, cast
 
 from .core.contracts import GitHubPr, StateDocument, WorkflowRecord
 from .model import Abort, BASENAME_PATTERN
-from .patch_history import HistoryEntry, parse_history
+from .handoff.history.models import HistoryEntry
+from .handoff.history.journal import parse_history
 
 
 SEVERITY_ORDER = {"ERROR": 0, "WARNING": 1, "INFO": 2}

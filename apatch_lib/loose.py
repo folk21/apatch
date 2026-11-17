@@ -18,7 +18,7 @@ from .gitutil import (branch_exists, confirm, current_branch, head, output,
                       remote_head, run, status_paths, worktree_fingerprint,
                       worktree_inventory, worktree_change_details)
 from .model import Abort, CheckWorktreeChanged
-from .patch import apply, inspect
+from .handoff.api import apply, inspect
 from .patch_history import locked_history
 from .session_continuation import (require_committed_loose_followup,
                                    require_session_continuation)
@@ -628,5 +628,6 @@ class LooseActions:
 
     def sync(self):
         return self.w.force_actions.sync()
+
 
 

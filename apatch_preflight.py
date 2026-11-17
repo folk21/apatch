@@ -7,12 +7,13 @@ import json
 from pathlib import Path
 import sys
 
-from apatch_lib.artifact_preflight import preflight
+from apatch_lib.handoff.api import ProducerOperations, VerifiedSourceProducer
 from apatch_lib.help_reference import PREFLIGHT_HELP_EPILOG
 from apatch_lib.model import Abort
 
 
-def main(argv=None) -> int:
+def main(argv=None, *, producer: ProducerOperations | None = None) -> int:
+    producer = VerifiedSourceProducer() if producer is None else producer
     parser = argparse.ArgumentParser(
         description="Prepare and verify a source Git snapshot before ZIP generation",
         epilog=PREFLIGHT_HELP_EPILOG,
@@ -29,7 +30,7 @@ def main(argv=None) -> int:
     result = None
     with redirect_stdout(sys.stderr) if args.json else redirect_stdout(sys.stdout):
         try:
-            result = preflight(args.project, Path(__file__).resolve().parent,
+            result = producer.preflight(args.project, Path(__file__).resolve().parent,
                                prepare=args.prepare)
         except Abort as exc:
             print(f"[PREFLIGHT FAILED] {exc}", file=sys.stderr, flush=True)
@@ -55,3 +56,4 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

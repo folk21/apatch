@@ -306,7 +306,11 @@ reapplication, commit, or GitHub mutation follows the failure.
 | `apatch_lib/force.py` | Explicit recovery of externally performed branch, patch, and Git operations |
 | `apatch_lib/branch_patch.py` | Preparing branches and coordinating patch application |
 | `apatch_lib/branch_guard.py` | Mandatory cross-mode preflight against unfinished local/remote feature branches and open GitHub feature PRs before creating a new branch |
-| `apatch_lib/patch.py` | ZIP validation, safe member inspection, archive application |
+| `apatch_lib/handoff/` | Metadata models, the `ArchiveOperations` protocol, bounded ZIP inspection, and source extraction; `ZipArchiveOperations` is the default adapter |
+| `apatch_lib/handoff/producer/` | Git-based source discovery/preflight and exclusive verified ZIP packaging behind `ProducerOperations`; source result DTOs live in `producer/models.py` |
+| `apatch_lib/handoff/history/` | Created-patch ordering and persistent applied history behind `PatchLedgerOperations`; immutable history entries live in `history/models.py` |
+| `apatch_lib/artifact_preflight.py`, `apatch_lib/artifact_packaging.py` | Compatibility entry points for legacy imports and producer monkeypatch tests; new CLI entry points use the typed producer port |
+| `apatch_lib/patch.py` | Identity-preserving legacy aliases for the handoff archive API |
 | `apatch_lib/params_cache.py` | Restricted, locked, atomic persistence of a verified project-local handoff |
 | `apatch_lib/model.py` | Handoff and configuration schema, path validation, shared records |
 | `apatch_lib/state.py`, `apatch_lib/operation_events.py` | Locked schema-v2 checkpoint persistence, version migration, and durable operation-run evidence |
@@ -316,8 +320,8 @@ reapplication, commit, or GitHub mutation follows the failure.
 | `apatch_lib/audit_collectors.py` | Bounded no-follow history reads, local Git evidence and opt-in GitHub transport |
 | `apatch_lib/audit_rules.py` | Pure history/checkpoint/remote reconciliation rules and immutable findings |
 | `apatch_lib/reconciliation.py` | Read-only audit coordinator, public report contract and bounded rendering |
-| `apatch_lib/patch_history.py` | Per-patch application journal and duplicate detection |
-| `apatch_lib/created_patches.py` | Optional ordered list of generated ZIP basenames and fail-closed application ordering |
+| `apatch_lib/patch_history.py` | Compatibility imports for the handoff-owned applied journal |
+| `apatch_lib/created_patches.py` | Compatibility imports for the handoff-owned created-patch registry |
 | `apatch_lib/migration.py` | Compatibility with earlier runtime file locations and names |
 | `apatch_lib/gitutil.py` | Git subprocess wrappers, repository/branch/status helpers, canonical check execution |
 | `apatch_lib/github.py` | PR discovery/creation, merge policy checks, safe merge coordination |
@@ -413,6 +417,7 @@ The project YAML parser accepts optional `prepare_checks` argv lists and `check_
 ## Extension points
 
 Before adding an operation or changing a mode, inspect the owning helper, CLI parsing, status messages, state/history implications, and black-box tests. Update the public operation matrix in Usage and regression coverage together. For significant behavior changes, establish a normative SDD spec first; the initial spec will be introduced separately.
+
 
 
 

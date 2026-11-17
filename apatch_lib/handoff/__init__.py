@@ -1,1 +1,1 @@
-"""Handoff metadata domain; archive operations migrate in R3."""
+"""Handoff identity, ZIP archive operations, and producer-side contracts."""

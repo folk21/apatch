@@ -16,3 +16,12 @@ class Handoff:
     def subject(self) -> str:
         return self.message.splitlines()[0]
 
+
+@dataclass(frozen=True)
+class Archive:
+    """Inspected ZIP identity and declared source changes, never a commit proof."""
+
+    sha256: str
+    changed: frozenset[str]
+    created_registry: tuple[str, ...] | None = None
+    embedded_handoff: Handoff | None = None

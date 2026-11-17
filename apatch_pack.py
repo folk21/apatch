@@ -7,12 +7,13 @@ import json
 from pathlib import Path
 import sys
 
-from apatch_lib.artifact_packaging import discover_source_paths, pack_source
+from apatch_lib.handoff.api import ProducerOperations, VerifiedSourceProducer
 from apatch_lib.help_reference import PACK_HELP_EPILOG
 from apatch_lib.model import Abort
 
 
-def main(argv=None) -> int:
+def main(argv=None, *, producer: ProducerOperations | None = None) -> int:
+    producer = VerifiedSourceProducer() if producer is None else producer
     parser = argparse.ArgumentParser(
         description="Review changed source paths or run preflight and build a verified ZIP",
         epilog=PACK_HELP_EPILOG,
@@ -43,7 +44,7 @@ def main(argv=None) -> int:
             parser.error("--discover cannot be combined with ZIP publishing options")
         try:
             with redirect_stdout(sys.stderr) if args.json else redirect_stdout(sys.stdout):
-                candidates = discover_source_paths(args.project)
+                candidates = producer.discover(args.project)
         except Abort as exc:
             if args.json:
                 print(json.dumps({"status": "failed", "error": str(exc)}))
@@ -74,7 +75,7 @@ def main(argv=None) -> int:
     result = None
     with redirect_stdout(sys.stderr) if args.json else redirect_stdout(sys.stdout):
         try:
-            result = pack_source(args.project, Path(__file__).resolve().parent,
+            result = producer.pack(args.project, Path(__file__).resolve().parent,
                                  args.output, branch=args.branch, message=args.message,
                                  included=tuple(args.include), deleted=tuple(args.delete),
                                  prepare=args.prepare, base_commit=args.base_commit)
@@ -97,3 +98,4 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

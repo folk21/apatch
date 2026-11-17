@@ -22,8 +22,8 @@ from .gitutil import (confirm, current_branch, head, is_clean, output, remote_he
                       require_branch, require_clean, run, worktree_fingerprint)
 from .model import Abort, BRANCH_PATTERN
 from .operation_events import OperationRun, RunOutcome, journal_outcome_for_result
-from .patch import inspect
-from .patch_history import locked_history
+from .handoff.api import inspect
+from .handoff.history.journal import locked_history
 from .presentation.execution import OperationPresentation
 from .progress import utc_now
 from .session import (attach_applied_workflow, create_feature_session,
@@ -612,4 +612,5 @@ class Workflow(OperationPresentation):
             (f"Resume synchronization of local {self.config.base}", self.sync,
              unavailable(9)),
         ]
+
 

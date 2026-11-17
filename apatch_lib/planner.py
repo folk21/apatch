@@ -16,7 +16,7 @@ from .local_ignore import ensure_runtime_ignored
 from .logging_setup import LOG_FILENAME, configure
 from .model import Abort, Config
 from .params_cache import save_cached_handoff
-from .patch import inspect
+from .handoff.api import inspect
 from .progress import ProgressRecorder
 from .session import (close_feature_session, record_session_pr,
                       remote_identity)
@@ -614,4 +614,5 @@ def execute_goal(root: Path, config: Config, tool_dir: Path,
     finally:
         reset_skip_approvals(token)
         recorder.flush(tool_dir)
+
 

@@ -161,11 +161,40 @@ confirmation migration; no unguarded mutation API is introduced. Run the
 command-boundary, safety and timeout tests plus regular and characterization
 gates. This extraction is not the completion of R3 guarded operations.
 
-The following separately verifiable slice should move ZIP inspection and
-application behind `handoff.api`, with strict archive path and content checks,
-source-identity revalidation, backups, journal recovery, and negative tests
-before migrating existing callers. Do not allow new extraction code to mutate
-workflow phases or weaken follow-up/branch admission.
+The R3.3 archive boundary slice relocates `patch.py` archive inspection
+and extraction into `handoff/inspection.py` and `handoff/extraction.py`.
+`handoff.api.ArchiveOperations` is a structural `typing.Protocol` with a
+`ZipArchiveOperations` implementation; `BranchPatchActions` consumes the
+injected port. The old `patch.py` keeps identity-preserving compatibility
+aliases. Existing workflow safety checks, recovery and journal ownership are
+unchanged. The extracted code still has dependencies on legacy Git and
+created-patch helpers; migrating those requires separate verification.
+
+The R3.4 producer boundary slice moves the two root-level producer
+implementations into `handoff/producer/{preflight,packaging,models,service}.py`,
+while `handoff.api.ProducerOperations` defines the real source verification,
+discovery and packaging contract consumed by the two CLI producer entry points.
+Legacy imports and their existing preflight/source-read monkeypatch seams remain
+supported through thin compatibility wrappers. This is not a new SDD stage,
+and no tracked state, ZIP format or Git action contract changes.
+
+The R3.5 patch-ledger boundary slice moves `created_patches.py` and
+`patch_history.py` into the cohesive `handoff/history/` package (registry,
+journal, models, service and API). `PatchLedgerOperations` and
+`AppliedHistory` are actual structural contracts, consumed with dependency
+injection by `BranchPatchActions`. Compatibility modules preserve historical
+objects, constants and local test patch seams; the persistence schema,
+locking, path safety, approval gates and duplicate-patch decisions stay
+unchanged. This is an architectural slice within R3, not an accepted SDD stage.
+Focused validation covers protocol substitution, ordered predecessor checks,
+lock contention, corrupt journals, symlinked registry targets and existing
+ZIP/application regressions. Cache recovery and ZIP resume remain for a
+separate follow-up slice.
+
+Remaining R3 slices should migrate cache/resume adapters
+under the same port discipline, retaining strict source-identity checks,
+backups, journal recovery, and negative tests. Neither the archive port nor
+future producer interfaces may alter workflow phases or branch admission.
 
 ## R4 — Publication, review and audit ownership
 
@@ -307,3 +336,4 @@ normal verification and developer-review requirements above.
 
 These notes do not change the developer-controlled SDD checkpoint or assert
 that the entire R3 stage has been accepted.
+
