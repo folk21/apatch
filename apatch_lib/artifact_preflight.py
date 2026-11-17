@@ -3,8 +3,9 @@
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from .gitutil import (current_branch, head, output, run, worktree_change_details,
+from .git.api import (current_branch, head, worktree_change_details,
                       worktree_fingerprint, worktree_inventory)
+from .gitutil import output, run
 from .model import Abort, load_config, load_project_config
 
 

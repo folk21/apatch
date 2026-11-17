@@ -149,6 +149,24 @@ recovery requires no new state migration.
 checkpoint/backups and refuse unattended replay. Resume only when live bytes,
 HEAD and archive identity match; never silently restore or delete files.
 
+### R3.2 command transport slice (implemented)
+
+`git.commands` now owns the existing process transport for Git commands,
+`gh` commands, and canonical project checks. The implementation is moved
+without changing timeouts, process-group termination, output policy,
+redaction, or check failure classification. The old `gitutil.run` remains the
+identical function object, so callers, mock seams and `gitutil.output` remain
+compatible. Confirmation state stays in `gitutil` pending an explicit runtime
+confirmation migration; no unguarded mutation API is introduced. Run the
+command-boundary, safety and timeout tests plus regular and characterization
+gates. This extraction is not the completion of R3 guarded operations.
+
+The following separately verifiable slice should move ZIP inspection and
+application behind `handoff.api`, with strict archive path and content checks,
+source-identity revalidation, backups, journal recovery, and negative tests
+before migrating existing callers. Do not allow new extraction code to mutate
+workflow phases or weaken follow-up/branch admission.
+
 ## R4 — Publication, review and audit ownership
 
 **Dependencies:** R3 and verified Git/handoff API.
@@ -260,11 +278,32 @@ old compatibility modules can be removed safely.
   GitHub PR wire-response TypedDicts and remote-uncertainty error now have
   a `publication.api` owner. Existing imports remain exact aliases; no
   ZIP application or GitHub operation has moved.
-- **R2.3 pending:** remove remaining workflow-domain type ownership from
-  `core.contracts` and relocate `CheckWorktreeChanged`. The existing
-  `apatch_lib/workflow.py` module prevents a same-name `workflow/` package
-  from being introduced without a dedicated import-compatibility migration.
+- **R2.3 workflow value boundaries:** action identifiers, state views,
+  `ActionResult`, outcome enums, and `CheckWorktreeChanged` were relocated to
+  `workflows.api`. Legacy imports remain identity-preserving shims. The plural
+  package avoids the existing `workflow.py` coordinator-name collision.
 
 These notes describe the source slices only. They do not change the active
 SDD checkpoint, assert that an R2 stage has been accepted, or supersede the
 normal verification and developer-review requirements above.
+
+
+## R3 execution notes (non-normative progress)
+
+- **R3.1 Git read-only boundary:** `WorktreeEntry`, `worktree_inventory`, and
+  `worktree_change_details` now belong to `git.models` / `git.inspection` and
+  are exported via `git.api`; old `gitutil` imports remain identical aliases.
+  `RepositorySnapshot` and `WorktreeSnapshot` make read-only observations
+  explicit, with detected mid-capture branch/HEAD/fingerprint drift rejected.
+- Producer preflight and ZIP packaging now import their Git observation
+  functions from `git.api`. Their `run`/`output` calls retain the historical
+  command adapter and monkeypatch seams. No ZIP extraction, Git mutation,
+  publication, or confirmation behavior is changed in R3.1.
+- **Next R3 slices:** isolate command execution and its deadline/streaming
+  policy behind a guarded adapter; then move ZIP inspection/extraction and
+  producer APIs in separately tested, compatibility-preserving increments.
+  Do not move the confirmation ContextVars or general mutating Git commands
+  before tests cover their use from CLI, workflow, and publication.
+
+These notes do not change the developer-controlled SDD checkpoint or assert
+that the entire R3 stage has been accepted.

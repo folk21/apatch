@@ -37,6 +37,8 @@ case "${1:-regular}" in
             tests.test_configuration_architecture \
             tests.test_domain_model_boundaries \
             tests.test_workflow_domain_boundaries \
+            tests.test_git_domain_boundaries \
+            tests.test_git_command_boundaries \
             tests.test_explicit_action_results \
             tests.test_cli_boundaries \
             tests.test_action_applicability \
