@@ -14,6 +14,8 @@ from .parsing import load_handoff, parse_handoff_payload, safe_relative
 from .extraction import apply
 from .inspection import handoff_from_zip, inspect, patch_file
 from .service import ZipArchiveOperations
+from .cache.api import HandoffCacheOperations
+from .cache.service import ProjectHandoffCache
 from .history.api import PatchLedgerOperations
 from .history.service import ProjectPatchLedger
 from .producer.models import PackagingResult, PreflightResult, SourceCandidates
@@ -62,6 +64,7 @@ __all__ = (
     "Archive", "ArchiveOperations", "ZipArchiveOperations", "inspect", "apply",
     "ProducerOperations", "VerifiedSourceProducer",
     "PatchLedgerOperations", "ProjectPatchLedger",
+    "HandoffCacheOperations", "ProjectHandoffCache",
     "PreflightResult", "SourceCandidates", "PackagingResult",
     "handoff_from_zip", "patch_file", "Handoff", "load_handoff",
     "parse_handoff_payload", "safe_relative", "BASENAME_PATTERN",

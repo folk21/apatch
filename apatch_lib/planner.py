@@ -15,7 +15,7 @@ from .handoff_selection import HandoffSelection, SelectionKind
 from .local_ignore import ensure_runtime_ignored
 from .logging_setup import LOG_FILENAME, configure
 from .model import Abort, Config
-from .params_cache import save_cached_handoff
+from .handoff.api import HandoffCacheOperations, ProjectHandoffCache
 from .handoff.api import inspect
 from .progress import ProgressRecorder
 from .session import (close_feature_session, record_session_pr,
@@ -519,8 +519,10 @@ def execute_goal(root: Path, config: Config, tool_dir: Path,
                  selection: HandoffSelection, *, goal: str, intent: str,
                  plan_only: bool, skip_approves: bool,
                  step_completed: Callable[[str], None] | None = None,
-                 macro_check_policy: bool = False) -> None:
+                 macro_check_policy: bool = False,
+                 cache_ops: HandoffCacheOperations | None = None) -> None:
     """Replan before every step; never promote recorded facts to live authority."""
+    cache_ops = cache_ops if cache_ops is not None else ProjectHandoffCache()
     first = build_plan(root, config, selection, goal, intent)
     show_plan(first, preview=plan_only)
     if plan_only:
@@ -567,7 +569,7 @@ def execute_goal(root: Path, config: Config, tool_dir: Path,
                     if outcome != "SUCCESS":
                         raise Abort(f"GOAL_STOPPED: APL returned {outcome}")
                     _session_after_apply(workflow)
-                    save_cached_handoff(root, workflow.handoff)
+                    cache_ops.save(root, workflow.handoff)
                 elif step == "BRN":
                     outcome = workflow.interactive("BRN", show_header=False)
                     if outcome != "SUCCESS":
@@ -614,5 +616,6 @@ def execute_goal(root: Path, config: Config, tool_dir: Path,
     finally:
         reset_skip_approvals(token)
         recorder.flush(tool_dir)
+
 
 

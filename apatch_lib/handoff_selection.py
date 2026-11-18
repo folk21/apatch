@@ -10,7 +10,7 @@ from .cli_request import CliRequest
 from .model import (Abort, BASENAME_PATTERN, Config, Handoff,
                     load_handoff)
 from .params_cache import load_cached_handoff
-from .handoff.api import handoff_from_zip
+from .handoff.api import HandoffCacheOperations, handoff_from_zip
 from .sequence import parse_handoff_sequence, validate_multi_handoff_actions
 
 
@@ -72,11 +72,14 @@ def resolve_handoff_path(identifier: str, downloads_dir: Path) -> Path:
 
 
 def resolve_selected_handoff(
-    identifier: str | None, config: Config, root: Path
+    identifier: str | None, config: Config, root: Path,
+    *, cache_ops: HandoffCacheOperations | None = None,
 ) -> HandoffSelection:
     """Identify ZIP, cached workflow, or legacy JSON without changing target state."""
     if identifier is None:
-        return HandoffSelection(load_cached_handoff(root), ".apatch/params.json",
+        return HandoffSelection(
+            cache_ops.load(root) if cache_ops is not None else load_cached_handoff(root),
+            ".apatch/params.json",
                                 SelectionKind.CACHED_WORKFLOW)
     if identifier.endswith(".json") or "/" in identifier or "\\" in identifier:
         path = resolve_handoff_path(identifier, config.downloads)
@@ -116,7 +119,10 @@ def resolve_sequence_zip_names(raw: str, config: Config) -> tuple[str, ...]:
     return tuple(names)
 
 
-def resolve_handoffs(request: CliRequest, config: Config, root: Path) -> HandoffSelection:
+def resolve_handoffs(
+    request: CliRequest, config: Config, root: Path, *,
+    cache_ops: HandoffCacheOperations | None = None,
+) -> HandoffSelection:
     """Resolve one or many handoffs before acquiring the writable workflow lock."""
     if request.handoff_seq is not None:
         if request.op_seq is None:
@@ -145,7 +151,7 @@ def resolve_handoffs(request: CliRequest, config: Config, root: Path) -> Handoff
         if not cached_path.exists() and not cached_path.is_symlink():
             return HandoffSelection(None, "stored workflow", SelectionKind.CACHED_WORKFLOW)
         try:
-            cached = load_cached_handoff(root)
+            cached = cache_ops.load(root) if cache_ops is not None else load_cached_handoff(root)
         except Abort as exc:
             return HandoffSelection(None, "stored workflow", SelectionKind.CACHED_WORKFLOW,
                                     evidence=f"Cached handoff unavailable: {exc}")
@@ -154,5 +160,6 @@ def resolve_handoffs(request: CliRequest, config: Config, root: Path) -> Handoff
     if (request.op_seq is not None
             and sum(action in {2, 3} for action in request.op_seq.actions) > 1):
         raise Abort("Multiple APL actions require explicit handoffSeq ZIP selections")
-    return resolve_selected_handoff(request.handoff, config, root)
+    return resolve_selected_handoff(request.handoff, config, root, cache_ops=cache_ops)
+
 
