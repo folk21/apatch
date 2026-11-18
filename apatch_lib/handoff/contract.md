@@ -1,4 +1,4 @@
-# Handoff domain contract (R2.2 metadata, R3.3 archives, R3.4 producer, R3.5 ledger)
+# Handoff domain contract (R2.2 metadata, R3.3 archives, R3.4 producer, R3.5 ledger, R3.6 cache)
 
 ## Ownership and published API
 
@@ -108,9 +108,24 @@ parsing and ordering are not ZIP content verification or proof of a Git commit.
 
 ## Remaining modularization
 
-`params_cache.py` and `zip_resume.py` still own their established cache and
-resume behavior outside this package. Move them in separately tested slices
-without changing persisted identity, recovery or safety decisions.
+## Verified handoff cache port (R3.6)
+
+`handoff/cache/api.py` defines the `HandoffCacheOperations` structural protocol:
+`load(root) -> Handoff` is read-only, `preflight_write(root) -> None`
+validates the cache and recovery targets before extraction, and
+`save(root, handoff) -> None` atomically caches only a verified ZIP identity.
+`handoff/cache/service.py` contains the original persistence and recovery
+algorithms and the default `ProjectHandoffCache` implementation. The runtime
+dispatcher consumes the injected port; handoff selection supports injecting
+the same port while retaining its legacy lookup patch seam.
+
+The stable `params.json.lock`, bounded UTF-8 payload, symlink checks,
+mode-0600 atomic replacement, fsync and hard-linked invalid-cache backups
+are unchanged. Cached data is not applied-history or workflow evidence.
+`apatch_lib.params_cache` remains an import-compatible alias module. There
+is no schema or cache migration.
+
+`zip_resume.py` continues to own resume verification until R3.7.
 
 ## Verification
 

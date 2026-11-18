@@ -19,7 +19,7 @@ from .logging_setup import LOG_FILENAME, configure, set_context
 from .macros import MACRO_NAMES, execute_macro
 from .migration import migrate_legacy_artifacts
 from .model import Abort, Config, load_config, load_project_config
-from .params_cache import preflight_cache_write, save_cached_handoff
+from .handoff.api import HandoffCacheOperations, ProjectHandoffCache
 from .planner import execute_goal
 from .progress import ProgressRecorder, ProgressStore, render_progress
 from .sequence import execute_sequence
@@ -125,7 +125,7 @@ def _admit_zip_start(
 def _execute_lifecycle(
     request: CliRequest, context: ProjectContext, selection: HandoffSelection,
     recorder: ProgressRecorder, *, menu_shown: bool, recover_cache: bool,
-    resume_selected: bool,
+    resume_selected: bool, cache_ops: HandoffCacheOperations,
 ) -> None:
     """Run exactly one workflow coordinator for normal single-handoff requests."""
     root, config, tool_dir = context.root, context.config, context.tool_dir
@@ -152,7 +152,7 @@ def _execute_lifecycle(
         with locked_state(config.state_path) as state:
             if resume_selected:
                 evidence = verify_applied_zip(root, config, handoff, state)
-                save_cached_handoff(root, handoff)
+                cache_ops.save(root, handoff)
                 print(f"Verified selected ZIP: {evidence.patch} | phase={evidence.phase} "
                       f"| branch={evidence.branch}; no archive replay")
             migrate_legacy_artifacts(root, tool_dir, config, state)
@@ -182,7 +182,7 @@ def _execute_lifecycle(
                     select_workflow=select_for_apply if selection.sequence else None,
                     on_satisfied=(lambda action, active: active.verified_resume_step(action))
                     if resume_selected else None,
-                    on_completed=lambda action, active: save_cached_handoff(root, active.source_handoff)
+                    on_completed=lambda action, active: cache_ops.save(root, active.source_handoff)
                     if active.zip_selected and
                     (action == 3 or (recover_cache and action == 1)) else None)
             else:
@@ -190,14 +190,18 @@ def _execute_lifecycle(
                 if (selection.zip_selected and result == "SUCCESS"
                         and (request.op in {"APL", "3"}
                              or (recover_cache and request.op in {"BRN", "1"}))):
-                    save_cached_handoff(root, handoff)
+                    cache_ops.save(root, handoff)
     finally:
         reset_skip_approvals(token)
         recorder.flush(tool_dir)
 
 
-def execute_request(request: CliRequest, tool_dir: Path) -> int:
+def execute_request(
+    request: CliRequest, tool_dir: Path, *,
+    cache_ops: HandoffCacheOperations | None = None,
+) -> int:
     """Single CLI dispatcher; read-only paths never enter lifecycle bootstrap."""
+    cache_ops = cache_ops if cache_ops is not None else ProjectHandoffCache()
     global_config = load_config(tool_dir)
     if request.info is not None:
         validate_progress_request(request)
@@ -228,7 +232,7 @@ def execute_request(request: CliRequest, tool_dir: Path) -> int:
         request = request.with_action("STS")
 
     recorder = ProgressRecorder(root)
-    selection = resolve_handoffs(request, config, root)
+    selection = resolve_handoffs(request, config, root, cache_ops=cache_ops)
     if request.followup and not selection.zip_selected:
         raise Abort("followup=true requires a self-contained ZIP, not a legacy handoff JSON")
     if selection.handoff is not None and selection.handoff.repository != root.name:
@@ -236,7 +240,7 @@ def execute_request(request: CliRequest, tool_dir: Path) -> int:
     if request.goal is not None:
         execute_goal(root, config, tool_dir, selection, goal=request.goal,
                      intent=request.intent or "auto", plan_only=request.plan_only,
-                     skip_approves=request.skip_approves)
+                     skip_approves=request.skip_approves, cache_ops=cache_ops)
         return 0
     if request.status_only:
         if selection.evidence and selection.handoff is None:
@@ -255,8 +259,8 @@ def execute_request(request: CliRequest, tool_dir: Path) -> int:
 
     recover_cache, resume_selected = _admit_zip_start(request, context, selection)
     if selection.zip_selected and (recover_cache or not resume_selected):
-        preflight_cache_write(root)
+        cache_ops.preflight_write(root)
     _execute_lifecycle(request, context, selection, recorder,
                        menu_shown=menu_shown, recover_cache=recover_cache,
-                       resume_selected=resume_selected)
+                       resume_selected=resume_selected, cache_ops=cache_ops)
     return 0
