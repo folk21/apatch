@@ -44,6 +44,7 @@ case "${1:-regular}" in
             tests.test_action_applicability \
             tests.test_audit_rules \
             tests.test_runner_scripts \
+            tests.test_deploy_apatch \
             tests.test_timeout_reporting \
             tests.test_validation \
             tests.test_feature_sessions.SessionStateTests \
@@ -114,6 +115,7 @@ case "${1:-regular}" in
         exit 2
         ;;
 esac
+
 
 
 
