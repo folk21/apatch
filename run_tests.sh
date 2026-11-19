@@ -66,6 +66,7 @@ case "${1:-regular}" in
             tests.test_macros.LocalMacroTests.test_final_status_failure_does_not_mask_original_macro_error \
             tests.test_remote_macros.RemoteMacroTests.test_run_all_new_zip_completes_and_repeated_call_does_not_mutate \
             tests.test_formatting.FormattingTests.test_formatting_runs_before_read_only_checks_and_keeps_index \
+            tests.test_building \
             tests.test_formatting.FormattingTests.test_direct_chk_does_not_run_format_commands \
             tests.test_formatting.FormattingTests.test_index_mutation_is_reported_and_preserved \
             tests.test_formatting.FormattingTests.test_symlink_replacement_is_reported_and_preserved \

@@ -19,6 +19,11 @@ LOGGER = logging.getLogger("apatch.workflow")
 
 
 class OperationPresentation:
+    def run_build(self):
+        """Dispatch an explicit build to its dedicated workflow operation."""
+        from ..building import run_build
+        return run_build(self)
+
     def present_guarded_commit_readiness(self, session_id: str, *,
                                          accepted_manual_paths=()):
         """Show the future goal planner's commit gate without mutating state."""
@@ -66,6 +71,7 @@ class OperationPresentation:
         print(" 11. [AUD] Audit all known patch history (read-only; offline by default)")
         print(" 12. [FMT] Run configured formatters before CHK (preserves edits)")
         print(" 13. [REV] Independent code review (configured CLI or script)")
+        print(" 14. [BLD] Run configured build commands without running CHK")
         print(" 0. [EXT] Exit")
         try:
             return input("Choose an action (number or code): ").strip()
@@ -133,6 +139,9 @@ class OperationPresentation:
         elif number == 13:
             label, operation, reason = ("Independent code review after CHK",
                                         self.review, None)
+        elif number == 14:
+            label, operation, reason = ("Build without running canonical checks",
+                                        self.run_build, None)
         else:
             options = self.options()
             label, operation, reason = options[number - 1]
@@ -235,3 +244,4 @@ class OperationPresentation:
         self._record_progress(number, started_at, elapsed, action_result.progress_outcome,
                               before_phase, before_branch, after_branch)
         return result
+

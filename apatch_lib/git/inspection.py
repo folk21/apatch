@@ -116,3 +116,21 @@ def inspect_worktree(root: Path) -> WorktreeSnapshot:
             or set(inventory) != set(after_paths)):
         raise Abort("Git worktree changed during read-only inspection; retry from current state")
     return WorktreeSnapshot(after_fingerprint, tuple(sorted(inventory.items())))
+
+
+
+def index_entries(root):
+    """Inspect the whole Git index, including paths entering the changed set."""
+    from ..gitutil import run
+
+    raw = run(["git", "ls-files", "--stage", "-z"], root, text=False).stdout
+    entries = {}
+    for item in raw.split(b"\x00"):
+        if not item:
+            continue
+        if b"\t" not in item:
+            raise Abort("FMT_INDEX_INVALID: Malformed Git index entry")
+        identity, path = item.split(b"\t", 1)
+        entries.setdefault(os.fsdecode(path), []).append(identity)
+    return {key: tuple(sorted(value)) for key, value in entries.items()}
+

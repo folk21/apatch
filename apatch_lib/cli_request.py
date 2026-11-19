@@ -113,7 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.set_defaults(mode="loose")
     actions = parser.add_mutually_exclusive_group()
     actions.add_argument("--op", type=parse_operation, metavar="NUMBER|CODE|MACRO",
-                         help="Run one action (0-13, APL/STS/AUD/FMT/REV) or a named workflow macro")
+                         help="Run one action (0-14, APL/STS/AUD/FMT/REV/BLD) or a named workflow macro")
     actions.add_argument("--op-seq", "--opSeq", type=parse_operation_sequence,
                          metavar="CODE,CODE,...",
                          help="Run sequential actions; stop after any error or no-op; pair with skipApproves=true for unattended use")
@@ -232,3 +232,4 @@ def validate_repository_request(request: CliRequest) -> None:
             raise Abort("followup=true is only for applying a new ZIP: provide the ZIP "
                         "and start with APL. To resume an already applied patch, use "
                         "opSeq=CHK,STS without the ZIP or followup=true")
+

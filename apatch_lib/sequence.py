@@ -13,6 +13,10 @@ COMPLETED_PUBLICATION_REPLAYS = frozenset({
     (3, 1, 12, 4, 5, 6, 7, 8, 9, 10),
     (3, 1, 4, 13, 5, 6, 7, 8, 9, 10),
     (3, 1, 12, 4, 13, 5, 6, 7, 8, 9, 10),
+    (3, 1, 14, 4, 5, 6, 7, 8, 9, 10),
+    (3, 1, 12, 14, 4, 5, 6, 7, 8, 9, 10),
+    (3, 1, 14, 4, 13, 5, 6, 7, 8, 9, 10),
+    (3, 1, 12, 14, 4, 13, 5, 6, 7, 8, 9, 10),
 })
 
 
@@ -164,3 +168,4 @@ def execute_sequence(workflow, sequence: OperationSequence, *, on_completed=None
     print("    Already satisfied: " + (", ".join(satisfied) or "NONE"))
     print("    Read-only reports: " + (", ".join(reported) or "NONE"))
     print("    Not executed: NONE")
+

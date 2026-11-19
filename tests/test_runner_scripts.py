@@ -70,8 +70,9 @@ class RunnerScriptsTests(unittest.TestCase):
                     args)
                 self.assertIn(
                     "tests.test_branch_reassignment.UpfrontZipBranchSelectionTests", args)
+                self.assertIn("tests.test_building", args)
                 self.assertNotIn("tests.test_publication_goals", args)
-                self.assertLess(len(args), 90)
+                self.assertLess(len(args), 91)
 
     def test_rare_launcher_and_full_alias_run_all_tests(self):
         for script, options in (("run_rare_checks.sh", ()), ("run_tests.sh", ("full",))):
@@ -144,3 +145,4 @@ class RunnerScriptsTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("Usage:", result.stderr)
         self.assertEqual(arguments, [])
+

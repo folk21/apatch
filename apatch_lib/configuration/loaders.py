@@ -113,7 +113,7 @@ def load_project_config(root: Path, global_config: Config) -> Config:
     allowed = required | {"log_directory", "state_file", "applied_patches_file", "base_branch",
                           "require_review_approval", "require_required_checks", "check_timeout_seconds",
                           "check_idle_timeout_seconds", "prepare_checks", "check_worktree_policy",
-                          "format_commands", "github_ci_wait_seconds", "reviewers",
+                          "format_commands", "build_commands", "github_ci_wait_seconds", "reviewers",
                           "review_required", "review_timeout_seconds", "review_max_bytes",
                           "review_artifacts_enabled", "review_artifact_max_bytes",
                           "review_context_max_bytes", "review_context_external_consent",
@@ -181,6 +181,16 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                        for arg in command)):
             raise Abort(f"Project format_commands command {index} must be a non-empty argv list")
         format_commands.append(tuple(command))
+    build_items = data.get("build_commands", [])
+    if not isinstance(build_items, list) or len(build_items) > 20:
+        raise Abort("Project build_commands must be a list of at most 20 argv commands")
+    build_commands = []
+    for index, command in enumerate(build_items, start=1):
+        if (not isinstance(command, list) or not command or len(command) > 128
+                or any(type(arg) is not str or not arg or "\x00" in arg
+                       or "\n" in arg or "\r" in arg for arg in command)):
+            raise Abort(f"Project build_commands command {index} must be a non-empty argv list")
+        build_commands.append(tuple(command))
     review_required = data.get("review_required", False)
     if type(review_required) is not bool:
         raise Abort("Project review_required must be a YAML boolean")
@@ -303,7 +313,8 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                    require_approval=require_approval, review_approval_source=approval_source,
                    require_checks=require_checks, required_checks_source=checks_source,
                    prepare_checks=tuple(prepared), check_worktree_policy=policy,
-                   format_commands=tuple(format_commands), github_ci_wait_seconds=ci_wait,
+                   format_commands=tuple(format_commands), build_commands=tuple(build_commands),
+                    github_ci_wait_seconds=ci_wait,
                    reviewers=tuple(reviewers), review_required=review_required,
                    review_timeout_seconds=review_timeout, review_max_bytes=review_max_bytes,
                    review_artifacts_enabled=artifacts_enabled,
@@ -311,4 +322,5 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                    review_context_max_bytes=context_max_bytes,
                    review_retention_enabled=retention_enabled,
                    **retention_limits, **context_options)
+
 

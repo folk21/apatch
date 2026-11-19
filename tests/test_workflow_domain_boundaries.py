@@ -68,13 +68,13 @@ class WorkflowDomainBoundaryTests(unittest.TestCase):
 
     def test_action_numbers_remain_stable(self) -> None:
         codes = ("EXT", "BRN", "BAP", "APL", "CHK", "CMT", "PSH", "PR",
-                 "MRG", "SYN", "STS", "AUD", "FMT", "REV")
+                 "MRG", "SYN", "STS", "AUD", "FMT", "REV", "BLD")
         self.assertEqual(actions.ACTION_CODES, codes)
         self.assertEqual(tuple(domain.action_number(code) for code in codes),
                          tuple(range(len(codes))))
         self.assertEqual(domain.action_number("3"), 3)
         with self.assertRaises(ValueError):
-            domain.action_number("14")
+            domain.action_number("15")
 
     def test_phase_identifiers_and_effects_are_unchanged(self) -> None:
         self.assertEqual(domain.PHASE_VALUES,
@@ -122,3 +122,4 @@ class WorkflowDomainBoundaryTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

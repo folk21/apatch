@@ -25,7 +25,7 @@ class PublicCliContractTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         text = result.stdout
         for operation in ("APL", "BRN", "CHK", "CMT", "PSH", "PR", "MRG", "SYN", "STS",
-                          "AUD", "FMT", "REV"):
+                          "AUD", "FMT", "REV", "BLD"):
             with self.subTest(operation=operation):
                 self.assertIn(operation, text)
         self.assertIn("--op", text)
@@ -51,3 +51,4 @@ class PublicCliContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

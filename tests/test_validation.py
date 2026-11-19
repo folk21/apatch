@@ -15,7 +15,8 @@ from tests._support import (
 
 class ValidationTest(unittest.TestCase):
     def test_every_action_code_maps_to_its_number(self):
-        self.assertEqual(len(ACTION_CODES), 14)
+        self.assertEqual(len(ACTION_CODES), 15)
+        self.assertEqual(ACTION_CODES[14], "BLD")
         self.assertEqual(ACTION_CODES[12], "FMT")
         self.assertEqual(ACTION_CODES[13], "REV")
         self.assertEqual(len(set(ACTION_CODES)), len(ACTION_CODES))
@@ -53,3 +54,4 @@ class ValidationTest(unittest.TestCase):
                                         "commit_message": "test: msg"}))
             with self.assertRaises(Abort):
                 load_handoff(path)
+

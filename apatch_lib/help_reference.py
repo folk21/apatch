@@ -18,6 +18,7 @@ HELP_EPILOG = dedent("""
       APL  Apply a selected ZIP in the target working tree.
       BRN  Create or safely select the feature branch for the applied patch.
       FMT  Run project-defined MUTATING formatters; optional, before CHK.
+      BLD  Run configured build_commands only; no checks or test suite.
       CHK  Run project-defined READ-ONLY checks; required before safe commit.
       REV  Independent script/LLM code review of the checked bytes; optional.
       CMT  Commit confirmed changes without pushing (LOOSE mode).
@@ -26,8 +27,8 @@ HELP_EPILOG = dedent("""
       STS  Inspect recorded local workflow state (remote status not queried).
       AUD  Audit local patch history; verifyRemote=true enables GitHub reads.
 
-      Common sequence: APL,BRN,FMT,CHK,REV,CMT,PSH,PR,MRG,SYN,STS.
-      Omit FMT if format_commands are absent. Omit REV unless requested or
+      Common sequence: APL,BRN,FMT,BLD,CHK,REV,CMT,PSH,PR,MRG,SYN,STS.
+      Omit FMT/BLD if format_commands/build_commands are absent. Omit REV unless requested or
       review_required=true. STS is safe to run independently.
 
     REUSE AN UNCHANGED ZIP WITH A DIFFERENT FEATURE BRANCH (LOOSE)
@@ -54,7 +55,7 @@ HELP_EPILOG = dedent("""
       featureBranch cannot accompany a legacy JSON, handoffSeq, goal,
       STRICT/FORCE APL or a follow-up containing BRN.
 
-    CONFIGURE PROJECT CHECKS AND FORMATTERS
+    CONFIGURE PROJECT CHECKS, BUILDS AND FORMATTERS
       Create <target-repository>/.apatch/config.yaml with schema_version: 1.
       The checks list is REQUIRED. Examples (adapt paths to your project):
 
@@ -62,6 +63,8 @@ HELP_EPILOG = dedent("""
         checks:
           - ["./run-tests.sh"]
           - ["dart", "format", "--output=none", "--set-exit-if-changed", "app/lib", "app/test"]
+        build_commands:
+          - ["./build.sh"]
         format_commands:
           - ["dart", "format", "app/lib", "app/test"]
           - ["cargo", "fmt", "--manifest-path", "core/Cargo.toml", "--all"]
@@ -73,6 +76,13 @@ HELP_EPILOG = dedent("""
       strings: no pipes, redirects, glob expansion, or variable interpolation.
       To run a shell pipeline, put it in a project-owned script and list that
       script as one command. Commands execute from the TARGET repository root.
+
+      BLD runs build_commands only. Its outcome does not satisfy CHK or
+      allow CMT. BLD must not change tracked/index files; ignored build
+      artifacts are permitted. If a build changes tracked files, BLD fails
+      and leaves the files for review. A BLD invalidates earlier CHK evidence.
+      Existing checks remain canonical: explicitly include any mandatory
+      build gate in checks until an independent build gate is configured.
 
       FMT changes source files and invalidates old CHK/REV evidence. CHK MUST
       NOT change files. If run-tests.sh formats source, split formatting into
@@ -274,4 +284,5 @@ PREFLIGHT_HELP_EPILOG = dedent("""
       source drift before publishing the archive. CHK remains mandatory in
       the destination repository after ZIP application.
 """).strip()
+
 
