@@ -19,7 +19,8 @@ from .logging_setup import LOG_FILENAME, configure, set_context
 from .macros import MACRO_NAMES, execute_macro
 from .migration import migrate_legacy_artifacts
 from .model import Abort, Config, load_config, load_project_config
-from .handoff.api import HandoffCacheOperations, ProjectHandoffCache
+from .handoff.api import (AppliedZipVerifier, ProjectAppliedZipVerifier,
+                          HandoffCacheOperations, ProjectHandoffCache)
 from .planner import execute_goal
 from .progress import ProgressRecorder, ProgressStore, render_progress
 from .sequence import execute_sequence
@@ -76,8 +77,10 @@ def _select_menu_action(
 
 def _admit_zip_start(
     request: CliRequest, context: ProjectContext, selection: HandoffSelection,
+    *, resume_ops: AppliedZipVerifier | None = None,
 ) -> tuple[bool, bool]:
     """Separate new ZIP extraction, verified resume, and legacy BRN recovery."""
+    verify = resume_ops.verify if resume_ops is not None else verify_applied_zip
     if not selection.zip_selected:
         return False, False
     if request.op in {"BAP", "2"}:
@@ -90,7 +93,7 @@ def _admit_zip_start(
             saved = snapshot["workflows"].get(workflow_key(
                 context.root, selection.handoff.branch, selection.handoff.patch))
             if isinstance(saved, dict) and saved.get("phase") not in {None, "new"}:
-                verify_applied_zip(context.root, context.config, selection.handoff, snapshot)
+                verify(context.root, context.config, selection.handoff, snapshot)
                 return False, True
         return False, False
     if first == 1:
@@ -104,15 +107,15 @@ def _admit_zip_start(
                              and saved.get("applied_branch") == context.config.base
                              and saved.get("archive_sha256") == handoff.patch_sha256)
             if recover_cache:
-                verify_applied_zip(context.root, context.config, handoff,
+                verify(context.root, context.config, handoff,
                                    read_state_snapshot(context.config.state_path))
                 return True, False
         if request.op_seq is not None:
-            verify_applied_zip(context.root, context.config, selection.handoff,
+            verify(context.root, context.config, selection.handoff,
                                read_state_snapshot(context.config.state_path))
             return False, True
     if first not in {1, 3}:
-        verify_applied_zip(context.root, context.config, selection.handoff,
+        verify(context.root, context.config, selection.handoff,
                            read_state_snapshot(context.config.state_path))
         return False, True
     message = ("A newly selected self-contained ZIP must start with op=APL; "
@@ -126,6 +129,7 @@ def _execute_lifecycle(
     request: CliRequest, context: ProjectContext, selection: HandoffSelection,
     recorder: ProgressRecorder, *, menu_shown: bool, recover_cache: bool,
     resume_selected: bool, cache_ops: HandoffCacheOperations,
+    resume_ops: AppliedZipVerifier,
 ) -> None:
     """Run exactly one workflow coordinator for normal single-handoff requests."""
     root, config, tool_dir = context.root, context.config, context.tool_dir
@@ -151,7 +155,7 @@ def _execute_lifecycle(
     try:
         with locked_state(config.state_path) as state:
             if resume_selected:
-                evidence = verify_applied_zip(root, config, handoff, state)
+                evidence = resume_ops.verify(root, config, handoff, state)
                 cache_ops.save(root, handoff)
                 print(f"Verified selected ZIP: {evidence.patch} | phase={evidence.phase} "
                       f"| branch={evidence.branch}; no archive replay")
@@ -199,9 +203,12 @@ def _execute_lifecycle(
 def execute_request(
     request: CliRequest, tool_dir: Path, *,
     cache_ops: HandoffCacheOperations | None = None,
+    resume_ops: AppliedZipVerifier | None = None,
 ) -> int:
     """Single CLI dispatcher; read-only paths never enter lifecycle bootstrap."""
     cache_ops = cache_ops if cache_ops is not None else ProjectHandoffCache()
+    resume_ops = (resume_ops if resume_ops is not None else
+                  ProjectAppliedZipVerifier(verify_fn=verify_applied_zip))
     global_config = load_config(tool_dir)
     if request.info is not None:
         validate_progress_request(request)
@@ -257,10 +264,12 @@ def execute_request(
             return 0
         request = resolved
 
-    recover_cache, resume_selected = _admit_zip_start(request, context, selection)
+    recover_cache, resume_selected = _admit_zip_start(
+        request, context, selection, resume_ops=resume_ops)
     if selection.zip_selected and (recover_cache or not resume_selected):
         cache_ops.preflight_write(root)
     _execute_lifecycle(request, context, selection, recorder,
                        menu_shown=menu_shown, recover_cache=recover_cache,
-                       resume_selected=resume_selected, cache_ops=cache_ops)
+                       resume_selected=resume_selected, cache_ops=cache_ops,
+                       resume_ops=resume_ops)
     return 0

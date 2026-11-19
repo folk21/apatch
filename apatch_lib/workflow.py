@@ -31,7 +31,7 @@ from .session import (attach_applied_workflow, create_feature_session,
 from .session_continuation import require_session_continuation
 from .state import finish_run, save, start_run
 from .gitutil import clear_confirmation_declined, confirmation_was_declined
-from .zip_resume import handoff_signature, verify_applied_zip
+from .handoff.api import handoff_signature, verify_applied_zip
 
 
 LOGGER = logging.getLogger("apatch.workflow")
