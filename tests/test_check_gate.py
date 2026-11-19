@@ -69,6 +69,92 @@ class CheckBoundaryTests(LocalGitFixture):
         w.config = replace(w.config, disabled_without_chk="CMT")
         require_boundary(w, "MRG")
 
+    def test_deferred_commit_handles_rename_detected_only_after_staging(self):
+        self.configure_boundary()
+        self.ready()
+        (self.root / "existing.txt").rename(self.root / "moved.txt")
+        before = command("git", "status", "--short", cwd=self.root).stdout
+        self.assertIn(" D existing.txt", before)
+        self.assertIn("?? moved.txt", before)
+
+        committed = self.invoke_zip("op=CMT", "skipApproves=true")
+        self.assertEqual(committed.returncode, 0, committed.stdout + committed.stderr)
+        self.assertNotIn("COMMIT_CONTENT_DRIFT", committed.stderr)
+        self.assertEqual((self.root / "moved.txt").read_text(), "updated\n")
+        self.assertFalse((self.root / "existing.txt").exists())
+        self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, "")
+        files = command("git", "ls-tree", "-r", "--name-only", "HEAD", cwd=self.root).stdout
+        self.assertIn("moved.txt", files.splitlines())
+        self.assertNotIn("existing.txt", files.splitlines())
+        self.assertEqual(self.active_workflow().record["unchecked_commit_sha"],
+                         command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip())
+
+    def test_unfolded_status_detects_staged_rename_scope(self):
+        from apatch_lib.gitutil import status_paths
+
+        command("git", "mv", "existing.txt", "renamed.txt", cwd=self.root)
+        default = status_paths(self.root)
+        unfolded = status_paths(self.root, detect_renames=False)
+        self.assertIn("renamed.txt", default)
+        self.assertEqual(set(unfolded), {"existing.txt", "renamed.txt"})
+
+    def test_commit_still_blocks_worktree_race_during_staging(self):
+        from apatch_lib import loose
+        from apatch_lib.gitutil import reset_skip_approvals, set_skip_approvals
+
+        self.configure_boundary()
+        self.ready()
+        before_head = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        workflow = self.active_workflow()
+        original_run = loose.run
+
+        def injected_run(argv, root, **kwargs):
+            result = original_run(argv, root, **kwargs)
+            if argv == ["git", "add", "-A"]:
+                (self.root / "new.txt").write_text("concurrent edit\n")
+            return result
+
+        token = set_skip_approvals(True)
+        try:
+            with patch.object(loose, "run", side_effect=injected_run):
+                with self.assertRaisesRegex(Abort, "COMMIT_CONTENT_DRIFT"):
+                    workflow.loose_actions.commit()
+        finally:
+            reset_skip_approvals(token)
+        self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(),
+                         before_head)
+        self.assertEqual((self.root / "new.txt").read_text(), "concurrent edit\n")
+
+    def test_commit_still_blocks_index_race_during_staging(self):
+        from apatch_lib import loose
+        from apatch_lib.gitutil import reset_skip_approvals, set_skip_approvals
+
+        self.configure_boundary()
+        self.ready()
+        before_head = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        workflow = self.active_workflow()
+        original_run = loose.run
+
+        def injected_run(argv, root, **kwargs):
+            result = original_run(argv, root, **kwargs)
+            if argv == ["git", "add", "-A"]:
+                # Use a known tracked blob to introduce index-only drift.
+                old = command("git", "rev-parse", "HEAD:existing.txt", cwd=self.root).stdout.strip()
+                command("git", "update-index", "--cacheinfo", "100644", old,
+                        "new.txt", cwd=self.root)
+            return result
+
+        token = set_skip_approvals(True)
+        try:
+            with patch.object(loose, "run", side_effect=injected_run):
+                with self.assertRaisesRegex(Abort, "COMMIT_CONTENT_DRIFT"):
+                    workflow.loose_actions.commit()
+        finally:
+            reset_skip_approvals(token)
+        self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(),
+                         before_head)
+        self.assertEqual((self.root / "new.txt").read_text(), "new\n")
+
     def test_explicit_cli_override_is_not_persistent_and_records_unchecked_history(self):
         self.ready()
         committed = self.invoke_zip("op=CMT", "disabledWithoutChk=MRG", "skipApproves=true")
