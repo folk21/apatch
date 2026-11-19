@@ -24,7 +24,7 @@ from .session_continuation import require_session_continuation
 from .state import locked_state, read_state_snapshot
 from .status import workflow_key
 from .workflow import Workflow
-from .zip_resume import verify_applied_zip
+from .handoff.api import verify_applied_zip
 
 
 LOCAL_GOALS = frozenset({"APPLIED", "CHECKED", "COMMITTED"})

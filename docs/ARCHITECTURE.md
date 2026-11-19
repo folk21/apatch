@@ -167,7 +167,7 @@ goal CLI in this first release. Remote goals require independent live
 GitHub revision proof; the planned `MRG` defers `SYN` until a new guarded
 step, while direct `op` and `opSeq` retain their existing action behavior.
 
-For an explicitly named, already applied self-contained ZIP, `zip_resume.py`
+For an explicitly named, already applied self-contained ZIP, `handoff/resume/verification.py`
 checks the current archive digest, stable handoff signature, latest structured
 applied-history entry, matching successful `APL` operation run and live local
 branch/HEAD/remote evidence. A read-only preflight is repeated under the

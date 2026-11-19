@@ -196,6 +196,25 @@ under the same port discipline, retaining strict source-identity checks,
 backups, journal recovery, and negative tests. Neither the archive port nor
 future producer interfaces may alter workflow phases or branch admission.
 
+### R3.6–R3.7 cache and resume boundary slices (implemented)
+
+The R3.6 cache slice moves verified parameter storage to `handoff/cache/`,
+exposes `HandoffCacheOperations(Protocol)`, and injects it into CLI handoff
+selection and orchestration. It preserves cache bytes, locked atomic writes,
+invalid-cache backup admission, and recovery behavior.
+
+The R3.7 resume slice moves the existing verification algorithm to
+`handoff/resume/verification.py` and exports `AppliedZipVerifier(Protocol)`
+with `ProjectAppliedZipVerifier` through `handoff.api`. CLI admission and
+resumed lifecycle actions consume the injected port. Existing consumers use
+the public verification function, while `zip_resume.py` preserves import
+identity for compatibility. Checkpoint, digest, latest applied-history entry,
+APL operation evidence, Git HEAD/branch/remote and changed-path gates are
+unchanged. No state migration, archive replay or new Git mutation is involved.
+Contract, injection, cold-import, negative and recovery regressions are
+required before accepting this architectural slice. These changes do not
+advance any normative SDD stage.
+
 ## R4 — Publication, review and audit ownership
 
 **Dependencies:** R3 and verified Git/handoff API.

@@ -1,4 +1,4 @@
-# Handoff domain contract (R2.2 metadata, R3.3 archives, R3.4 producer, R3.5 ledger, R3.6 cache)
+# Handoff domain contract (R2.2 metadata, R3.3 archives, R3.4 producer, R3.5 ledger, R3.6 cache, R3.7 resume)
 
 ## Ownership and published API
 
@@ -125,7 +125,26 @@ are unchanged. Cached data is not applied-history or workflow evidence.
 `apatch_lib.params_cache` remains an import-compatible alias module. There
 is no schema or cache migration.
 
-`zip_resume.py` continues to own resume verification until R3.7.
+## Applied ZIP verification port (R3.7)
+
+`handoff/resume/api.py` defines the read-only `AppliedZipVerifier(Protocol)`
+with `verify(root, config, handoff, state) -> AppliedZipEvidence`.
+`ProjectAppliedZipVerifier` delegates to the unchanged resume validation in
+`handoff/resume/verification.py`. The CLI coordinator accepts an injected
+verifier and uses it for admission and resumed lifecycle operations; the
+implementation has no source writes or remote mutations.
+
+Successful verification requires the identical handoff signature, ZIP digest,
+checkpoint and last applied-history entry, a successful APL operation run, and
+consistent live Git branch/HEAD/remote identity and changed paths. Invalid
+or superseded evidence is rejected without extracting ZIP contents or
+rewriting history. The `AppliedZipEvidence` fields and phase constants remain
+unchanged, as do legacy checkpoint semantics and failure messages.
+
+`apatch_lib.zip_resume` remains an identity-preserving compatibility shim;
+existing mocks of `application.verify_applied_zip` continue to work on the
+standard dispatcher path. No persisted records or schema require migration.
+
 
 ## Verification
 

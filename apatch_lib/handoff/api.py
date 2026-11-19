@@ -20,6 +20,10 @@ from .history.api import PatchLedgerOperations
 from .history.service import ProjectPatchLedger
 from .producer.models import PackagingResult, PreflightResult, SourceCandidates
 from .producer.service import VerifiedSourceProducer
+from .resume.api import AppliedZipVerifier
+from .resume.models import AppliedZipEvidence, APPLIED_PHASES, UNCOMMITTED_PHASES
+from .resume.service import ProjectAppliedZipVerifier
+from .resume.verification import handoff_signature, verify_applied_zip
 
 
 @runtime_checkable
@@ -65,6 +69,8 @@ __all__ = (
     "ProducerOperations", "VerifiedSourceProducer",
     "PatchLedgerOperations", "ProjectPatchLedger",
     "HandoffCacheOperations", "ProjectHandoffCache",
+    "AppliedZipVerifier", "ProjectAppliedZipVerifier", "AppliedZipEvidence",
+    "APPLIED_PHASES", "UNCOMMITTED_PHASES", "handoff_signature", "verify_applied_zip",
     "PreflightResult", "SourceCandidates", "PackagingResult",
     "handoff_from_zip", "patch_file", "Handoff", "load_handoff",
     "parse_handoff_payload", "safe_relative", "BASENAME_PATTERN",
