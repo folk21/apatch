@@ -31,6 +31,7 @@ class Config:
     prepare_checks: tuple[tuple[str, ...], ...] = ()
     check_worktree_policy: str = "stop"
     format_commands: tuple[tuple[str, ...], ...] = ()
+    build_commands: tuple[tuple[str, ...], ...] = ()
     github_ci_wait_seconds: int = 300
     reviewers: tuple["ReviewProvider", ...] = ()
     review_required: bool = False
@@ -46,4 +47,5 @@ class Config:
     review_retention_max_runs: int = 100
     review_retention_max_bytes: int = 536870912
     review_retention_max_age_days: int = 30
+
 

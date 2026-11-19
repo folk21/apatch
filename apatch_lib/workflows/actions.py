@@ -1,6 +1,6 @@
 """Stable action identifiers shared by all workflow entry points."""
 
-ACTION_CODES = ("EXT", "BRN", "BAP", "APL", "CHK", "CMT", "PSH", "PR", "MRG", "SYN", "STS", "AUD", "FMT", "REV")
+ACTION_CODES = ("EXT", "BRN", "BAP", "APL", "CHK", "CMT", "PSH", "PR", "MRG", "SYN", "STS", "AUD", "FMT", "REV", "BLD")
 
 
 def action_number(value: object) -> int:
@@ -13,3 +13,4 @@ def action_number(value: object) -> int:
     except ValueError as exc:
         raise ValueError(f"Invalid action: use 0-{len(ACTION_CODES) - 1} or one of "
                          + ", ".join(ACTION_CODES)) from exc
+

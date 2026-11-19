@@ -66,6 +66,7 @@ def policy_fingerprint(root: Path, config) -> str:
         raise Abort("Cannot verify the current project checks config")
     policy = {
         "checks": config.checks,
+        "build_commands": config.build_commands,
         "timeout": config.check_timeout_seconds,
         "idle_timeout": config.check_idle_timeout_seconds,
         "remote": config.remote,
@@ -177,3 +178,4 @@ def assert_scope_unchanged(workflow, scope: CommitScope) -> CommitScope:
         raise NeedsVerification(
             "NEEDS_VERIFICATION: Branch, HEAD, Git bytes, path scope or check policy changed")
     return fresh
+

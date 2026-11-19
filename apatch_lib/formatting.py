@@ -1,8 +1,7 @@
 """Explicit, non-staging formatter operation before canonical verification."""
 
-import os
-
 from .commit_scope import policy_fingerprint
+from .git.api import index_entries as _index_entries
 from .core.enums import WorkflowPhase
 from .gitutil import (current_branch, head, run, worktree_change_details,
                       worktree_inventory)
@@ -33,20 +32,6 @@ def _assert_safe_delta(before, after):
         if (old is None and new is not None and new.kind == "symlink"):
             raise Abort(f"FMT_SYMLINK_CHANGED: New symlink at {path!r}; "
                         "review preserved files before CHK")
-
-
-def _index_entries(root):
-    """Inspect the whole Git index, including paths entering the changed set."""
-    raw = run(["git", "ls-files", "--stage", "-z"], root, text=False).stdout
-    entries = {}
-    for item in raw.split(b"\x00"):
-        if not item:
-            continue
-        if b"\t" not in item:
-            raise Abort("FMT_INDEX_INVALID: Malformed Git index entry")
-        identity, path = item.split(b"\t", 1)
-        entries.setdefault(os.fsdecode(path), []).append(identity)
-    return {key: tuple(sorted(value)) for key, value in entries.items()}
 
 
 def run_formatters(workflow):
@@ -105,3 +90,4 @@ def run_formatters(workflow):
             raise failure
     print("==> FMT: completed; review formatting changes and run CHK", flush=True)
     return True
+

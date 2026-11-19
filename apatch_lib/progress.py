@@ -240,7 +240,7 @@ class ProgressEvent:
                 started_at_utc, duration_seconds, error=None, sequence=None,
                 event_id=None):
         project_id, canonical = project_identity(root)
-        if result not in RESULTS or not (1 <= operation_number <= 10 or operation_number == 12):
+        if result not in RESULTS or not (1 <= operation_number <= 10 or operation_number in {12, 14}):
             raise Abort("Invalid operation summary for global progress")
         code = ACTION_CODES[operation_number]
         suggestions = {"new": 3, "branch_created": 3, "patch_applied": 4,
@@ -352,3 +352,4 @@ class ProgressRecorder:
                 print(f"WARNING: PROGRESS_UNAVAILABLE ({type(exc).__name__}); "
                       "the Git/patch outcome is unchanged. Inspect tool-local .apatch/progress/.",
                       flush=True)
+

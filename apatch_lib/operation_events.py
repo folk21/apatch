@@ -65,7 +65,7 @@ def validate_run(run):
         raise Abort("Invalid operation run ID")
     operation = run.get("operation")
     if (not isinstance(operation, dict) or type(operation.get("number")) is not int
-            or not (1 <= operation["number"] <= 9 or operation["number"] in {12, 13})
+            or not (1 <= operation["number"] <= 9 or operation["number"] in {12, 13, 14})
             or operation.get("code") != ACTION_CODES[operation["number"]]):
         raise Abort("Invalid operation run action")
     if (not isinstance(run.get("mode"), str) or run["mode"] not in {"LOOSE", "STRICT", "FORCE"}
@@ -167,3 +167,4 @@ class OperationRun:
             completed["error"] = safe_error(outcome)
         validate_run(completed)
         return completed
+

@@ -718,6 +718,7 @@ The action numbers are consistent across modes, although their behavior and phas
 | `9` | `SYN` | Switch to and fast-forward the local base branch; reconcile PR status when GitHub is available. | FORCE: same as LOOSE. STRICT: requires an already confirmed merge. |
 | `10` | `STS` | Read-only current patch inspection. | Same. |
 | `11` | `AUD` | Read-only repository-wide audit. | Same. |
+| `14` | `BLD` | Run configured build_commands without tests or verification. | Same standalone build; requires an applied, uncommitted feature branch. |
 | `12` | `FMT` | Run explicit project formatters before `CHK` without staging. | Same operation; requires an applied, uncommitted patch on its recorded feature branch. |
 
 STRICT requires the expected phase and Git state for each action. LOOSE allows manually changed files and an alternative branch, but backs up overlapping modifications before applying ZIP replacements. FORCE supports explicit reconciliation of existing Git operations. All modes retain archive integrity checks, safe Git operations, and GitHub review/CI requirements.
@@ -848,6 +849,47 @@ check_worktree_policy: recheck_once
 `prepare_checks` defaults to an empty list and accepts **argv lists only**, with no shell expansion; a maximum of 20 commands of 128 arguments each is supported. These are user-trusted executable commands, run once before guarded commit-scope staging and before the first check pass. They use the same per-command total/idle timeouts and live console output as canonical checks. A failed or timed-out preparation stops the macro without rolling back file edits. Preparation commands never run during `op=CHK`, `opSeq=CHK`, or other direct atomic operations.
 
 `check_worktree_policy` defaults to `stop`; its only other value is `recheck_once`. Both apply **only to macro-controlled verification**, and direct `CHK` always retains its existing stop-on-change behavior. If every canonical check succeeds but Git index entries, statuses, executable bits, symlink identity, or changed file bytes differ before versus after the first pass, `recheck_once` allows exactly one complete repeat. The macro re-stages only the previously authorized session-owned paths if the index and commit-path set remain safe. It does not silently accept new untracked outputs, altered index entries, symlink replacements, or unrelated/manual changes as additional commit scope. When the final pass is stable, verification records the final index and worktree fingerprint. A second change, failed check, timeout, branch/HEAD drift, or unclassified path stops the macro with preserved files and no publication.
+
+### Build without tests (`14 [BLD]`)
+
+An optional `BLD` action runs only the target project's configured `build_commands`.
+It does not execute the `checks` list, invoke formatters, stage files, or authorize
+commit, push, PR or merge. `CHK` remains the required canonical verification
+step, and its existing `checks` list and safety requirements are unchanged.
+
+```yaml
+schema_version: 1
+checks:
+  - ["./run-tests.sh"]
+build_commands:
+  - ["./build.sh"]
+```
+
+After `APL,BRN`, use `apatch op=BLD skipApproves=true` for a build-only
+operation, or `apatch opSeq=BLD,CHK,STS skipApproves=true` to run the build
+and then the existing canonical checks. `BLD` also accepts the numeric ID
+`14` and is available in LOOSE, STRICT and FORCE for an applied, uncommitted
+patch on its recorded feature branch. Omitting `build_commands` preserves
+legacy behavior; an explicit `BLD` then fails without executing anything.
+
+Build commands must be nonempty argv arrays (at most 20 commands and 128
+arguments each) and execute from the target repository root with canonical
+check timeout and idle-timeout limits. Use project-owned scripts for shell
+features. Build output is printed to the console, not copied into ordinary
+application logs. Ignored build artifacts are allowed, but Git index or
+tracked/untracked visible worktree changes, symlink changes, HEAD/branch
+changes, or changed project check policy cause the build operation to stop.
+Existing files are preserved for inspection. Previous `CHK`/`REV` evidence
+is invalidated before a build starts, even when the command fails, so a
+subsequent commit still requires fresh `CHK` evidence.
+
+**Compatibility:** `BLD` does not automatically remove build steps from
+existing `checks`, because those entries can be arbitrary scripts. To use
+build-only invocations, explicitly configure `build_commands` in addition
+to the existing canonical checks. If a successful build is a required
+publication gate, keep it in `checks` as well; a standalone `BLD` is not a
+replacement for that gate. Goals and macros still invoke the existing
+canonical `CHK` and do not implicitly run the optional standalone `BLD`.
 
 ### Explicit formatting before canonical checks (`12 [FMT]`)
 
