@@ -300,6 +300,98 @@ class UpfrontZipBranchSelectionTests(LocalGitFixture):
         self.assertFalse((self.root / "new.txt").exists())
         self.assertFalse(self.history_path.exists())
 
+    def _prepare_ignored_untracked_scope(self, *, extra_files=None):
+        """Reproduce a ZIP that temporarily exposes previously ignored editor files."""
+        (self.root / ".gitignore").write_text(".idea/\n", encoding="utf-8")
+        command("git", "add", ".gitignore", cwd=self.root)
+        command("git", "commit", "-m", "ignore local editor settings", cwd=self.root)
+        command("git", "push", "origin", "main", cwd=self.root)
+        self.head = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        self.payload["base_commit"] = self.head
+        editor = self.root / ".idea" / "settings.xml"
+        editor.parent.mkdir()
+        editor.write_text("local settings\n", encoding="utf-8")
+        stem = self.make_self_contained_zip()
+        with zipfile.ZipFile(self.zip) as archive:
+            members = {item.filename: archive.read(item)
+                       for item in archive.infolist()}
+        members[f"{self.root.name}/.gitignore"] = b""
+        for name, data in (extra_files or {}).items():
+            members[f"{self.root.name}/{name}"] = data
+        with zipfile.ZipFile(self.zip, "w") as archive:
+            for name, data in members.items():
+                archive.writestr(name, data)
+        applied = self.invoke_zip(stem, "op=APL", "skipApproves=true")
+        self.assertEqual(applied.returncode, 0, applied.stderr + applied.stdout)
+        saved = next(iter(json.loads(self.state_path.read_text())["workflows"].values()))
+        self.assertIn(".idea/settings.xml", saved["changed_paths"])
+        self.assertEqual(saved["phase"], "patch_applied")
+        (self.root / ".gitignore").write_text(
+            ".idea/\n# Restored local rules\n", encoding="utf-8")
+        return saved
+
+    def test_brn_reconciles_only_newly_ignored_non_zip_paths(self):
+        saved = self._prepare_ignored_untracked_scope()
+        result = self.invoke_zip("opSeq=BRN,CHK,CMT,STS", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("Verified ignore-rule drift", result.stdout)
+        committed = command("git", "show", "--pretty=", "--name-only", "HEAD",
+                            cwd=self.root).stdout
+        self.assertNotIn(".idea/settings.xml", committed)
+        record = next(iter(json.loads(self.state_path.read_text())["workflows"].values()))
+        self.assertNotIn(".idea/settings.xml", record["changed_paths"])
+        self.assertIn(".idea/settings.xml",
+                      record["ignore_drift_recovery"]["ignored_untracked_paths"])
+        self.assertEqual(record["ignore_drift_recovery"]["original_changed_paths"],
+                         saved["changed_paths"])
+        self.assertEqual(record["phase"], "committed")
+
+    def test_brn_rejects_zip_path_hidden_by_new_ignore_rule(self):
+        self._prepare_ignored_untracked_scope(extra_files={"assets/owned.txt": b"owned\n"})
+        (self.root / ".gitignore").write_text(
+            ".idea/\nassets/\n# Restored local rules\n", encoding="utf-8")
+        result = self.invoke_zip("op=BRN", "skipApproves=true")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Unexpected changed files", result.stderr)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         "main")
+
+    def test_brn_rejects_deleted_non_zip_file_instead_of_ignoring_it(self):
+        self._prepare_ignored_untracked_scope()
+        (self.root / ".idea" / "settings.xml").unlink()
+        result = self.invoke_zip("op=BRN", "skipApproves=true")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("missing path is not an ignored untracked regular file", result.stderr)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         "main")
+
+    def test_brn_requires_original_patch_footprint_for_scope_reconciliation(self):
+        self._prepare_ignored_untracked_scope()
+        state = json.loads(self.state_path.read_text())
+        next(iter(state["workflows"].values())).pop("patch_footprint")
+        self.state_path.write_text(json.dumps(state), encoding="utf-8")
+        result = self.invoke_zip("op=BRN", "skipApproves=true")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Unexpected changed files", result.stderr)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         "main")
+
+    def test_runtime_patterns_remain_in_local_exclude_after_gitignore_changes(self):
+        (self.root / ".gitignore").write_text("/.apatch/params.json\n", encoding="utf-8")
+        command("git", "add", ".gitignore", cwd=self.root)
+        command("git", "commit", "-m", "add ignore file", cwd=self.root)
+        command("git", "push", "origin", "main", cwd=self.root)
+        self.payload.pop("base_commit", None)
+        stem = self.make_self_contained_zip()
+        applied = self.invoke_zip(stem, "op=APL", "skipApproves=true")
+        self.assertEqual(applied.returncode, 0, applied.stderr + applied.stdout)
+        local_exclude = (self.root / ".git" / "info" / "exclude").read_text()
+        self.assertIn("/.apatch/params.json", local_exclude)
+        (self.root / ".gitignore").write_text("", encoding="utf-8")
+        checked = command("git", "check-ignore", "--no-index", ".apatch/params.json",
+                          cwd=self.root)
+        self.assertEqual(checked.returncode, 0)
+
     def test_unsupported_overrides_are_rejected_without_application(self):
         stem = self.make_self_contained_zip()
         for args in (

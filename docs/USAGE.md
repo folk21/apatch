@@ -409,6 +409,42 @@ only `APL` is satisfied; `BRN` still executes under its existing live guards.
 A follow-up ZIP successfully applied directly on its feature branch may also
 be reselected: it must have its own successful `APL` journal evidence.
 
+#### Recover changed Git ignore visibility between APL and BRN
+
+If a ZIP accidentally replaces `.gitignore` and its rules are restored after a
+successful ZIP-first `APL`, previously visible untracked `.idea/` or `.apatch/`
+files can disappear from `git status` before `BRN`. The original checkpoint
+still lists those paths, so the strict path comparison would block the branch
+transition. Do not undo the restored ignore rules, force-add runtime files,
+reset the worktree, or replay the ZIP.
+
+In LOOSE mode, `BRN` now admits this narrow recovery **only** when every
+vanished path still exists as a regular, untracked, Git-ignored file; none of
+them was part of the ZIP's recorded `patch_footprint` or previously staged.
+Every ZIP-owned change must remain visible. Newly appearing paths, missing or
+corrupt footprint evidence, vanished tracked changes, modified HEAD or remote,
+and changed worktree bytes during branch preflight all remain blocking.
+
+After a successful branch switch, `apatch` updates the `changed_paths`
+checkpoint to the visible worktree and retains an `ignore_drift_recovery`
+evidence record containing the original and newly ignored paths. It does not
+change ZIP digest, journal identity, source files, or the applied-history
+planned branch. `skipApproves=true` skips prompts but cannot override these
+guards. Review `.gitignore` and the current diff before committing:
+
+```bash
+apatch opSeq=BRN,CHK,STS skipApproves=true
+```
+
+If formatters are configured, `FMT` can be run explicitly after `BRN`;
+otherwise omit it. When `BRN` still refuses recovery, inspect the changed
+paths with `git status --short` and `git ls-files --others --ignored --exclude-standard`
+and reconcile the files manually; do not edit `.apatch` state or force-add
+ignored files to trick the checkpoint. In addition, `apatch` persists its own
+runtime exclusions in local `.git/info/exclude` before extraction, even if
+`.gitignore` currently supplies those rules, so later edits cannot make its
+private runtime files eligible for ordinary staging.
+
 #### Reassign the feature branch after APL (BRN recovery)
 
 If a self-contained ZIP was successfully applied to `main`, but its embedded
@@ -1181,13 +1217,10 @@ History starts only when the feature is installed; previous invocations are not 
 
 Command records include the executable and arguments, working directory, and (for non-check commands) exit status and duration. The complete commit message is recorded **only when the commit command runs**. For canonical checks, the log records command starts and failures only: a failed check records its exit status, duration, and at most the last 20 lines of combined output (up to 500 characters per line). Successful check output is shown live in the terminal but is not written to the log. Output from Git and GitHub commands and other standard input is not retained. Common sensitive arguments are masked. The log file is restricted to the current user (mode `0600`); nevertheless, failure diagnostics and commit messages may contain secrets and should not be shared without review.
 
-To keep runtime files out of patches and commits, `apatch` checks the repository's ignore rules and, when needed, adds precise entries for the log directory, state file, lock file, and applied-patch history to that repository's local `.git/info/exclude`. This does not modify tracked `.gitignore` files and does not affect other repositories. The `.apatch/config.yaml` file itself should be committed as part of the project's normal configuration before starting a patch workflow.
+To keep runtime files out of patches and commits, `apatch` checks the repository's ignore rules and, records precise entries for the log directory, state file, lock file, and applied-patch history in that repository's local `.git/info/exclude`, independently of `.gitignore`. This does not modify tracked `.gitignore` files and does not affect other repositories. The `.apatch/config.yaml` file itself should be committed as part of the project's normal configuration before starting a patch workflow.
 
 ## Safety and recovery
 
 `apatch` checks actual Git and GitHub state before important actions; its saved progress is not treated as authorization or proof of approval. It stops on an unexpected working-tree change, source or remote drift, unsafe archive content, conflicting branch, ambiguous pull request, or failed verification.
 
 Branch creation, committing, publishing, and merging require deliberate user actions. The tool does not force-push, bypass required checks, approve pull requests, or perform an unguarded direct merge. A partial extraction must be inspected before continuing; do not repeat extraction over an unexpectedly modified working tree.
-
-
-

@@ -7,7 +7,7 @@ from .gitutil import (branch_exists, confirm, current_branch, head, remote_head,
                       require_branch, require_clean, run, skip_approvals_enabled,
                       worktree_fingerprint)
 from .core.enums import WorkflowPhase
-from .model import Abort
+from .model import Abort, safe_relative
 from .handoff.history.registry import assert_patch_order, persist_registry
 from .handoff.history.journal import locked_history
 from .handoff.api import (ArchiveOperations, PatchLedgerOperations,
@@ -107,6 +107,48 @@ class BranchPatchActions:
             w.persist()
             return True
 
+    def _pending_branch_snapshot(self):
+        """Allow only untracked, newly ignored non-patch paths to leave a LOOSE scope."""
+        w = self.workflow
+        if not w.loose:
+            fingerprint, paths = w.assert_expected_paths()
+            return fingerprint, paths, ()
+        fingerprint, paths = worktree_fingerprint(w.root)
+        expected = w.record.get("changed_paths", [])
+        if not isinstance(expected, list) or any(type(item) is not str for item in expected):
+            raise Abort("Invalid recorded changed paths; recovery refused")
+        expected_set = set(expected)
+        actual_set = set(paths)
+        if expected_set == actual_set:
+            return fingerprint, paths, ()
+        missing = expected_set - actual_set
+        footprint = w.record.get("patch_footprint")
+        staged_before = w.record.get("preexisting_staged_paths", [])
+        if (not paths or not missing or actual_set - expected_set
+                or not isinstance(footprint, list) or not footprint
+                or any(type(item) is not str for item in footprint)
+                or not isinstance(staged_before, list)
+                or any(type(item) is not str for item in staged_before)
+                or not set(footprint) <= actual_set
+                or missing & set(staged_before)):
+            raise Abort(f"Unexpected changed files. Expected {sorted(expected_set)}, "
+                        f"got {sorted(actual_set)}")
+        for name in sorted(missing):
+            safe_relative(name)
+            path = w.root / name
+            if (not path.is_file() or path.is_symlink()
+                    or any(parent.is_symlink() for parent in path.parents
+                           if parent != w.root and w.root in parent.parents)
+                    or run(["git", "ls-files", "--stage", "-z", "--", name],
+                           w.root, text=False).stdout
+                    or run(["git", "check-ignore", "--no-index", "--quiet", "--", name],
+                           w.root, check=False).returncode != 0):
+                raise Abort("Changed-path recovery refused: missing path is not an "
+                            f"ignored untracked regular file: {name}")
+        print(f"Verified ignore-rule drift: {len(missing)} untracked non-ZIP "
+              "path(s) are now ignored; they will not be committed.")
+        return fingerprint, paths, tuple(sorted(missing))
+
     def prepare_branch_after_apply(self):
         """Move verified uncommitted patch bytes from base to the planned feature branch."""
         w = self.workflow
@@ -120,7 +162,7 @@ class BranchPatchActions:
         if w.record.get("archive_sha256") != w.handoff.patch_sha256:
             raise Abort("Cached patch digest differs from the applied ZIP")
         w.assert_remote_unchanged()
-        before_fingerprint, paths = w.assert_expected_paths()
+        before_fingerprint, paths, ignored = self._pending_branch_snapshot()
         if not paths:
             raise Abort("No recorded patch changes to carry into the feature branch")
         branch = current_branch(w.root)
@@ -148,6 +190,12 @@ class BranchPatchActions:
         require_branch(w.root, w.handoff.branch)
         if head(w.root) != expected_head or worktree_fingerprint(w.root)[0] != before_fingerprint:
             raise Abort("Pending patch bytes changed during branch transition; inspect before retry")
+        if ignored:
+            w.record["ignore_drift_recovery"] = {
+                "original_changed_paths": sorted(w.record["changed_paths"]),
+                "ignored_untracked_paths": list(ignored),
+            }
+            w.record["changed_paths"] = sorted(paths)
         w.record.update(applied_branch=w.handoff.branch, branch_origin=origin,
                         branch_base=expected_head, extracted_on_branch=w.config.base)
         w.persist()
