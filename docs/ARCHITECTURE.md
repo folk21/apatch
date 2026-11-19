@@ -419,5 +419,14 @@ The project YAML parser accepts optional `prepare_checks` argv lists and `check_
 Before adding an operation or changing a mode, inspect the owning helper, CLI parsing, status messages, state/history implications, and black-box tests. Update the public operation matrix in Usage and regression coverage together. For significant behavior changes, establish a normative SDD spec first; the initial spec will be introduced separately.
 
 
+## Deferred LOOSE check boundary
 
-
+The project-local `disabled_without_chk` policy selects the first publishing
+operation that requires current canonical-check evidence (`CMT` by default,
+with optional `PSH`, `PR`, or `MRG`). Direct LOOSE actions may defer checks;
+guarded goals and STRICT/FORCE keep their stricter admission contracts.
+`apatch_lib/check_gates.py` verifies exact pre-commit worktree provenance or
+clean post-commit HEAD/check-policy provenance at the boundary. A durable
+`unchecked_commit_sha` field in an applied workflow makes the final pre-merge
+check mandatory even after later config or CLI changes. The existing PR
+identity, review, CI, and fast-forward gates remain independent requirements.

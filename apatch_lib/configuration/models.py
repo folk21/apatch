@@ -47,5 +47,6 @@ class Config:
     review_retention_max_runs: int = 100
     review_retention_max_bytes: int = 536870912
     review_retention_max_age_days: int = 30
+    disabled_without_chk: str = "CMT"
 
 

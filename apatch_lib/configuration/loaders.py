@@ -119,7 +119,7 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                           "review_context_max_bytes", "review_context_external_consent",
                           "review_context_include_messages", "review_context_include_diff",
                           "review_retention_enabled", "review_retention_max_runs",
-                          "review_retention_max_bytes", "review_retention_max_age_days"}
+                          "review_retention_max_bytes", "review_retention_max_age_days", "disabled_without_chk"}
     if not isinstance(data, dict) or not required <= set(data) or set(data) - allowed:
         raise Abort("Project config must contain schema_version and checks, with supported optional settings")
     if type(data["schema_version"]) is not int or data["schema_version"] != 1:
@@ -288,6 +288,9 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                                         report_format, tuple(scanners), input_mode))
     if review_required and not reviewers:
         raise Abort("review_required=true requires at least one configured reviewer")
+    disabled_without_chk = data.get("disabled_without_chk", global_config.disabled_without_chk)
+    if type(disabled_without_chk) is not str or disabled_without_chk not in {"CMT", "PSH", "PR", "MRG"}:
+        raise Abort("disabled_without_chk must be CMT, PSH, PR, or MRG")
     policy = data.get("check_worktree_policy", "stop")
     if type(policy) is not str or policy not in {"stop", "recheck_once"}:
         raise Abort("Project check_worktree_policy must be stop or recheck_once")
@@ -321,6 +324,7 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                    review_artifact_max_bytes=artifact_max_bytes,
                    review_context_max_bytes=context_max_bytes,
                    review_retention_enabled=retention_enabled,
+                    disabled_without_chk=disabled_without_chk,
                    **retention_limits, **context_options)
 
 

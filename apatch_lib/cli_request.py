@@ -33,6 +33,7 @@ class CliRequest:
     intent: str | None = None
     plan_only: bool = False
     feature_branch: str | None = None
+    disabled_without_chk: str | None = None
 
     @property
     def audit_only(self) -> bool:
@@ -68,6 +69,7 @@ def normalize_arguments(arguments: Sequence[str]) -> list[str]:
         "goal=": "--goal=", "intent=": "--intent=",
         "planOnly=": "--plan-only=",
         "featureBranch=": "--feature-branch=",
+        "disabledWithoutChk=": "--disabled-without-chk=",
     }
     normalized: list[str] = []
     for argument in arguments:
@@ -136,6 +138,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--feature-branch", "--featureBranch", metavar="feature/NAME",
                         help="Select the effective feature branch for a new ZIP at APL "
                              "(LOOSE), or reassign a pending applied ZIP at BRN")
+    parser.add_argument("--disabled-without-chk", choices=("CMT", "PSH", "PR", "MRG"),
+                        metavar="{CMT,PSH,PR,MRG}",
+                        help="LOOSE only: require CHK before this publication action; "
+                             "default is CMT, and project config can set disabled_without_chk")
     parser.add_argument("--patch", metavar="NAME.zip",
                         help="Filter read-only STS by ZIP basename")
     parser.add_argument("--verify-remote", type=parse_boolean, default=False,
@@ -156,14 +162,14 @@ def parse_request(argv: Sequence[str] | None = None) -> CliRequest:
         patch=args.patch, verify_remote=args.verify_remote,
         skip_approves=args.skip_approves, normalized_arguments=tuple(normalized),
         goal=args.goal, intent=args.intent, plan_only=args.plan_only,
-        feature_branch=args.feature_branch)
+        feature_branch=args.feature_branch, disabled_without_chk=args.disabled_without_chk)
 
 
 def validate_progress_request(request: CliRequest) -> None:
     """Keep global read-only progress free from lifecycle intent."""
     lifecycle_flags = {"--loose", "--strict", "--force", "--skip-approves",
                        "--followup", "--verify-remote", "--intent", "--plan-only",
-                       "--feature-branch"}
+                       "--feature-branch", "--disabled-without-chk"}
     if (request.handoff is not None or request.handoff_seq is not None
             or request.patch is not None
             or any(token.split("=", 1)[0] in lifecycle_flags
@@ -173,6 +179,9 @@ def validate_progress_request(request: CliRequest) -> None:
 
 def validate_repository_request(request: CliRequest) -> None:
     """Validate option combinations without touching Git or persisted state."""
+    if request.disabled_without_chk is not None and (
+            request.mode != "loose" or request.goal is not None or request.info is not None):
+        raise Abort("disabledWithoutChk is only available with explicit LOOSE op/opSeq")
     if request.feature_branch is not None:
         target = request.feature_branch
         if (not BRANCH_PATTERN.fullmatch(target) or ".." in target

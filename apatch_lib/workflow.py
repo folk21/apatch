@@ -517,6 +517,8 @@ class Workflow(OperationPresentation):
     def merge(self):
         if self.phase != "pr_created":
             raise Abort("Open a PR before merge")
+        from .check_gates import require_boundary
+        require_boundary(self, "MRG")
         require_branch(self.root, self.handoff.branch)
         self.assert_remote_unchanged()
         repo = github.merge_pr(self.config, self.handoff, self.root, self.record, self.persist)

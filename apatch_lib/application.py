@@ -1,7 +1,7 @@
 """Coordinate CLI requests without owning argument grammar or handoff parsing."""
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .cli_inspection import (select_without_handoff, show_audit_with_activity,
@@ -219,6 +219,9 @@ def execute_request(
     validate_repository_request(request)
     context = _resolve_project(global_config, tool_dir)
     root, config = context.root, context.config
+    if request.disabled_without_chk is not None:
+        config = replace(config, disabled_without_chk=request.disabled_without_chk)
+        context = replace(context, config=config)
     if request.audit_only:
         show_audit_with_activity(root, config, tool_dir, verify_remote=request.verify_remote)
         return 0

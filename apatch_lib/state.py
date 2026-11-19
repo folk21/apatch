@@ -18,7 +18,7 @@ from .storage.locking import exclusive_file_lock
 STATE_SCHEMA_VERSION = 2
 MAX_STATE_BYTES = 32 * 1024 * 1024
 _WORKFLOW_STRING_FIELDS = frozenset(WorkflowRecord.__annotations__) - {
-    "changed_paths", "zip_first", "pr_number", "remote_before_patch_head", "loose_backup",
+    "changed_paths", "zip_first", "unchecked_pending", "pr_number", "remote_before_patch_head", "loose_backup",
 }
 _WORKFLOW_NULLABLE_FIELDS = frozenset({"remote_before_patch_head", "loose_backup"})
 _MAX_WORKFLOW_FIELD_LENGTH = 4096
@@ -42,6 +42,8 @@ def _validate_workflow_record(key: object, record: object) -> WorkflowRecord:
             raise Abort(f"Invalid state workflow field: {field} must be a string or null")
     if "zip_first" in record and type(record["zip_first"]) is not bool:
         raise Abort("Invalid state workflow field: zip_first must be boolean")
+    if "unchecked_pending" in record and type(record["unchecked_pending"]) is not bool:
+        raise Abort("Invalid state workflow field: unchecked_pending must be boolean")
     if "pr_number" in record and (type(record["pr_number"]) is not int
                                   or record["pr_number"] <= 0):
         raise Abort("Invalid state workflow field: pr_number must be positive integer")
@@ -172,3 +174,4 @@ def finish_run(path: Path, state: dict, run_id: str, *, outcome: str,
     except Exception:
         runs[index] = prior
         raise
+
