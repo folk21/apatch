@@ -27,8 +27,7 @@ def ensure_runtime_ignored(root: Path, log_directory: Path, log_filename: str,
             f"/{history_lock_path.relative_to(root).as_posix()}",
     }
 
-    missing = []
-    for relative, pattern in patterns.items():
+    for relative in patterns:
         tracked = run(["git", "ls-files", "--error-unmatch", "--", relative], root, check=False)
         if tracked.returncode == 0:
             raise Abort(f"Runtime artifact is tracked by Git: {relative}")
@@ -36,20 +35,23 @@ def ensure_runtime_ignored(root: Path, log_directory: Path, log_filename: str,
             raise Abort("Cannot verify whether a runtime artifact is tracked")
         check = ["git", "check-ignore", "--no-index", "--quiet", "--", relative]
         ignored = run(check, root, check=False)
-        if ignored.returncode == 1:
-            missing.append(pattern)
-        elif ignored.returncode != 0:
+        if ignored.returncode not in {0, 1}:
             raise Abort("Cannot check Git ignore rules for a runtime artifact")
-    if not missing:
-        return
-
     path_value = output(["git", "rev-parse", "--git-path", "info/exclude"], root)
     exclude = Path(path_value)
     if not exclude.is_absolute():
         exclude = root / exclude
-    if exclude.is_symlink() or (exclude.exists() and not exclude.is_file()):
+    if (exclude.is_symlink() or exclude.parent.is_symlink()
+            or (exclude.exists() and not exclude.is_file())):
         raise Abort(f"Unsafe local Git exclude file: {exclude}")
+    required = set(patterns.values())
     try:
+        if exclude.exists() and exclude.stat().st_size > 262144:
+            raise Abort("Local Git exclude file exceeds the recovery size limit")
+        current = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+        missing = sorted(required - set(current.splitlines()))
+        if not missing:
+            return
         exclude.parent.mkdir(parents=True, exist_ok=True)
         with exclude.open("a+b") as stream:
             stream.seek(0, 2)
@@ -61,7 +63,7 @@ def ensure_runtime_ignored(root: Path, log_directory: Path, log_filename: str,
                     stream.write(b"\n")
             rules = "\n# apatch: local runtime artifacts\n" + "\n".join(missing) + "\n"
             stream.write(rules.encode("utf-8"))
-    except OSError as exc:
+    except (OSError, UnicodeError) as exc:
         raise Abort(f"Cannot register local Git ignore rules for runtime artifacts: {exc}") from exc
 
     for relative in patterns:
