@@ -287,3 +287,19 @@ class GuardedCommitTests(LocalGitFixture):
             self.with_workflow(new, lambda w: w.loose_actions.guarded_commit(session_id))
         self.with_workflow(new, lambda w: w.loose_actions.guarded_check(session_id))
         self.with_workflow(new, lambda w: w.loose_actions.guarded_commit(session_id))
+
+
+    def test_guarded_commit_preserves_checked_tree_for_deferred_merge_gate(self):
+        from apatch_lib.check_gates import require_boundary
+        session_id = self.prepared()
+        new = self.followup(session_id)
+        self.with_workflow(new, lambda w: w.loose_actions.guarded_check(session_id))
+        self.with_workflow(new, lambda w: w.loose_actions.guarded_commit(session_id))
+
+        def verify(workflow):
+            workflow.config = replace(workflow.config, disabled_without_chk="MRG")
+            self.assertEqual(workflow.record["verified_commit"],
+                             command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip())
+            require_boundary(workflow, "MRG")
+
+        self.with_workflow(new, verify)

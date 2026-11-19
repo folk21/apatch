@@ -850,6 +850,77 @@ check_worktree_policy: recheck_once
 
 `check_worktree_policy` defaults to `stop`; its only other value is `recheck_once`. Both apply **only to macro-controlled verification**, and direct `CHK` always retains its existing stop-on-change behavior. If every canonical check succeeds but Git index entries, statuses, executable bits, symlink identity, or changed file bytes differ before versus after the first pass, `recheck_once` allows exactly one complete repeat. The macro re-stages only the previously authorized session-owned paths if the index and commit-path set remain safe. It does not silently accept new untracked outputs, altered index entries, symlink replacements, or unrelated/manual changes as additional commit scope. When the final pass is stable, verification records the final index and worktree fingerprint. A second change, failed check, timeout, branch/HEAD drift, or unclassified path stops the macro with preserved files and no publication.
 
+### Deferred canonical-check boundary (`disabledWithoutChk`)
+
+`CHK` remains the canonical verification operation, distinct from the optional
+`BLD` operation. The default policy is **`CMT`**: a supervised LOOSE `CMT`
+requires a successful `CHK` on the exact current Git bytes, branch, HEAD and
+project policy. To allow incremental development commits before the final test
+pass, explicitly select a later boundary in the target project's tracked
+`.apatch/config.yaml`:
+
+```yaml
+schema_version: 1
+checks:
+  - ["./run_tests.sh"]
+build_commands:
+  - ["./build.sh"]
+disabled_without_chk: MRG
+```
+
+Allowed values are `CMT` (default), `PSH`, `PR`, and `MRG`. Earlier actions
+may proceed without `CHK`; the named action requires it. The equivalent
+per-invocation LOOSE override is `disabledWithoutChk=MRG` (or
+`--disabled-without-chk=MRG`). Unlike project YAML, a CLI override does **not**
+persist across invocations. Use the project setting for a multi-stage feature.
+The overrides are deliberately unavailable in STRICT, FORCE and guarded
+`goal` calls, which retain their existing stronger verification contracts.
+
+A check deferred beyond `CMT` must cover the **final commit's exact content**
+and current check policy. Run `CHK` on the final change set immediately before
+`CMT`: after exact path, source-byte, Git index-tree and parent checks, a
+successful commit preserves that verification for its resulting HEAD. Alternatively,
+run `CHK` on the clean final committed HEAD. A new commit not bound to the
+checked bytes invalidates this evidence. Unchecked commits are marked in the
+private workflow state. Changing the setting back to `CMT`,
+removing the CLI override or selecting another ZIP does **not** cancel the
+final pre-merge check obligation. A later unrelated commit, check-policy edit,
+or dirty worktree invalidates that release evidence. The merge gate also
+rechecks the exact GitHub PR revision, review decisions, required CI and
+mergeability using the existing controls.
+
+For a multi-patch sub-spec on one feature branch, an example sequence is:
+
+```bash
+# First patch, from the clean and synchronized base branch
+apatch first-patch opSeq=APL,BRN,BLD,CMT,PSH,PR,STS skipApproves=true
+
+# Subsequent patch, from the same feature branch with a clean checkout
+apatch next-patch followup=true opSeq=APL,BLD,CMT,PSH,PR,STS skipApproves=true
+
+# Final sub-spec task: update tests, verify the final bytes, and publish
+apatch final-patch followup=true opSeq=APL,BLD,CHK,CMT,PSH,PR,STS skipApproves=true
+
+# Only the exact checked final commit may be merged
+apatch opSeq=MRG,SYN,STS skipApproves=true
+```
+
+Use the ZIP stems without `.zip`. `PR` verifies an existing open PR against
+its current pushed revision; it does not create a second open PR. Committed
+or pushed follow-ups require the exact applied history and unmodified branch
+HEAD. An already open PR additionally requires live confirmation of its
+number, source revision and target base before a further ZIP can be applied.
+Stop if those observations cannot be verified; never force-push or replay an
+already applied ZIP to recover a workflow.
+
+This policy does not authorize committing directly on the base branch without
+checks, override `review_required`, weaken `skipApproves` safety gates, or
+suppress GitHub CI/review requirements. A project that is deliberately
+postponing tests must schedule the final test-authoring and verification task
+before merging its sub-spec. If `BLD` is not configured, omit `BLD` from the
+sequences; it remains optional. Guarded goals and workflow macros continue to
+run their normal canonical checks even when this LOOSE policy is relaxed.
+
 ### Build without tests (`14 [BLD]`)
 
 An optional `BLD` action runs only the target project's configured `build_commands`.

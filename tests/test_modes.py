@@ -249,9 +249,12 @@ class ModesTests(LocalGitFixture):
         self.assertEqual(self.invoke_loose("4\n").returncode, 0)
         (self.root / "manual.txt").write_text("added by developer\n")
         (self.root / "existing.txt").write_text("edited after verification\n")
+        blocked = self.invoke_loose("5\nYES\nYES\n")
+        self.assertEqual(blocked.returncode, 2)
+        self.assertIn("CHECK_GATE_CMT", blocked.stderr)
+        self.assertEqual(self.invoke_loose("4\n").returncode, 0)
         committed = self.invoke_loose("5\nYES\nYES\n")
         self.assertEqual(committed.returncode, 0, committed.stderr)
-        self.assertIn("have not passed canonical checks", committed.stdout)
         changed = command("git", "show", "--pretty=", "--name-only", "HEAD",
                           cwd=self.root).stdout.splitlines()
         self.assertEqual(set(changed), {"existing.txt", "new.txt", "manual.txt"})
@@ -263,6 +266,7 @@ class ModesTests(LocalGitFixture):
         self.assertIn("pre-existing changed path", applied.stdout)
         self.assertEqual((self.root / "manual.txt").read_text(), "untouched manual work\n")
         self.assertEqual((self.root / "existing.txt").read_text(), "updated\n")
+        self.assertEqual(self.invoke_loose("4\n").returncode, 0)
         committed = self.invoke_loose("5\nYES\nYES\n")
         self.assertEqual(committed.returncode, 0, committed.stderr)
         changed = command("git", "show", "--pretty=", "--name-only", "HEAD",
@@ -272,6 +276,7 @@ class ModesTests(LocalGitFixture):
     def test_loose_allows_committing_on_different_branch_after_manual_switch(self):
         self.assertEqual(self.invoke_loose("3\nYES\n").returncode, 0)
         command("git", "switch", "-c", "feature/manual-destination", cwd=self.root)
+        self.assertEqual(self.invoke_loose("4\n").returncode, 0)
         result = self.invoke_loose("5\nYES\nYES\n")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("not the planned branch", result.stdout)
@@ -281,14 +286,15 @@ class ModesTests(LocalGitFixture):
         self.assertEqual(record["phase"], "committed")
         self.assertEqual(record["applied_branch"], "feature/manual-destination")
 
-    def test_loose_manual_commit_does_not_invent_applied_patch_history(self):
+    def test_loose_manual_commit_requires_patch_and_chk_by_default(self):
         (self.root / "manual.txt").write_text("manual\n")
         command("git", "add", "manual.txt", cwd=self.root)
-        committed = self.invoke_loose("5\nYES\nYES\n")
-        self.assertEqual(committed.returncode, 0, committed.stderr)
+        blocked = self.invoke_loose("5\nYES\nYES\n")
+        self.assertEqual(blocked.returncode, 2)
+        self.assertIn("CHECK_GATE_CMT", blocked.stderr)
         self.assertFalse(self.history_path.exists())
-        self.assertEqual(command("git", "log", "-1", "--format=%s",
-                                 cwd=self.root).stdout.strip(), "test: apply guarded patch")
+        self.assertEqual(command("git", "status", "--porcelain", cwd=self.root)
+                         .stdout.strip(), "A  manual.txt")
 
     def test_loose_allows_multiple_patches_one_commit_with_overlap_backup(self):
         self.assertEqual(self.invoke_loose("3\nYES\n").returncode, 0)
@@ -325,6 +331,7 @@ class ModesTests(LocalGitFixture):
 
     def test_loose_can_push_multiple_local_commits_together(self):
         self.assertEqual(self.invoke_loose("3\nYES\n").returncode, 0)
+        self.assertEqual(self.invoke_loose("4\n").returncode, 0)
         self.assertEqual(self.invoke_loose("5\nYES\nYES\n").returncode, 0)
         first_sha = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
         second_zip = self.base / "downloads" / "example_service-PATCH-followup.zip"
@@ -335,6 +342,7 @@ class ModesTests(LocalGitFixture):
         self.payload["base_commit"] = first_sha
         self.params.write_text(json.dumps(self.payload))
         self.assertEqual(self.invoke_loose("3\nYES\n").returncode, 0)
+        self.assertEqual(self.invoke_loose("4\n").returncode, 0)
         self.assertEqual(self.invoke_loose("5\nYES\nYES\n").returncode, 0)
         second_sha = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
         self.assertNotEqual(first_sha, second_sha)
@@ -370,6 +378,7 @@ class ModesTests(LocalGitFixture):
 
     def test_loose_never_pushes_diverged_remote_history(self):
         self.assertEqual(self.invoke_loose("3\nYES\n").returncode, 0)
+        self.assertEqual(self.invoke_loose("4\n").returncode, 0)
         self.assertEqual(self.invoke_loose("5\nYES\nYES\n").returncode, 0)
         local_sha = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
         other = self.base / "another_checkout"
@@ -658,3 +667,4 @@ class ModesTests(LocalGitFixture):
         state = json.loads(self.state_path.read_text())
         self.assertEqual(next(iter(state["workflows"].values()))["phase"], "pushed")
         self.assert_history(real_branch=self.payload["feature_branch"])
+

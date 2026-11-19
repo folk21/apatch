@@ -330,6 +330,8 @@ class ForceActions:
         return self._push_recorded_commit()
 
     def _push_recorded_commit(self):
+        from .check_gates import require_boundary
+        require_boundary(self.w, "PSH")
         w = self.w
         require_clean(w.root)
         branch = self.branch()
@@ -391,6 +393,8 @@ class ForceActions:
         return handoff
 
     def pr(self):
+        from .check_gates import require_boundary
+        require_boundary(self.w, "PR")
         w = self.w
         handoff = self._ensure_pushed()
         if handoff is None:
@@ -444,6 +448,8 @@ class ForceActions:
         return handoff, pr, repo
 
     def merge(self):
+        from .check_gates import require_boundary
+        require_boundary(self.w, "MRG")
         w = self.w
         handoff, pr, repo = self._recover_pr()
         if pr["state"] == "OPEN":
@@ -494,4 +500,5 @@ class ForceActions:
                         pr_number=pr["number"], local_base_head=local_base_head)
         print(f"GitHub confirmed PR #{pr['number']} merged; workflow synchronization is complete.")
         return True
+
 

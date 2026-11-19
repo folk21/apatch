@@ -23,6 +23,9 @@ class WorkflowRecord(TypedDict, total=False):
     verified_fingerprint: str
     verified_head: str
     verified_commit: str
+    verified_policy_fingerprint: str
+    unchecked_commit_sha: str
+    unchecked_pending: bool
     verified_branch: str
     commit_sha: str
     pushed_sha: str
@@ -47,4 +50,5 @@ class StateDocument(_OptionalStateFields):
     schema_version: int
     workflows: dict[str, WorkflowRecord]
     operation_runs: list[dict[str, object]]
+
 

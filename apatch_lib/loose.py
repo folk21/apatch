@@ -235,7 +235,8 @@ class LooseActions:
     def _invalidate_verification(self):
         w = self.w
         for field in ("verified_fingerprint", "verified_head", "verified_branch",
-                      "verified_commit", "guarded_verification", "code_review"):
+                      "verified_commit", "verified_policy_fingerprint",
+                      "guarded_verification", "code_review"):
             w.record.pop(field, None)
         if w.record.get("phase") == WorkflowPhase.VERIFIED.value:
             w.record["phase"] = WorkflowPhase.PATCH_APPLIED.value
@@ -351,6 +352,8 @@ class LooseActions:
         if head(w.root) != (w.record.get("before_patch_head") or head(w.root)):
             print("WARNING: HEAD has changed since patch application.")
         _, paths = worktree_fingerprint(w.root)
+        w.record["verified_policy_fingerprint"] = policy_fingerprint(w.root, w.config)
+        w.record["verified_branch"] = branch
         if paths:
             w.record.update(phase="verified", verified_fingerprint=after,
                             verified_head=head(w.root), verified_branch=branch)
@@ -468,10 +471,13 @@ class LooseActions:
         run(["git", "commit", "-F", "-"], w.root, input_text=w.handoff.message,
             log_commit_message=w.handoff.message)
         committed_sha = head(w.root)
-        if output(["git", "rev-parse", "HEAD^{tree}"], w.root) != expected_tree:
+        if (output(["git", "rev-parse", "HEAD^{tree}"], w.root) != expected_tree
+                or output(["git", "rev-parse", "HEAD^"], w.root) != scope.head):
             raise Abort(
-                "COMMIT_CONTENT_DRIFT: Git hooks changed the committed tree; "
+                "COMMIT_CONTENT_DRIFT: Git hooks changed the committed tree or parent; "
                 "inspect the new commit before recording successful publication")
+        # Guarded CHK already verified the exact staged tree and commit scope.
+        w.record["verified_commit"] = committed_sha
         pending = self._pending(scope.branch)
         for key, record in pending:
             if record.get("session_id") != session_id:
@@ -490,7 +496,9 @@ class LooseActions:
 
     def commit(self):
         from .code_review import require_fresh_review
+        from .check_gates import record_commit, require_boundary, _verified_dirty
         require_fresh_review(self.w)
+        require_boundary(self.w, "CMT")
         w = self.w
         branch = self.branch()
         fingerprint, paths = worktree_fingerprint(w.root)
@@ -517,6 +525,9 @@ class LooseActions:
             print("WARNING: These exact changes have not passed canonical checks. "
                   "Manual edits or additional patches may have changed them.")
         print("Commit message:\n" + w.handoff.message)
+        was_verified = _verified_dirty(w)
+        contents_before_stage = changed_contents_fingerprint(w.root, paths)
+        verified_head_before_stage = head(w.root)
         if not confirm(f"Stage ALL listed paths and commit on {branch} without pushing?"):
             return
         run(["git", "add", "-A"], w.root)
@@ -532,9 +543,22 @@ class LooseActions:
             print((whitespace.stdout + whitespace.stderr).strip())
         if not confirm("Create this reviewed commit, including manually edited files?"):
             return
+        staged_paths = status_paths(w.root)
+        if (head(w.root) != verified_head_before_stage
+                or set(staged_paths) != set(paths)
+                or changed_contents_fingerprint(w.root, staged_paths) != contents_before_stage):
+            raise Abort("COMMIT_CONTENT_DRIFT: Checked paths, bytes or HEAD changed while staging")
+        expected_tree = output(["git", "write-tree"], w.root)
+        if not was_verified:
+            w.record["unchecked_pending"] = True
+            w.persist()
         run(["git", "commit", "-F", "-"], w.root, input_text=w.handoff.message,
             log_commit_message=w.handoff.message)
         committed_sha = head(w.root)
+        if (output(["git", "rev-parse", "HEAD^{tree}"], w.root) != expected_tree
+                or output(["git", "rev-parse", "HEAD^"], w.root) != verified_head_before_stage):
+            raise Abort("COMMIT_CONTENT_DRIFT: Git hooks changed the committed tree or parent; "
+                        "inspect HEAD before any publication")
         # Update only pending patch records associated with this checked-out branch.
         for _, record in pending:
             record.update(phase="committed", commit_sha=committed_sha,
@@ -543,6 +567,10 @@ class LooseActions:
             w.record.update(phase="committed", commit_sha=committed_sha,
                             applied_branch=branch, manual_commit_without_patch=True)
             w.record.setdefault("branch_origin", "REUSED")
+        record_commit(w, committed_sha, was_verified=was_verified)
+        for _, record in pending:
+            if record is not w.record and not was_verified:
+                record["unchecked_commit_sha"] = committed_sha
         w.persist()
         with locked_history(w.config.applied_patches_path) as history:
             for _, record in pending:
@@ -551,6 +579,8 @@ class LooseActions:
         return True
 
     def push(self):
+        from .check_gates import require_boundary
+        require_boundary(self.w, "PSH")
         w = self.w
         branch = self.branch()
         current_sha = head(w.root)
@@ -628,6 +658,7 @@ class LooseActions:
 
     def sync(self):
         return self.w.force_actions.sync()
+
 
 
 

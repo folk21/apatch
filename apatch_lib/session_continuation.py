@@ -182,7 +182,7 @@ def require_committed_loose_followup(
     root: Path, config: Config, handoff: Handoff, state: dict, *,
     archive: Archive | None = None,
 ) -> str:
-    """Verify a clean, committed legacy LOOSE predecessor without adopting a session.
+    """Verify a clean committed/published LOOSE predecessor without adopting a session.
 
     Applied-history order selects the predecessor, never dictionary insertion order.
     This is an explicit APL-only guard and does not authorize guarded goals or
@@ -212,7 +212,7 @@ def require_committed_loose_followup(
         raise Abort("Committed follow-up requires a unique last applied ZIP on the feature branch")
     previous_key = workflow_key(root, latest.planned_branch, latest.patch)
     previous = state["workflows"].get(previous_key)
-    if (not isinstance(previous, dict) or previous.get("phase") != "committed"
+    if (not isinstance(previous, dict) or previous.get("phase") not in {"committed", "pushed", "pr_created"}
             or previous.get("patch_file") != latest.patch
             or previous.get("repository") != str(root)
             or previous.get("branch") != branch
@@ -258,9 +258,22 @@ def require_committed_loose_followup(
                              and record.get("applied_branch") == branch}
         if remote_sha not in historical_pushed or not _ancestor(root, remote_sha, current_head):
             raise Abort("Committed follow-up remote branch has unverified drift")
+    if previous["phase"] in {"pushed", "pr_created"}:
+        if remote_sha != current_head or previous.get("pushed_sha") != current_head:
+            raise Abort("Published follow-up remote branch differs from the recorded commit")
+        if previous["phase"] == "pr_created":
+            heads, prs, complete = remote_snapshot(config, root)
+            matches = [pr for pr in prs if pr.get("number") == previous.get("pr_number")
+                       and pr.get("state") == "OPEN"
+                       and pr.get("headRefName") == branch
+                       and pr.get("baseRefName") == config.base
+                       and pr.get("headRefOid") == current_head]
+            if not complete or heads.get(branch) != current_head or len(matches) != 1:
+                raise Abort("Published follow-up requires one verified open PR at current HEAD")
     archive = archive or inspect(config, handoff, root)
     if archive.embedded_handoff is None or archive.sha256 != handoff.patch_sha256:
         raise Abort("Committed follow-up requires the exact self-contained ZIP")
     return previous_key
+
 
 
