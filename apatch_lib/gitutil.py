@@ -73,9 +73,13 @@ def remote_head(root, config, branch):
     return fields[0]
 
 
-def status_paths(root):
-    data = run(["git", "-c", "core.quotePath=false", "status", "--porcelain=v1",
-                "--untracked-files=all", "-z"], root, text=False).stdout
+def status_paths(root, *, detect_renames=True):
+    """List changed paths, optionally unfolding staged renames into both endpoints."""
+    args = ["git", "-c", "core.quotePath=false", "status", "--porcelain=v1",
+            "--untracked-files=all", "-z"]
+    if not detect_renames:
+        args.append("--no-renames")
+    data = run(args, root, text=False).stdout
     paths = {}
     items = data.split(b"\x00")
     i = 0
@@ -153,3 +157,4 @@ def confirmation_was_declined():
 # Compatibility exports retained until all internal callers use git.api.
 from .git.models import WorktreeEntry
 from .git.inspection import worktree_inventory, worktree_change_details
+

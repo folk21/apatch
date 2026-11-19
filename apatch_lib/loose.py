@@ -526,7 +526,10 @@ class LooseActions:
                   "Manual edits or additional patches may have changed them.")
         print("Commit message:\n" + w.handoff.message)
         was_verified = _verified_dirty(w)
-        contents_before_stage = changed_contents_fingerprint(w.root, paths)
+        # Git may recognize a delete/add pair as a rename only after staging.
+        # Compare both endpoints before and after using rename-independent status.
+        unfolded_paths = status_paths(w.root, detect_renames=False)
+        contents_before_stage = changed_contents_fingerprint(w.root, unfolded_paths)
         verified_head_before_stage = head(w.root)
         if not confirm(f"Stage ALL listed paths and commit on {branch} without pushing?"):
             return
@@ -543,11 +546,19 @@ class LooseActions:
             print((whitespace.stdout + whitespace.stderr).strip())
         if not confirm("Create this reviewed commit, including manually edited files?"):
             return
-        staged_paths = status_paths(w.root)
+        staged_paths = status_paths(w.root, detect_renames=False)
+        staged_names = run(["git", "diff", "--cached", "--no-renames",
+                            "--name-only", "-z", "--"], w.root, text=False).stdout
+        staged_names = {os.fsdecode(name) for name in staged_names.split(b"\x00") if name}
+        unstaged = run(["git", "diff", "--no-ext-diff", "--quiet", "--"],
+                       w.root, check=False)
         if (head(w.root) != verified_head_before_stage
-                or set(staged_paths) != set(paths)
+                or set(staged_paths) != set(unfolded_paths)
+                or staged_names != set(unfolded_paths)
+                or unstaged.returncode != 0
                 or changed_contents_fingerprint(w.root, staged_paths) != contents_before_stage):
-            raise Abort("COMMIT_CONTENT_DRIFT: Checked paths, bytes or HEAD changed while staging")
+            raise Abort("COMMIT_CONTENT_DRIFT: Paths, working bytes, index or HEAD "
+                        "changed while staging")
         expected_tree = output(["git", "write-tree"], w.root)
         if not was_verified:
             w.record["unchecked_pending"] = True
