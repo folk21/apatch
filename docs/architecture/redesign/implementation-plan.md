@@ -196,25 +196,6 @@ under the same port discipline, retaining strict source-identity checks,
 backups, journal recovery, and negative tests. Neither the archive port nor
 future producer interfaces may alter workflow phases or branch admission.
 
-### R3.6–R3.7 cache and resume boundary slices (implemented)
-
-The R3.6 cache slice moves verified parameter storage to `handoff/cache/`,
-exposes `HandoffCacheOperations(Protocol)`, and injects it into CLI handoff
-selection and orchestration. It preserves cache bytes, locked atomic writes,
-invalid-cache backup admission, and recovery behavior.
-
-The R3.7 resume slice moves the existing verification algorithm to
-`handoff/resume/verification.py` and exports `AppliedZipVerifier(Protocol)`
-with `ProjectAppliedZipVerifier` through `handoff.api`. CLI admission and
-resumed lifecycle actions consume the injected port. Existing consumers use
-the public verification function, while `zip_resume.py` preserves import
-identity for compatibility. Checkpoint, digest, latest applied-history entry,
-APL operation evidence, Git HEAD/branch/remote and changed-path gates are
-unchanged. No state migration, archive replay or new Git mutation is involved.
-Contract, injection, cold-import, negative and recovery regressions are
-required before accepting this architectural slice. These changes do not
-advance any normative SDD stage.
-
 ## R4 — Publication, review and audit ownership
 
 **Dependencies:** R3 and verified Git/handoff API.
@@ -263,7 +244,7 @@ APIs, with all models and load functions at their owners.
 | `apatch_lib/state.py`, `operation_events.py`, `session.py`, `session_continuation.py`, `commit_scope.py` | Move to `workflows/state_store.py`, `journal.py`, `sessions.py`, `commit_scope.py`; maintain schema-v2 and v1 upgrade, atomic locks, exact original ZIP/commit provenance. |
 | `apatch_lib/application.py:execute_request`, `cli_request.py:parse_request`, `help_reference.py`, `cli_inspection.py`, `presentation/execution.py` | Move to `runtime/api.py`, `cli.py`, `help.py`, `inspection.py`, `presentation.py`; retain historical `apatch.py` and shell commands without new flags. |
 | `apatch_lib/core/actions.py`, `core/contracts.py`, `model.py`, `gitutil.py` | Finish migration of remaining domain symbols, trim compatibility modules only after full consumer inventory and deliberate public compatibility decision. |
-| `docs/ARCHITECTURE.md`, `docs/DEVELOPMENT.md`, `docs/USAGE.md`, `AGENTS.md`, module `contract.md` | Update implementation description and tests; keep `README.md` concise. Move each approved `docs/architecture/redesign/contracts/.../contract.md` into its implemented domain path with a single canonical copy. |
+| `docs/ARCHITECTURE.md`, `docs/USAGE.md`, `AGENTS.md`, module `contract.md` | Update implementation description and tests; keep `README.md` concise. Move each approved `docs/architecture/redesign/contracts/.../contract.md` into its implemented domain path with a single canonical copy. |
 
 **Algorithm:** (a) isolate pure phase decisions and request/result DTOs;
 (b) pass immutable snapshots/typed ports into mode handlers; (c) centralize
@@ -355,4 +336,5 @@ normal verification and developer-review requirements above.
 
 These notes do not change the developer-controlled SDD checkpoint or assert
 that the entire R3 stage has been accepted.
+
 

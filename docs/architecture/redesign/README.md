@@ -14,15 +14,10 @@ under the repository's SDD ownership rules before production migrations.
   candidate future APIs and traceability to tests/specs.
 - [Linked implementation plan](implementation-plan.md): four incremental
   migration waves, source files, algorithms, recovery and evidence.
-- Draft `contract.md` for each proposed domain:
-  [configuration](contracts/configuration/contract.md),
-  [git](contracts/git/contract.md),
-  [handoff](contracts/handoff/contract.md),
-  [workflow](contracts/workflow/contract.md),
-  [publication](contracts/publication/contract.md),
-  [review](contracts/review/contract.md),
-  [audit](contracts/audit/contract.md), and
-  [runtime](contracts/runtime/contract.md).
+- Existing design-stage [Git contract](contracts/git/contract.md) and
+  [workflow contract](contracts/workflow/contract.md). Other proposed
+  domain contracts were not retained in this snapshot; use verified
+  colocated `apatch_lib/<domain>/contract.md` files for implemented APIs.
 
 The Git read-only implementation now has a canonical
 [`git/contract.md`](../../../apatch_lib/git/contract.md) in its owning
@@ -45,3 +40,4 @@ inferred from this snapshot.
 
 No runtime modules, persisted formats, CLI flags, tests, or existing SDD
 checkpoints are changed by this review package.
+

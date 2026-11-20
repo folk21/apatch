@@ -1,76 +1,30 @@
 # apatch
 
-`apatch` is a Python CLI for safely applying AI-produced ZIP patch handoffs to Git repositories, running project-defined verification, and coordinating commits, pushes, pull requests, and merges.
-
-It supports interactive and direct actions with three execution modes: **LOOSE (default)** for incremental/manual workflows, **STRICT** for guarded phase-by-phase processing, and **FORCE** for deliberate recovery. FORCE does not force-push.
+`apatch` is a Python CLI for applying verified ZIP patch handoffs to Git repositories, running project-defined checks, and coordinating guarded commits, pushes, pull requests and merges. **LOOSE** is the default for manual, incremental work; **STRICT** enforces phase boundaries; **FORCE** reconciles interrupted/manual operations without force-pushing.
 
 ## Documentation
 
-| Guide | Contents |
-| --- | --- |
-| [Installation](docs/INSTALLATION.md) | Requirements, virtual environment, initial target-repository setup |
-| [Usage](docs/USAGE.md) | CLI options, action codes, modes, handoff JSON, configuration, logging, and recovery |
-| [Architecture](docs/ARCHITECTURE.md) | Modules, state management, safety boundaries, and external operations |
-| [Development and Testing](docs/DEVELOPMENT.md) | Running tests, contributing, and documentation ownership |
-| [Security and Recovery](docs/SECURITY.md) | ZIP trust boundaries, checks, partial failures, and platform support |
-| [SDD Specification Index](docs/specs/README.md) | Active and accepted sub-specifications, plans, and processing checkpoint |
-| [Agent Guidance](AGENTS.md) | Repository-wide coding-agent conventions; [SDD-specific agent rules](docs/specs/AGENTS.md) |
+- [Installation](docs/INSTALLATION.md) — standalone deployment, local configuration and setup.
+- [Usage](docs/USAGE.md) — actions, modes, project checks and operational recovery.
+- [Architecture](docs/ARCHITECTURE.md) — module ownership, safety, privacy, development and tests.
+- [SDD specifications](docs/specs/README.md) — active tasks and plans, planned drafts, archived work and checkpoint.
+- [Repository guidance](AGENTS.md) / [SDD guidance](docs/specs/AGENTS.md) — engineering and documentation rules.
 
 ## Quick start
 
-Install the tool and its dependencies as described in [Installation](docs/INSTALLATION.md), then run the launcher **from the root of a configured target Git repository**:
+Run from the **target Git repository**, after configuring the installed tool and its project checks as described in [Installation](docs/INSTALLATION.md):
 
 ```bash
-/path/to/apatch/apatch.sh apatch-PATCH-2026-10-24-00-42-example
+apatch my-patch-stem opSeq=APL,BRN,CHK,STS skipApproves=true
+apatch opSeq=CMT,PSH,PR,STS skipApproves=true
 ```
 
-New ZIPs embed `<repository>/.apatch/params.json`; no separate JSON download is needed. The first action is `APL`, followed by `BRN`; subsequent commands use the verified project-local cache. Legacy `.json` handoffs remain supported.
+A self-contained ZIP embeds `<repository>/.apatch/params.json`; a separate JSON download is unnecessary. ZIP-first application runs `APL` before `BRN`. The verified handoff is cached for later commands. A new ZIP on an existing feature branch uses explicit `followup=true` without `BRN`; see [Usage](docs/USAGE.md#first-patch-and-continuation). Legacy JSON handoffs remain supported. `skipApproves=true` only skips prompts, never safety gates. Inspect generated code, configuration and staged content before unattended publication.
 
-When `APL` succeeded but the ZIP's original feature branch already exists,
-recover before `BRN` with `apatch op=BRN featureBranch=feature/new-name
-skipApproves=true`. The selected target must be unused locally and remotely;
-the original ZIP, digest, changed paths and applied-history provenance are kept.
-Continue with `apatch opSeq=FMT,CHK,STS skipApproves=true` if formatters are
-configured, or `apatch goal=CHECKED skipApproves=true` otherwise.
-
-For an additional ZIP on the existing feature branch, use explicit LOOSE `followup=true` with `APL` (without `BRN`) when the previous changes are uncommitted or the latest recorded ZIP has a verified clean local commit. See [Usage](docs/USAGE.md#explicit-loose-follow-up-zip-on-an-existing-feature-branch-followuptrue).
-
-To inspect recorded activity across all projects from any directory, use `apatch.sh info=PROGRESS`. This read-only summary does not require a Git repository or a handoff.
-
-For an optional independent code-review stage, configure script and/or LLM CLI
-reviewers in the target project's `.apatch/config.yaml`, then run
-`apatch opSeq=CHK,REV,STS skipApproves=true`. A project can require passing
-review evidence before `CMT` using `review_required: true`; see
-[Independent code review](docs/USAGE.md#independent-code-review-13-rev).
-
-Examples of direct actions:
-
-```bash
-/path/to/apatch/apatch.sh apatch-PATCH-2026-10-24-00-42-example opSeq=APL,BRN,CHK,CMT,PSH,STS skipApproves=true
-/path/to/apatch/apatch.sh opSeq=APL,BRN,APL,CHK,CMT,PSH,STS handoffSeq=first.zip,second.zip skipApproves=true
-```
-
-`skipApproves=true` suppresses confirmation, **not** safety checks; canonical project checks execute code with your normal user permissions. Review ZIPs before unattended publication. See [Usage](docs/USAGE.md) and [Security](docs/SECURITY.md).
+Use `apatch op=STS` to inspect a patch, `apatch op=AUD` for offline repository-wide audit, or `apatch info=PROGRESS` to inspect recorded tool activity. Optional format, build and independent review commands depend on project configuration; `BLD` does not replace canonical `CHK`.
 
 ## Development status
 
-The implementation and regression tests are available in this repository. The [orchestrator umbrella](docs/specs/active/spec-apatch-orchestrator.md) remains a DRAFT for future capabilities; [SUB-001 — Workflow Control](docs/specs/archive/subspecs/subspec-01-workflow-control.md) and its [P0 implementation plan](docs/specs/archive/subspecs/subspec-01-workflow-control-implementation-plan.md) were accepted and archived on 2026-10-28. Created-patch ordering and ZIP metadata transport (P0.3a/b), self-contained ZIPs with cached handoffs and an apply-first path (P0.3c), sequenced operations with console outcomes (P0.4a), and explicit multi-ZIP LOOSE sequences (P0.4b) are implemented. Numeric `2 [BAP]` is deprecated for self-contained workflows but remains available for explicit legacy JSON handoffs until their migration is complete.
+The CLI, ZIP handoff, feature-branch workflow, state/history journaling, verification, review and GitHub safeguards have automated regression coverage. Planned extensions and task-level implementation detail live in the [SDD index](docs/specs/README.md); a draft or completed test is not an acceptance or deployment claim. `SUB-001`, `SUB-002` and `SUB-005` are archived as accepted, while `SUB-003` and `SUB-004` remain unselected drafts.
 
-P0.5a records cross-project operation summaries in the installed tool's private `.apatch/progress/` directory; P0.5b adds the read-only `info=PROGRESS` overview. P1.1 adds a durable project-local operation journal with explicit attempts and outcomes. Recorded evidence is not a substitute for live GitHub status.
-
-P1.2 adds `11 [AUD]`, an offline-by-default, read-only audit of known patch history, with explicit `verifyRemote=true` for optional remote verification. Later source increments include FS-00R deterministic ZIP resume, WM-01/WM-02 activity and base-branch improvements, and architectural separation with optional quality tooling. See [Usage](docs/USAGE.md#repository-wide-patch-audit-11-aud) for operational details.
-
-FS-05 introduces guarded LOOSE local `goal=CHECKED|COMMITTED` execution
-and read-only `planOnly=true` previews. FS-06 extends explicit goals to
-`PUSHED|PR_CREATED|MERGED` with exact PR source-revision checks, safe
-uncertain-outcome reconciliation and separately retryable base synchronization.
-See [Usage](docs/USAGE.md#guarded-goals-goal-fs-05fs-06).
-
-WM-03 introduces LOOSE `op=APPLY_PATCH` and `op=APPLY_PATCH_CHECK` as guarded
-local macros with a final best-effort status report. WM-05 adds guarded
-`op=MERGE` for existing feature sessions and `op=RUN_ALL` for complete new
-or resumed ZIP lifecycles. Both reuse the verified feature-session planner and
-stop on uncertain GitHub operations. See [Usage](docs/USAGE.md#guarded-workflow-macros-wm-03-and-wm-05).
-
-On 2026-10-28 the developer also accepted and archived [SUB-002 — Execution History and Audit](docs/specs/archive/subspecs/subspec-02-state-history-audit.md) and [SUB-005 — Architectural Simplification](docs/specs/archive/subspecs/subspec-05-architectural-simplification.md), together with their plans. [SUB-003 — Feature Sessions](docs/specs/active/subspecs/subspec-03-feature-session-planning.md) and [SUB-004 — Operational Workflows](docs/specs/active/subspecs/subspec-04-operational-workflows.md) remain active. See the [SDD index](docs/specs/README.md) for the plan mapping and the [SDD agent rules](docs/specs/AGENTS.md) for lifecycle and archiving policy. [STATE.json](docs/specs/STATE.json) records only the developer-controlled processing focus and can be checked with `python3 tools/specs/validate_state.py`.
-
+`SUB-006 — Review Evidence Pipeline` is the selected draft workstream. Its checkpoint remains `RE-05 / READY_FOR_REVIEW`; the proposed final documentation and acceptance-test tasks are `RE-06 / UPD_DOCS` and `RE-07 / GEN_TESTS`. No later task or production deployment is implied by the document reorganization. Run `python3 tools/specs/validate_state.py` to validate the processing pointer; see [Architecture](docs/ARCHITECTURE.md#development-and-verification) for checks.

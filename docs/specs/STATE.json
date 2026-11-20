@@ -4,23 +4,11 @@
   "selectedWorkstreamId": "review-evidence",
   "workstreams": [
     {
-      "id": "feature-sessions",
-      "specPath": "docs/specs/active/subspecs/subspec-03-feature-session-planning.md",
-      "stageId": "FS-06",
-      "phase": "ON_HOLD"
-    },
-    {
-      "id": "operational-workflows",
-      "specPath": "docs/specs/active/subspecs/subspec-04-operational-workflows.md",
-      "stageId": "WM-04",
-      "phase": "ON_HOLD"
-    },
-    {
       "id": "review-evidence",
-      "specPath": "docs/specs/active/subspecs/subspec-06-review-evidence-pipeline.md",
+      "specPath": "docs/specs/active/review-evidence/subspec.md",
       "stageId": "RE-05",
       "phase": "READY_FOR_REVIEW"
     }
-  ]
+  ],
+  "selectedTaskPath": "docs/specs/active/review-evidence/task_05_retention_export_recovery.md"
 }
-

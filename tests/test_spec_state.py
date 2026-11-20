@@ -38,9 +38,9 @@ class SpecStateTests(unittest.TestCase):
         result = validate_state()
         self.assertEqual(result["selectedWorkstreamId"], "review-evidence")
         self.assertEqual(self.record(result, "review-evidence")["stageId"], "RE-05")
-        self.assertEqual(self.record(result, "operational-workflows")["phase"], "ON_HOLD")
-        self.assertEqual({item["id"] for item in result["workstreams"]},
-                         {"feature-sessions", "operational-workflows", "review-evidence"})
+        self.assertEqual({item["id"] for item in result["workstreams"]}, {"review-evidence"})
+        self.assertEqual(result["selectedTaskPath"],
+                         "docs/specs/active/review-evidence/task_05_retention_export_recovery.md")
         self.assertEqual(STATE_PATH.read_bytes(), before)
 
     def test_cli_reports_selected_focus_without_mutating_source(self) -> None:
@@ -81,7 +81,12 @@ class SpecStateTests(unittest.TestCase):
         for key in ("id", "specPath"):
             with self.subTest(key=key):
                 data = copy.deepcopy(self.original)
-                data["workstreams"][1][key] = data["workstreams"][0][key]
+                other = copy.deepcopy(data["workstreams"][0])
+                if key == "id":
+                    other["specPath"] = "docs/specs/active/another-workstream/subspec.md"
+                else:
+                    other["id"] = "another-workstream"
+                data["workstreams"].append(other)
                 self.assert_invalid(data, "Duplicate workstream")
 
     def test_rejects_unknown_phase_extra_fields_and_unselected_ready_stage(self) -> None:
@@ -96,32 +101,66 @@ class SpecStateTests(unittest.TestCase):
                 data = copy.deepcopy(self.original)
                 data["workstreams"][0][key] = value
                 self.assert_invalid(data, expected)
-        data = copy.deepcopy(self.original)
-        self.record(data, "feature-sessions")["phase"] = "READY_FOR_IMPLEMENTATION"
-        self.assert_invalid(data, "Only the selected SINGLE")
 
-    def test_spec_lifecycle_has_one_canonical_spec_and_plan_per_owner(self) -> None:
+    def test_spec_lifecycle_has_flat_active_tasks_and_planned_drafts(self) -> None:
         specs = ROOT / "docs/specs"
-        active = specs / "active"
+        active = specs / "active/review-evidence"
+        planned = specs / "planned"
         archived = specs / "archive/subspecs"
-        self.assertFalse(any((specs / "plans").glob("*.md")))
+        self.assertFalse((specs / "plans").exists())
         for stem in ("subspec-01-workflow-control",
                      "subspec-02-state-history-audit",
                      "subspec-05-architectural-simplification"):
             with self.subTest(archived=stem):
                 self.assertTrue((archived / f"{stem}.md").is_file())
                 self.assertTrue((archived / f"{stem}-implementation-plan.md").is_file())
-                self.assertFalse((active / "subspecs" / f"{stem}.md").exists())
-                self.assertFalse((active / f"{stem}-implementation-plan.md").exists())
         for stem in ("subspec-03-feature-session-planning",
-                     "subspec-04-operational-workflows",
-                     "subspec-06-review-evidence-pipeline"):
-            with self.subTest(active=stem):
-                self.assertTrue((active / "subspecs" / f"{stem}.md").is_file())
-                self.assertTrue((active / f"{stem}-implementation-plan.md").is_file())
-                self.assertFalse((archived / f"{stem}.md").exists())
-                self.assertFalse((archived / f"{stem}-implementation-plan.md").exists())
+                     "subspec-04-operational-workflows"):
+            with self.subTest(planned=stem):
+                self.assertTrue((planned / f"{stem}.md").is_file())
+                self.assertTrue((planned / f"{stem}-implementation-plan.md").is_file())
+                self.assertFalse((specs / "active/subspecs" / f"{stem}.md").exists())
+        self.assertTrue((active / "subspec.md").is_file())
+        self.assertTrue((active / "impl_plan.md").is_file())
+        tasks = sorted(active.glob("task_[0-9][0-9]_*.md"))
+        plans = sorted(active.glob("task_impl_plan_[0-9][0-9]_*.md"))
+        self.assertEqual(len(tasks), 7)
+        self.assertEqual(len(plans), 7)
+        self.assertEqual({file.name.removeprefix("task_") for file in tasks},
+                         {file.name.removeprefix("task_impl_plan_") for file in plans})
+        task_types = []
+        for task in tasks:
+            paired = active / task.name.replace("task_", "task_impl_plan_", 1)
+            self.assertTrue(paired.is_file())
+            self.assertIn(task.name, paired.read_text(encoding="utf-8"))
+            header = task.read_text(encoding="utf-8").split("\n## ", 1)[0]
+            types = re.findall(r"^- \*\*type:\*\* `([A-Z_]+)`\.$", header, re.MULTILINE)
+            self.assertEqual(len(types), 1, task.name)
+            self.assertIn(types[0], {"GEN_CODE", "UPD_DOCS", "GEN_TESTS"})
+            task_types.append(types[0])
+        self.assertEqual(task_types, ["GEN_CODE"] * 5 + ["UPD_DOCS", "GEN_TESTS"])
+        self.assertFalse((ROOT / "docs/DEVELOPMENT.md").exists())
+        self.assertFalse((ROOT / "docs/SECURITY.md").exists())
+        self.assertFalse(any((specs / "active/subspecs").glob("*.md")))
         self.assertTrue((specs / "AGENTS.md").is_file())
+
+    def test_selected_task_path_is_exact_and_matches_selected_stage(self) -> None:
+        for value, expected in (
+            ("docs/specs/planned/subspec-03-feature-session-planning.md", "Invalid selectedTaskPath"),
+            ("docs/specs/active/review-evidence/task_04_selective_evidence_retrieval.md", "disagree"),
+            ("docs/specs/active/other-scope/task_05_retention_export_recovery.md", "does not belong"),
+            ("docs/specs/active/review-evidence/task_05_not_present.md", "Missing or unsafe"),
+            ("docs/specs/active/review-evidence/../task_05_retention_export_recovery.md", "Invalid selectedTaskPath"),
+        ):
+            with self.subTest(value=value):
+                data = copy.deepcopy(self.original)
+                data["selectedTaskPath"] = value
+                self.assert_invalid(data, expected)
+
+    def test_task_pointer_is_optional_for_legacy_compatibility(self) -> None:
+        data = copy.deepcopy(self.original)
+        data.pop("selectedTaskPath")
+        self.assertEqual(self.verify_payload(data)["selectedWorkstreamId"], "review-evidence")
 
     def test_sdd_markdown_relative_links_resolve_after_archival(self) -> None:
         specs = ROOT / "docs/specs"
@@ -137,7 +176,8 @@ class SpecStateTests(unittest.TestCase):
 
     def test_rejects_unsafe_missing_and_invalid_spec_paths(self) -> None:
         for path in ("../outside.md", "docs/specs/archive/subspecs/example.md",
-                     "docs/specs/active/subspecs/subspec-99-missing.md"):
+                     "docs/specs/planned/subspec-03-feature-session-planning.md",
+                     "docs/specs/active/unknown-scope/subspec.md"):
             with self.subTest(path=path):
                 data = copy.deepcopy(self.original)
                 data["workstreams"][0]["specPath"] = path
@@ -166,6 +206,3 @@ class SpecStateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
-
-

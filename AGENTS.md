@@ -5,6 +5,7 @@ These rules govern code, tests, configuration, and documentation created or modi
 ## Source and ownership
 
 - Read [README.md](README.md), the relevant [Architecture](docs/ARCHITECTURE.md) and [Usage](docs/USAGE.md) sections, and the owning code and tests before editing. Use verified current source; a concatenated snapshot may omit files or lag behind the installed repository.
+- For SDD work, follow the flat active-task layout under `docs/specs/active/<scope>/`: read `subspec.md`, the selected `task_<nn>_<slug>.md` and matching `task_impl_plan_<nn>_<slug>.md`, plus `impl_plan.md` only for cross-task decisions. `docs/specs/planned/` contains unselected draft workstreams; selection, implementation and acceptance remain separate developer decisions. Keep project-specific SDD work distinct from installed `apatch` deployment.
 - Identify the module that owns the behavior. Change the smallest cohesive set of files, keep unrelated behavior untouched, and update existing abstractions instead of creating parallel implementations.
 - Follow the active requirements in the [SDD index](docs/specs/README.md) when applicable. Work under `docs/specs/` must also follow its [local instructions](docs/specs/AGENTS.md). Do not invent requirements or treat an implementation as acceptance of a specification.
 
@@ -34,10 +35,16 @@ These rules govern code, tests, configuration, and documentation created or modi
 - Keep persisted state and journals atomic and locked where required. Make retries and interrupted operations safe; do not infer successful external side effects solely from a saved checkpoint.
 - Keep runtime artifacts private and outside tracked source content. Bound and redact diagnostics; never persist complete canonical-check output or sensitive review evidence in ordinary logs.
 
+## Documentation size and ownership
+
+- `README.md` is a concise entry point; `docs/USAGE.md` is a compact human-facing command/configuration reference; `docs/ARCHITECTURE.md` is a clear, sufficiently complete developer description, including security and recovery principles. Do not turn these files into changelogs, historical stage dumps, duplicated specs, or collections of implementation details. Remove obsolete sections and link to their owning modules or SDD documents.
+- Keep one authoritative place for a rule: module `contract.md` is code-owned and must be maintained alongside its implementing `GEN_CODE` task. `UPD_DOCS` is for synchronization of user/developer guides, not modifying code contracts.
+- Put quick test entry points in Architecture and detailed test ownership in the source/tests; no redundant full development or security guides are needed.
+
 ## Tests and documentation
 
 - Verify changed code using the tools available to you, including focused unit tests when feasible. Add or update regression tests for observable behavior, invalid inputs, boundary conditions, errors, and recovery; isolate external side effects in tests.
 - Keep tests deterministic and representative of real contracts. Do not weaken assertions or safety checks just to make a test pass. State clearly what was verified and what remains unverified.
-- Update documentation when behavior, public interfaces, configuration, or module ownership changes. Keep [README.md](README.md) concise and place details in their owning documentation files. Avoid duplicate or contradictory descriptions.
+- Update documentation when behavior, public interfaces, configuration, or module ownership changes. Keep project guides compact, actionable and accurate; link to module contracts and active tasks instead of restating their contents.
 - Write all source comments, docstrings, test content, configuration comments, and software documentation in **English**. Comments should explain intent and non-obvious constraints rather than restate code.
 - When modifying specifications or implementation plans, follow `docs/specs/AGENTS.md`; do not introduce speculative stages or rewrite unrelated normative requirements as part of a code change.

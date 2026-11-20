@@ -1,12 +1,12 @@
 # APATCH-SUB-004 — Operational Workflows, Activity Dashboard, and Stable Checks
 
-**Status:** DRAFT. WM-01–WM-04 implementations are present in the current source; WM-04 awaits developer review, WM-05 is proposed and WM-06 is deferred. Formal acceptance is not recorded.
+**Status:** PLANNED / DRAFT. WM-01–WM-04 implementations are present in the current source; WM-04 awaits developer review, WM-05 is proposed and WM-06 is deferred. Formal acceptance is not recorded.
 
-**Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Implementation plan:** [APATCH-PLAN-004](../subspec-04-operational-workflows-implementation-plan.md).
+**Parent:** [APATCH-SPEC-001](../active/spec-apatch-orchestrator.md). **Implementation plan:** [APATCH-PLAN-004](subspec-04-operational-workflows-implementation-plan.md).
 
 ## 1. Scope and existing contracts
 
-This sub-spec reduces the number of developer commands needed to complete or resume a safe patch workflow. It owns four high-level workflow macros, cross-project activity presentation in `11 [AUD]`, project-specific base-branch selection, and bounded recovery from check-produced edits. It complements [SUB-001](../../archive/subspecs/subspec-01-workflow-control.md), [SUB-002](../../archive/subspecs/subspec-02-state-history-audit.md), and [SUB-003](subspec-03-feature-session-planning.md).
+This sub-spec reduces the number of developer commands needed to complete or resume a safe patch workflow. It owns four high-level workflow macros, cross-project activity presentation in `11 [AUD]`, project-specific base-branch selection, and bounded recovery from check-produced edits. It complements [SUB-001](../archive/subspecs/subspec-01-workflow-control.md), [SUB-002](../archive/subspecs/subspec-02-state-history-audit.md), and [SUB-003](subspec-03-feature-session-planning.md).
 
 The existing implementation already provides:
 
@@ -162,4 +162,3 @@ future implementation stage, not a currently available CLI capability.
 - **WM-04:** optional macro preparation and bounded `recheck_once` stable-byte verification are implemented; developer review is pending. Direct `CHK` still uses stop-on-change.
 - **WM-05:** guarded remote `MERGE` and `RUN_ALL` macros remain proposed.
 - **WM-06:** deferred GitHub transient-read retry and safe mutation-result reconciliation design. The current single extra read-only retry remains the installed behavior; no new mutation retry or automatic recovery is claimed.
-

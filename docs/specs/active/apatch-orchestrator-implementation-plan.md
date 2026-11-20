@@ -28,8 +28,8 @@
 ## P3 — Independent review and plugin extensions
 
 The review-evidence capture, normalization, and compact LLM-context work is
-scoped separately under [SUB-006](subspecs/subspec-06-review-evidence-pipeline.md)
-and [PLAN-006](subspec-06-review-evidence-pipeline-implementation-plan.md).
+scoped separately under [SUB-006](review-evidence/subspec.md)
+and [PLAN-006](review-evidence/impl_plan.md).
 The remaining adapter and scheduling proposals below are not included in RE-01.
 
 1. Add an external-review adapter with explicit endpoint/CLI choice, budget, cooldown, patch-size thresholds, and data redaction.
