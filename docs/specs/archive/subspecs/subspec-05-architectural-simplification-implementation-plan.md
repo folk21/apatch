@@ -1,3 +1,11 @@
+---
+type: Implementation Guide
+title: APATCH-PLAN-005 — Incremental Architectural Simplification
+description: Archived advisory stages for module ownership and explicit action results.
+document_role: implementation_plan
+parent: subspec-05-architectural-simplification.md
+spec_status: completed
+---
 # APATCH-PLAN-005 — Incremental Architectural Simplification
 
 **Status:** ARCHIVED / ADVISORY. AS-01–AS-07 implementation, regression, and optional quality-tooling work was accepted by the developer on 2026-10-28. The plan remains a historical implementation record and does not authorize new product changes.

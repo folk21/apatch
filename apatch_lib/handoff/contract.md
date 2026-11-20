@@ -1,3 +1,8 @@
+---
+type: Module Contract
+title: Handoff domain contract (R2.2 metadata, R3.3 archives, R3.4 producer, R3.5 ledger, R3.6 cache, R3.7 resume)
+description: ZIP handoff inspection, extraction, history, and resume safety contracts.
+---
 # Handoff domain contract (R2.2 metadata, R3.3 archives, R3.4 producer, R3.5 ledger, R3.6 cache, R3.7 resume)
 
 ## Ownership and published API

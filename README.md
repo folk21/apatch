@@ -1,3 +1,8 @@
+---
+type: Module Overview
+title: apatch
+description: Introduction, quick start, documentation entry points, and current development status.
+---
 # apatch
 
 `apatch` is a Python CLI for applying verified ZIP patch handoffs to Git repositories, running project-defined checks, and coordinating guarded commits, pushes, pull requests and merges. **LOOSE** is the default for manual, incremental work; **STRICT** enforces phase boundaries; **FORCE** reconciles interrupted/manual operations without force-pushing.
@@ -20,7 +25,7 @@ apatch my-patch-stem opSeq=APL,BRN,CHK,STS skipApproves=true
 apatch opSeq=CMT,PSH,PR,STS skipApproves=true
 ```
 
-A self-contained ZIP embeds `<repository>/.apatch/params.json`; a separate JSON download is unnecessary. ZIP-first application runs `APL` before `BRN`. The verified handoff is cached for later commands. A new ZIP on an existing feature branch uses explicit `followup=true` without `BRN`; see [Usage](docs/USAGE.md#first-patch-and-continuation). Legacy JSON handoffs remain supported. `skipApproves=true` only skips prompts, never safety gates. Inspect generated code, configuration and staged content before unattended publication.
+A self-contained ZIP embeds `<repository>/.apatch/params.json`; a separate JSON download is unnecessary. ZIP-first application runs `APL` before `BRN`. The verified handoff is cached for later commands. A new ZIP on an existing feature branch uses explicit `followup=true` without `BRN`; see [Usage](docs/USAGE.md#4-continue-a-feature-with-another-zip). Legacy JSON handoffs remain supported. `skipApproves=true` only skips prompts, never safety gates. Inspect generated code, configuration and staged content before unattended publication.
 
 Use `apatch op=STS` to inspect a patch, `apatch op=AUD` for offline repository-wide audit, or `apatch info=PROGRESS` to inspect recorded tool activity. Optional format, build and independent review commands depend on project configuration; `BLD` does not replace canonical `CHK`.
 

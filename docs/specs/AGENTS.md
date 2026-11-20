@@ -1,3 +1,8 @@
+---
+type: Development Guide
+title: SDD Rules for Coding Agents
+description: Specification authoring, task ownership, traceability, and acceptance rules.
+---
 # SDD Rules for Coding Agents
 
 These instructions apply to `docs/specs/` and its descendants. The
@@ -14,14 +19,15 @@ ownership and lifecycle.
    `task_impl_plan_<nn>_<slug>.md` for each task. Do not create normative
    `task_<nn>_*.md` files or a duplicating `impl_plan.md`.
 2. Every task declares exactly one `type` (`GEN_CODE`, `UPD_DOCS`, `GEN_TESTS`)
-   and one `area` (`BACKEND`, `FRONTEND`, `DOCS`, `E2E_TESTS`). The task's
+   and one `area` (`CODE`, `DOCS`, `E2E_TESTS`). The task's
    normative section in `subspec.md` owns WHAT; its linked plan owns HOW,
    verified file paths, dependencies, algorithms, tests and recovery.
    The selected model may read another area's public contracts but must not
-   edit its implementation. Split features crossing backend and frontend into
-   separate ordered tasks with explicit handoff contracts. `FRONTEND` is
-   currently unused in `apatch`.
-3. For this repository, `BACKEND` owns Python application/CLI/source modules,
+   edit its implementation. In projects with separate backend/frontend owners,
+   split cross-area features into ordered tasks with explicit handoff contracts.
+   In `apatch`, all application and CLI code belongs to `CODE`; there is
+   no separate frontend source area.
+3. For this repository, `CODE` owns Python application/CLI/source modules,
    their code-owned `contract.md` files and focused unit/regression tests.
    `E2E_TESTS` owns cross-component integration/E2E tests, verification scripts
    and final canonical CHK. Existing test files can mix granularities: assign
@@ -35,8 +41,8 @@ ownership and lifecycle.
    with an explicit gap recorded for final reconciliation. The penultimate
    task is `UPD_DOCS`/`DOCS`; the last is `GEN_TESTS`/`E2E_TESTS`, covering
    the complete requirement-to-test matrix, missing end-to-end tests, full
-   canonical CHK, and final revision evidence. Missing BACKEND unit coverage
-   or a backend bug discovered at the end reopens that BACKEND task and
+   canonical CHK, and final revision evidence. Missing CODE-owned unit coverage
+   or an implementation defect discovered at the end reopens the CODE task and
    requires a fresh final check. No skipped or invented PASS is accepted.
 5. Maintain stable `feature_id` references from
    [`docs/FEATURES.md`](../FEATURES.md),
@@ -100,6 +106,16 @@ ownership and lifecycle.
    feedback, or normative requirements change materially. Draft planning may
    proceed alongside specification review, but no provisional plan authorizes
    implementation of unapproved requirements.
+
+## Open Knowledge Format front matter
+
+All repository Markdown documents begin with a YAML front matter block as used by the project documentation: `type`, `title`, and `description`. The heading and body remain authoritative for human-readable requirements. Keep these metadata fields synchronized with the content and repair relative links when moving documents.
+
+Umbrella and sub-specifications declare `type: Specification`, `document_role: umbrella|subspec`, and a conservative `spec_status`. A sub-spec declares a relative `parent` pointing to the umbrella; the umbrella has no `parent` and no implementation plan. Standalone sub-spec plans declare `type: Implementation Guide`, `document_role: implementation_plan`, and a parent pointing to the owning sub-spec.
+
+Each advisory `task_impl_plan_XX_*.md` declares `type: Implementation Guide`, `document_role: task_plan`, `parent: subspec.md`, `spec_status`, `plan_status: advisory`, `task_id`, `task_type`, `area`, `rtype`, and `feature_ids` in front matter. Valid task combinations in this code-only CLI are `GEN_CODE/CODE`, `UPD_DOCS/DOCS`, and `GEN_TESTS/E2E_TESTS`. Proposed `rtype` is `DEVELOP` for normal tasks and `ACCEPT` for final acceptance tests. These are SDD labels only, not supported `apatch` CLI runtime options. Task headers must agree with the normative task sections and the feature catalog; do not infer completion or acceptance from metadata.
+
+Run `python3 tools/specs/validate_docs.py` with `python3 tools/specs/validate_state.py` and `python3 tools/specs/validate_features.py` after modifying specifications, plans, or document headers.
 
 ## SDD processing and evidence
 

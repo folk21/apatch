@@ -1,6 +1,21 @@
+---
+type: Implementation Guide
+title: 'RE-01 — Private Bounded Raw Evidence Capture: Task Implementation Plan (Draft)'
+description: Advisory RE-01 implementation plan, dependencies, verification, and recovery steps.
+document_role: task_plan
+parent: subspec.md
+spec_status: draft
+plan_status: advisory
+task_id: RE-01
+task_type: GEN_CODE
+area: CODE
+rtype: DEVELOP
+feature_ids:
+- REVIEW.RAW_CAPTURE
+---
 # RE-01 — Private Bounded Raw Evidence Capture: Task Implementation Plan (Draft)
 
-- **Status:** ADVISORY / DRAFT; **area:** `BACKEND`; no implementation authorization is implied.
+- **Status:** ADVISORY / DRAFT; **area:** `CODE`; no implementation authorization is implied.
 - **Normative task:** [subspec.md#re-01](subspec.md#re-01).
 - **Sub-spec:** [subspec.md](subspec.md).
 - **Dependencies:** None.

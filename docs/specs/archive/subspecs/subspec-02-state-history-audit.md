@@ -1,3 +1,11 @@
+---
+type: Specification
+title: APATCH-SUB-002 — Operation Execution History and Global Patch Reconciliation
+description: Accepted historical requirements for operation journals and repository-wide audits.
+document_role: subspec
+parent: ../../umbrella_spec_apatch.md
+spec_status: completed
+---
 # APATCH-SUB-002 — Operation Execution History and Global Patch Reconciliation
 
 **Status:** ACCEPTED / ARCHIVED — developer confirmed completed P1.1–P1.2 work on 2026-10-28. Historical proposals are retained as originally written.

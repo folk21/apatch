@@ -1,3 +1,8 @@
+---
+type: Module Contract
+title: Publication module contract (R2.2 value and error boundary)
+description: Safe push, pull-request, merge, and remote publication boundaries.
+---
 # Publication module contract (R2.2 value and error boundary)
 
 ## Ownership

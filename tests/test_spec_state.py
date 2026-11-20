@@ -139,7 +139,7 @@ class SpecStateTests(unittest.TestCase):
         types = re.findall(r"(?m)^- \*\*type:\*\* `([A-Z_]+)`\.$", text)
         areas = re.findall(r"(?m)^- \*\*area:\*\* `([A-Z0-9_]+)`\.$", text)
         self.assertEqual(types, ["GEN_CODE"] * 5 + ["UPD_DOCS", "GEN_TESTS"])
-        self.assertEqual(areas, ["BACKEND"] * 5 + ["DOCS", "E2E_TESTS"])
+        self.assertEqual(areas, ["CODE"] * 5 + ["DOCS", "E2E_TESTS"])
         for number, plan in enumerate(plans, start=1):
             self.assertIn(f"task_impl_plan_{number:02}_", plan.name)
             self.assertIn(f"]({plan.name})", text)
@@ -179,7 +179,7 @@ class SpecStateTests(unittest.TestCase):
             features.parent.mkdir(exist_ok=True, parents=True)
             features.write_bytes((ROOT / "docs/FEATURES.md").read_bytes())
             for replace, expected in (
-                ("- **area:** `BACKEND`.", "Invalid task area"),
+                ("- **area:** `CODE`.", "Invalid task area"),
                 ("- **type:** `GEN_CODE`.", "Invalid task type"),
                 ("- **Implementation plan:** [RE-05 plan](task_impl_plan_05_retention_export_recovery.md).", "Invalid task plan"),
                 ("`REVIEW.RETENTION_EXPORT`", "Invalid feature IDs"),
@@ -189,6 +189,13 @@ class SpecStateTests(unittest.TestCase):
                     target.write_text(modified, encoding="utf-8")
                     with self.assertRaisesRegex(ValueError, expected):
                         self.verify_custom_root(temporary_root)
+
+            target.write_text(
+                source.replace("- **area:** `CODE`.", "- **area:** `BACKEND`.", 1),
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "Invalid task area"):
+                self.verify_custom_root(temporary_root)
 
     def verify_custom_root(self, root: Path) -> None:
         with tempfile.TemporaryDirectory() as directory:

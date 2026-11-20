@@ -1,3 +1,10 @@
+---
+type: Specification
+title: APATCH-SPEC-001 — Patch Workflow and Quality Orchestrator (Umbrella Specification)
+description: Project-wide apatch workflow goals, compatibility requirements, security invariants, and roadmap.
+document_role: umbrella
+spec_status: draft
+---
 # APATCH-SPEC-001 — Patch Workflow and Quality Orchestrator (Umbrella Specification)
 
 **Status:** DRAFT (GENSPEC); implementation is not authorized by this document.

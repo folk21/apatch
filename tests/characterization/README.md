@@ -1,3 +1,8 @@
+---
+type: Test Guide
+title: Opt-in system characterization gate
+description: Characterization test purpose, execution, and boundary assumptions.
+---
 # Opt-in system characterization gate
 
 This suite protects observable `apatch` behavior before module-boundary refactoring.

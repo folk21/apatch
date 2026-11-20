@@ -1,3 +1,8 @@
+---
+type: Module Contract
+title: Git module contract — R3.1 inspection / R3.2 command execution
+description: Git adapter responsibilities, command execution, and safe repository operations.
+---
 # Git module contract — R3.1 inspection / R3.2 command execution
 
 **Status:** read-only inspection and command execution ownership implemented; guarded mutation policy is deferred.

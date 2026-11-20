@@ -1,6 +1,21 @@
+---
+type: Implementation Guide
+title: 'RE-05 — Retention, Export and Recovery: Task Implementation Plan (Draft)'
+description: Advisory RE-05 implementation plan, dependencies, verification, and recovery steps.
+document_role: task_plan
+parent: subspec.md
+spec_status: draft
+plan_status: advisory
+task_id: RE-05
+task_type: GEN_CODE
+area: CODE
+rtype: DEVELOP
+feature_ids:
+- REVIEW.RETENTION_EXPORT
+---
 # RE-05 — Retention, Export and Recovery: Task Implementation Plan (Draft)
 
-- **Status:** ADVISORY / DRAFT; **area:** `BACKEND`; no implementation authorization is implied.
+- **Status:** ADVISORY / DRAFT; **area:** `CODE`; no implementation authorization is implied.
 - **Normative task:** [subspec.md#re-05](subspec.md#re-05).
 - **Sub-spec:** [subspec.md](subspec.md).
 - **Dependencies:** [RE-04](subspec.md#re-04) (candidate implementation; acceptance not inferred).

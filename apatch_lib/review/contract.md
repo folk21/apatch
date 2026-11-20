@@ -1,3 +1,8 @@
+---
+type: Module Contract
+title: Review module contract (initial model extraction)
+description: Review provider contracts, evidence capture, retrieval, and retention boundaries.
+---
 # Review module contract (initial model extraction)
 
 ## Current public API

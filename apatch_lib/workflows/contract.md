@@ -1,3 +1,8 @@
+---
+type: Module Contract
+title: Workflows module contract (R2.3 value boundaries)
+description: Workflow phase, action result, and orchestration contracts.
+---
 # Workflows module contract (R2.3 value boundaries)
 
 ## Ownership and public API

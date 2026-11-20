@@ -1,3 +1,11 @@
+---
+type: Specification
+title: APATCH-SUB-003 — Feature Sessions and Context-Aware Execution
+description: Proposed feature sessions and context-aware execution, with safety and recovery requirements.
+document_role: subspec
+parent: ../umbrella_spec_apatch.md
+spec_status: planned
+---
 # APATCH-SUB-003 — Feature Sessions and Context-Aware Execution
 
 **Status:** PLANNED / DRAFT (GENSPEC). FS-00 checkpoint-linkage correction and FS-00R deterministic ZIP resume are present in the inspected source; FS-01–FS-06 context-aware behavior remains proposed. Implementation evidence does not constitute final developer acceptance.

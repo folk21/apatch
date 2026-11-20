@@ -1,3 +1,8 @@
+---
+type: Specification Index
+title: apatch Specifications
+description: Navigation for the umbrella specification, active workstream, drafts, and archives.
+---
 # apatch Specifications
 
 This directory contains the specification-driven development (SDD) record for
@@ -7,6 +12,10 @@ not an automatic consequence of code or tests.
 
 For rules governing spec changes, plan ownership, acceptance, and archiving,
 see [SDD agent instructions](AGENTS.md). For contributor workflow and testing, see [Architecture](../ARCHITECTURE.md#development-and-verification) and [repository agent instructions](../../AGENTS.md).
+
+## Document metadata
+
+Every Markdown document has Open Knowledge Format YAML front matter (`type`, `title`, `description`). SDD files also identify their role, parent and status. Individual task plans store `task_id`, `task_type` (`GEN_CODE`, `UPD_DOCS`, `GEN_TESTS`), `area` (`CODE`, `DOCS`, `E2E_TESTS`), proposed `rtype` (`DEVELOP`, `ACCEPT`), and stable `feature_ids` in the header. The normative task contract remains in the owning `subspec.md`; metadata does not select a task or authorize implementation. Validate the cross-document contract with `python3 tools/specs/validate_docs.py`.
 
 ## Umbrella specification
 

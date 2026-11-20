@@ -23,6 +23,7 @@ case "${1:-regular}" in
     regular|quick)
         exec "$TEST_PYTHON" -B -m tests.timeout_runner -v \
             tests.test_spec_state \
+            tests.test_document_frontmatter \
             tests.test_feature_traceability \
             tests.test_review_normalizer \
             tests.test_review_context \

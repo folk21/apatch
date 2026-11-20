@@ -1,3 +1,8 @@
+---
+type: Module Contract
+title: Configuration module contract
+description: Public configuration API, validation rules, and source ownership boundaries.
+---
 # Configuration module contract
 
 ## Purpose
