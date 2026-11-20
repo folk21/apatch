@@ -2,7 +2,7 @@
 
 **Status:** ARCHIVED / ADVISORY — SUB-001 completed and accepted by the developer on 2026-10-28.
 
-**Normative owner:** [APATCH-SUB-001](subspec-01-workflow-control.md). **Parent:** [APATCH-SPEC-001](../../active/spec-apatch-orchestrator.md).
+**Normative owner:** [APATCH-SUB-001](subspec-01-workflow-control.md). **Parent:** [APATCH-SPEC-001](../../umbrella_spec_apatch.md).
 
 This is the original P0 implementation plan split out of the former shared PLAN-001. Historical source references are retained for traceability; this archived plan does not authorize additional implementation.
 
@@ -199,7 +199,7 @@ def create_chatgpt_handoff(zip_name):
 | `apatch_lib/force.py` | Apply the same non-bypassable preflight on FORCE's new-ref path; preserve manual branch tracking/reconciliation. |
 | `tests/test_apatch.py` | Test remote-only unmerged and local unmerged refs in all three modes under `skipApproves=true`, positive already-merged refs, dirty current feature, GitHub open PR when remote head disappeared, and network-failure fail-closed handling. Assert target branch was not created on failures. |
 | `docs/USAGE.md`, `docs/ARCHITECTURE.md` | Explain the unconfigurable preflight, different local/remote error messages, fail-closed API behavior, and responsibility of the shared guard. |
-| `docs/specs/active/spec-apatch-orchestrator.md`, `docs/specs/active/subspecs/subspec-01-workflow-control.md` | Record the immediate feature-serialization invariant and AC-25–29. |
+| `docs/specs/umbrella_spec_apatch.md`, `docs/specs/active/subspecs/subspec-01-workflow-control.md` | Record the immediate feature-serialization invariant and AC-25–29. |
 
 ```python
 def assert_no_unfinished_feature_branches(root, config, target):

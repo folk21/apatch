@@ -8,11 +8,17 @@ not an automatic consequence of code or tests.
 For rules governing spec changes, plan ownership, acceptance, and archiving,
 see [SDD agent instructions](AGENTS.md). For contributor workflow and testing, see [Architecture](../ARCHITECTURE.md#development-and-verification) and [repository agent instructions](../../AGENTS.md).
 
+## Umbrella specification
+
+[APATCH-SPEC-001 — Patch Workflow and Quality Orchestrator](umbrella_spec_apatch.md)
+owns the overall goals, roadmap, compatibility and security invariants. It is a
+DRAFT, not implementation authorization, and has **no umbrella implementation
+plan**. Each scoped sub-specification owns its own task implementation plans.
+
 ## Active work
 
-| Specification | Advisory integration plan | Current focus |
+| Specification | Task plans | Current focus |
 | --- | --- | --- |
-| [APATCH-SPEC-001 — Orchestrator](active/spec-apatch-orchestrator.md) | [Future umbrella stages](active/apatch-orchestrator-implementation-plan.md) | DRAFT; future proposals |
 | [SUB-006 — Review Evidence Pipeline](active/review-evidence/subspec.md) | [Seven linked task plans](active/review-evidence/subspec.md#3-features-and-task-execution-boundaries) | [RE-05 — Retention, Export and Recovery](active/review-evidence/subspec.md#re-05), `READY_FOR_REVIEW`; no acceptance |
 
 An active workstream has a single normative `subspec.md` containing all
@@ -46,8 +52,9 @@ Developer acceptance recorded on **2026-10-28**:
 | [SUB-005 — Architectural Simplification](archive/subspecs/subspec-05-architectural-simplification.md) | [PLAN-005](archive/subspecs/subspec-05-architectural-simplification-implementation-plan.md) | AS-01–AS-07 |
 
 The original shared PLAN-001 was split by completed sub-spec ownership. P1.3,
-future Git-native format adapters, P2, and P3 remain proposed in the active
-umbrella plan; they were **not** accepted as part of SUB-001 or SUB-002.
+future Git-native format adapters, P2, and P3 remain proposals in the
+[umbrella roadmap](umbrella_spec_apatch.md#3-capability-roadmap); they were
+**not** accepted as part of SUB-001 or SUB-002.
 
 ## Processing checkpoint
 

@@ -31,6 +31,14 @@ class FeatureTraceabilityTests(unittest.TestCase):
                          {"feature_id", "implementation_status", "stages", "spec_paths",
                           "owners", "test_files"})
 
+    def test_schema_accepts_umbrella_path_without_legacy_parent(self) -> None:
+        import re
+
+        schema = json.loads((ROOT / "docs/specs/feature-cross-ref.schema.json").read_text())
+        pattern = schema["properties"]["features"]["items"]["properties"]["spec_paths"]["items"]["pattern"]
+        self.assertIsNotNone(re.fullmatch(pattern, "docs/specs/umbrella_spec_apatch.md"))
+        self.assertIsNone(re.fullmatch(pattern, "docs/specs/active/spec-apatch-orchestrator.md"))
+
     def test_unknown_and_duplicate_feature_identity_is_rejected(self) -> None:
         source = (ROOT / "docs/specs/feature-cross-ref.yaml").read_text()
         with tempfile.TemporaryDirectory() as directory:

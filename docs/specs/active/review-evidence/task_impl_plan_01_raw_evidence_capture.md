@@ -26,7 +26,7 @@
 | `apatch_lib/code_review.py` | Use capture only when opted in, retain legacy behavior otherwise, and publish a relative manifest path on successful verdict; continue strict CHECK snapshot protection. |
 | `tests/test_code_review.py` | Verify large output, stderr, hashes, file modes, timeout/overflow, nonzero exit, LLM JSON, symlink refusal and unchanged commit gate. |
 | `docs/USAGE.md`, `docs/ARCHITECTURE.md` | Document supported settings, stored data, safety limits and the distinction between capture and future normalization. |
-| `docs/specs/STATE.json`, `docs/specs/README.md`, umbrella plan | Select RE-01 without promoting or accepting earlier scopes; link the new normative spec and this plan. |
+| `docs/specs/STATE.json`, `docs/specs/README.md`, umbrella specification | Select RE-01 without promoting or accepting earlier scopes; link the new normative spec and this plan. |
 
 **Algorithm:** Validate CHK and snapshot; create private ignored run; write `STARTED` manifest; for each reviewer launch argv in its existing cwd, write diff/prompt to stdin, concurrently read and count stdout/stderr, spool only bounded bytes to disk and retain up to 256 KiB for LLM JSON parsing; terminate process group on byte/time breach; record exit/truncation and hashes, atomically replace manifest; recheck Git snapshot after each provider; apply existing verdict rules; save checkpoint only on verified final result; finish manifest as `COMPLETED` or `FAILED`.
 

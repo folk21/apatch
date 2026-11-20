@@ -2,7 +2,7 @@
 
 **Status:** ACCEPTED / ARCHIVED — developer confirmed the completed P0 work on 2026-10-28. Historical requirements and open questions are retained as the original scope record.
 
-**Parent:** [APATCH-SPEC-001](../../active/spec-apatch-orchestrator.md). **Implementation stages:** [archived P0 plan](subspec-01-workflow-control-implementation-plan.md#p0--first-priority).
+**Parent:** [APATCH-SPEC-001](../../umbrella_spec_apatch.md). **Implementation stages:** [archived P0 plan](subspec-01-workflow-control-implementation-plan.md#p0--first-priority).
 
 ## 1. Scope
 

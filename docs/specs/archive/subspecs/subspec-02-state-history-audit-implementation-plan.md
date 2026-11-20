@@ -2,9 +2,9 @@
 
 **Status:** ARCHIVED / ADVISORY — SUB-002 P1.1–P1.2 completed and accepted by the developer on 2026-10-28.
 
-**Normative owner:** [APATCH-SUB-002](subspec-02-state-history-audit.md). **Parent:** [APATCH-SPEC-001](../../active/spec-apatch-orchestrator.md).
+**Normative owner:** [APATCH-SUB-002](subspec-02-state-history-audit.md). **Parent:** [APATCH-SPEC-001](../../umbrella_spec_apatch.md).
 
-This is the original P1.1/P1.2 implementation plan split out of the former shared PLAN-001. Later P1 proposals remain in the active umbrella plan, not in this completed sub-specification.
+This is the original P1.1/P1.2 implementation plan split out of the former shared PLAN-001. Later P1 proposals remain in the umbrella roadmap, not in this completed sub-specification.
 
 ## P1 — Execution history and global audit
 

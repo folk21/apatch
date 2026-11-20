@@ -2,7 +2,7 @@
 
 **Status:** ACCEPTED / ARCHIVED — developer confirmed the completed AS-01–AS-07 work on 2026-10-28. Previously recorded expected failures have regression coverage without `expectedFailure` markers.
 
-**Parent:** [APATCH-SPEC-001](../../active/spec-apatch-orchestrator.md). **Implementation plan:** [APATCH-PLAN-005](subspec-05-architectural-simplification-implementation-plan.md).
+**Parent:** [APATCH-SPEC-001](../../umbrella_spec_apatch.md). **Implementation plan:** [APATCH-PLAN-005](subspec-05-architectural-simplification-implementation-plan.md).
 
 **Original design baseline:** snapshot `9f256d786d29d4121ea0116758af85a903d9636a` (2026-10-26 17:21 UTC). **Reconciled source:** clean `main` snapshot `efb94f794b06489c3d4898ffd42218f7b16e69fd` (2026-10-27 11:25 UTC). The later snapshot contains AS-01–AS-07 implementation surfaces, but source presence is not acceptance or independent platform verification. Revalidate against actual HEAD before any further stage.
 

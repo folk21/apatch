@@ -2,7 +2,7 @@
 
 **Status:** DRAFT. RE-01–RE-05 are candidate implementations pending independent developer acceptance; only the selected task RE-05 is at `READY_FOR_REVIEW`. The older 2026-11-05 RE-05 baseline remains historical evidence, not the current repository revision.
 
-**Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Related:** [SUB-003](../../planned/subspec-03-feature-session-planning.md), [SUB-004](../../planned/subspec-04-operational-workflows.md).
+**Parent:** [APATCH-SPEC-001](../../umbrella_spec_apatch.md). **Related:** [SUB-003](../../planned/subspec-03-feature-session-planning.md), [SUB-004](../../planned/subspec-04-operational-workflows.md).
 
 ## 1. Objective and boundary
 

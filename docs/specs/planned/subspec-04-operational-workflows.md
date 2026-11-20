@@ -2,7 +2,7 @@
 
 **Status:** PLANNED / DRAFT. WM-01–WM-04 implementations are present in the current source; WM-04 awaits developer review, WM-05 is proposed and WM-06 is deferred. Formal acceptance is not recorded.
 
-**Parent:** [APATCH-SPEC-001](../active/spec-apatch-orchestrator.md). **Implementation plan:** [APATCH-PLAN-004](subspec-04-operational-workflows-implementation-plan.md).
+**Parent:** [APATCH-SPEC-001](../umbrella_spec_apatch.md). **Implementation plan:** [APATCH-PLAN-004](subspec-04-operational-workflows-implementation-plan.md).
 
 ## 1. Scope and existing contracts
 

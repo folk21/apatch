@@ -33,6 +33,15 @@ class SpecStateTests(unittest.TestCase):
     def record(payload: dict, identifier: str) -> dict:
         return next(item for item in payload["workstreams"] if item["id"] == identifier)
 
+    def test_umbrella_has_no_shared_implementation_plan(self) -> None:
+        umbrella = ROOT / "docs/specs/umbrella_spec_apatch.md"
+        self.assertTrue(umbrella.is_file())
+        self.assertIn("APATCH-SPEC-001", umbrella.read_text(encoding="utf-8"))
+        self.assertFalse((ROOT / "docs/specs/active/spec-apatch-orchestrator.md").exists())
+        self.assertFalse((ROOT / "docs/specs/active/apatch-orchestrator-implementation-plan.md").exists())
+        index = (ROOT / "docs/specs/README.md").read_text(encoding="utf-8")
+        self.assertIn("umbrella_spec_apatch.md", index)
+
     def test_current_state_is_valid_read_only_and_focus_is_explicit(self) -> None:
         before = STATE_PATH.read_bytes()
         result = validate_state()
