@@ -1,3 +1,11 @@
+---
+type: Specification
+title: APATCH-SUB-006 — Review Evidence Pipeline
+description: Normative review-evidence pipeline tasks RE-01 through RE-07 and acceptance criteria.
+document_role: subspec
+parent: ../../umbrella_spec_apatch.md
+spec_status: draft
+---
 # APATCH-SUB-006 — Review Evidence Pipeline
 
 **Status:** DRAFT. RE-01–RE-05 are candidate implementations pending independent developer acceptance; only the selected task RE-05 is at `READY_FOR_REVIEW`. The older 2026-11-05 RE-05 baseline remains historical evidence, not the current repository revision.
@@ -22,19 +30,19 @@ Feature IDs are stable documentation identifiers, not persisted workflow or ZIP 
 
 | Task | Type | Area | Feature IDs | Advisory plan | Status |
 | --- | --- | --- | --- | --- | --- |
-| [`RE-01`](#re-01) | `GEN_CODE` | `BACKEND` | REVIEW.RAW_CAPTURE | [Plan](task_impl_plan_01_raw_evidence_capture.md) | Candidate; not accepted |
-| [`RE-02`](#re-02) | `GEN_CODE` | `BACKEND` | REVIEW.NORMALIZATION | [Plan](task_impl_plan_02_structured_normalization.md) | Candidate; not accepted |
-| [`RE-03`](#re-03) | `GEN_CODE` | `BACKEND` | REVIEW.LLM_CONTEXT | [Plan](task_impl_plan_03_bounded_llm_context.md) | Candidate; not accepted |
-| [`RE-04`](#re-04) | `GEN_CODE` | `BACKEND` | REVIEW.RETRIEVAL | [Plan](task_impl_plan_04_selective_evidence_retrieval.md) | Candidate; not accepted |
-| [`RE-05`](#re-05) | `GEN_CODE` | `BACKEND` | REVIEW.RETENTION_EXPORT | [Plan](task_impl_plan_05_retention_export_recovery.md) | Selected / READY_FOR_REVIEW |
+| [`RE-01`](#re-01) | `GEN_CODE` | `CODE` | REVIEW.RAW_CAPTURE | [Plan](task_impl_plan_01_raw_evidence_capture.md) | Candidate; not accepted |
+| [`RE-02`](#re-02) | `GEN_CODE` | `CODE` | REVIEW.NORMALIZATION | [Plan](task_impl_plan_02_structured_normalization.md) | Candidate; not accepted |
+| [`RE-03`](#re-03) | `GEN_CODE` | `CODE` | REVIEW.LLM_CONTEXT | [Plan](task_impl_plan_03_bounded_llm_context.md) | Candidate; not accepted |
+| [`RE-04`](#re-04) | `GEN_CODE` | `CODE` | REVIEW.RETRIEVAL | [Plan](task_impl_plan_04_selective_evidence_retrieval.md) | Candidate; not accepted |
+| [`RE-05`](#re-05) | `GEN_CODE` | `CODE` | REVIEW.RETENTION_EXPORT | [Plan](task_impl_plan_05_retention_export_recovery.md) | Selected / READY_FOR_REVIEW |
 | [`RE-06`](#re-06) | `UPD_DOCS` | `DOCS` | REVIEW.RAW_CAPTURE, REVIEW.NORMALIZATION, REVIEW.LLM_CONTEXT, REVIEW.RETRIEVAL, REVIEW.RETENTION_EXPORT | [Plan](task_impl_plan_06_documentation_sync.md) | Draft; not started |
 | [`RE-07`](#re-07) | `GEN_TESTS` | `E2E_TESTS` | REVIEW.RAW_CAPTURE, REVIEW.NORMALIZATION, REVIEW.LLM_CONTEXT, REVIEW.RETRIEVAL, REVIEW.RETENTION_EXPORT | [Plan](task_impl_plan_07_review_acceptance_tests.md) | Draft; not started |
 
 **Execution:** `RE-01 → RE-02 → RE-03 → RE-04 → RE-05 → RE-06 → RE-07`. The selected RE-05 checkpoint remains pending independent review; RE-06 and RE-07 have not started. Proposed run types are `DEVELOP` for ordinary tasks and `ACCEPT` only for RE-07; `rtype` has no runtime effect until separately implemented.
 
-**Area ownership:** `BACKEND` changes Python CLI, adapters, module contracts and their focused unit/regression tests; `FRONTEND` is reserved for a future client and has no implementation in this repository; `DOCS` owns non-contract developer/user guides; `E2E_TESTS` owns integration, cross-module and acceptance test harnesses plus final verification. Read other areas only through relevant public contracts and stable documented interfaces. For a feature spanning BACKEND and FRONTEND, create ordered separate tasks; never make one task write to both. If final verification finds a backend defect, reopen the owning BACKEND task instead of changing backend code under E2E_TESTS.
+**Area ownership:** `CODE` owns all Python CLI, adapters, module contracts and focused unit/regression tests; no separate backend/frontend source areas exist; `DOCS` owns non-contract developer/user guides; `E2E_TESTS` owns integration, cross-module and acceptance test harnesses plus final verification. Read other areas only through relevant public contracts and stable documented interfaces. If a future client introduces a separate code area, define and sequence its ownership in a new approved sub-spec; do not mix areas in one task. If final verification finds an implementation defect, reopen the owning CODE task instead of changing product code under E2E_TESTS.
 
-**Incremental testing:** Every GEN_CODE task must implement and execute focused regression tests for security, recovery, bug fixes and stable contracts in its owned area. Exploratory coverage may be deferred only with a documented gap. RE-07 reconciles the complete requirement-to-test matrix, implements missing E2E/integration coverage and runs canonical CHK against the exact final revision. Missing backend-specific unit coverage is returned to its BACKEND owner.
+**Incremental testing:** Every GEN_CODE task must implement and execute focused regression tests for security, recovery, bug fixes and stable contracts in its owned area. Exploratory coverage may be deferred only with a documented gap. RE-07 reconciles the complete requirement-to-test matrix, implements missing E2E/integration coverage and runs canonical CHK against the exact final revision. Missing code-specific unit coverage is returned to its CODE owner.
 
 ## 4. Normative tasks and acceptance criteria
 
@@ -43,7 +51,7 @@ Feature IDs are stable documentation identifiers, not persisted workflow or ZIP 
 **Private Bounded Raw Evidence Capture**
 
 - **type:** `GEN_CODE`.
-- **area:** `BACKEND`.
+- **area:** `CODE`.
 - **feature_ids:** `REVIEW.RAW_CAPTURE`.
 - **Implementation plan:** [RE-01 plan](task_impl_plan_01_raw_evidence_capture.md).
 - **Status:** Draft; acceptance not inferred.
@@ -70,7 +78,7 @@ The acceptance test cases below are requirements. RE-07 owns the final suite rec
 **Structured Adapter Normalization**
 
 - **type:** `GEN_CODE`.
-- **area:** `BACKEND`.
+- **area:** `CODE`.
 - **feature_ids:** `REVIEW.NORMALIZATION`.
 - **Implementation plan:** [RE-02 plan](task_impl_plan_02_structured_normalization.md).
 - **Status:** Draft; acceptance not inferred.
@@ -123,7 +131,7 @@ Raw logs and normalized findings SHALL NOT be sent to models by this stage.
 **Compact Context for LLM**
 
 - **type:** `GEN_CODE`.
-- **area:** `BACKEND`.
+- **area:** `CODE`.
 - **feature_ids:** `REVIEW.LLM_CONTEXT`.
 - **Implementation plan:** [RE-03 plan](task_impl_plan_03_bounded_llm_context.md).
 - **Status:** Draft; acceptance not inferred.
@@ -182,7 +190,7 @@ LLM CLI is nominally local. No HTTP call is added by `apatch` itself.
 **Selective Evidence Retrieval**
 
 - **type:** `GEN_CODE`.
-- **area:** `BACKEND`.
+- **area:** `CODE`.
 - **feature_ids:** `REVIEW.RETRIEVAL`.
 - **Implementation plan:** [RE-04 plan](task_impl_plan_04_selective_evidence_retrieval.md).
 - **Status:** Draft; acceptance not inferred.
@@ -207,7 +215,7 @@ The acceptance test cases below are requirements. RE-07 owns the final suite rec
 **Retention, Export and Recovery**
 
 - **type:** `GEN_CODE`.
-- **area:** `BACKEND`.
+- **area:** `CODE`.
 - **feature_ids:** `REVIEW.RETENTION_EXPORT`.
 - **Implementation plan:** [RE-05 plan](task_impl_plan_05_retention_export_recovery.md).
 - **Status:** Selected for review; developer acceptance pending.
@@ -323,7 +331,7 @@ A scoped documentation diff, link/path check and explicit list of any unresolved
 
 #### Required outcome
 
-Generate missing acceptance tests and update existing tests so each normative `RE-01-A`–`RE-05-D` requirement has deterministic positive, negative and recovery evidence. This task concludes the sub-spec development cycle, executes the configured canonical `CHK`, reviews failures and prepares truthful acceptance evidence before any permitted merge. It may write E2E/integration tests and their harnesses only; missing BACKEND unit coverage must be returned to the owning BACKEND task before a renewed final CHK.
+Generate missing acceptance tests and update existing tests so each normative `RE-01-A`–`RE-05-D` requirement has deterministic positive, negative and recovery evidence. This task concludes the sub-spec development cycle, executes the configured canonical `CHK`, reviews failures and prepares truthful acceptance evidence before any permitted merge. It may write E2E/integration tests and their harnesses only; missing CODE unit coverage must be returned to the owning CODE task before a renewed final CHK.
 
 #### Normative requirements and acceptance oracles
 

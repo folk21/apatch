@@ -1,3 +1,8 @@
+---
+type: Module Contract
+title: Core contract
+description: Shared core primitives, error contracts, and stable dependencies.
+---
 # Core contract
 
 ## Ownership

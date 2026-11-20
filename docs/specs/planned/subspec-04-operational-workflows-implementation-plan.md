@@ -1,3 +1,11 @@
+---
+type: Implementation Guide
+title: APATCH-PLAN-004 — Operational Workflow Macros and Diagnostics
+description: Advisory implementation stages for operational workflow capabilities.
+document_role: implementation_plan
+parent: subspec-04-operational-workflows.md
+spec_status: planned
+---
 # APATCH-PLAN-004 — Operational Workflow Macros and Diagnostics
 
 **Status:** Advisory plan. WM-01–WM-04 implementations are present in the current source, pending developer stage acceptance. WM-05 remains proposed; WM-06 is explicitly deferred.

@@ -1,3 +1,11 @@
+---
+type: Implementation Guide
+title: APATCH-PLAN-001-P0 — Workflow Control Implementation Plan
+description: Archived advisory implementation stages for workflow control and sequences.
+document_role: implementation_plan
+parent: subspec-01-workflow-control.md
+spec_status: completed
+---
 # APATCH-PLAN-001-P0 — Workflow Control Implementation Plan
 
 **Status:** ARCHIVED / ADVISORY — SUB-001 completed and accepted by the developer on 2026-10-28.

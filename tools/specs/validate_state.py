@@ -124,9 +124,9 @@ def validate_state(source: Path = STATE_PATH, repo_root: Path = ROOT) -> dict:
         feature_row = re.findall(r"(?m)^- \*\*feature_ids:\*\* (.+)\.$", section)
         if len(task_type) != 1 or task_type[0] not in {"GEN_CODE", "GEN_TESTS", "UPD_DOCS"}:
             raise ValueError(f"Invalid task type for {task_id}")
-        if len(area) != 1 or area[0] not in {"BACKEND", "FRONTEND", "DOCS", "E2E_TESTS"}:
+        if len(area) != 1 or area[0] not in {"CODE", "DOCS", "E2E_TESTS"}:
             raise ValueError(f"Invalid task area for {task_id}")
-        allowed_area = {"GEN_CODE": {"BACKEND", "FRONTEND"},
+        allowed_area = {"GEN_CODE": {"CODE"},
                         "GEN_TESTS": {"E2E_TESTS"}, "UPD_DOCS": {"DOCS"}}
         if area[0] not in allowed_area[task_type[0]]:
             raise ValueError(f"Task type/area conflict for {task_id}")

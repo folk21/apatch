@@ -1,3 +1,11 @@
+---
+type: Specification
+title: APATCH-SUB-001 — Workflow Control, Patch Ordering, and Sequences
+description: Accepted historical requirements for workflow control, patch ordering, and operation sequences.
+document_role: subspec
+parent: ../../umbrella_spec_apatch.md
+spec_status: completed
+---
 # APATCH-SUB-001 — Workflow Control, Patch Ordering, and Sequences
 
 **Status:** ACCEPTED / ARCHIVED — developer confirmed the completed P0 work on 2026-10-28. Historical requirements and open questions are retained as the original scope record.

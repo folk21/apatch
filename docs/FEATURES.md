@@ -1,3 +1,8 @@
+---
+type: Feature Catalog
+title: Features
+description: Stable capability identifiers and their scope across specifications and implementation.
+---
 # Features
 
 Stable capability IDs identify requirements and traceability, not runtime ZIP fields, automatic acceptance, or deployment. Implementation maturity and references live in [feature cross-reference](specs/feature-cross-ref.yaml).

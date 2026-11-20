@@ -1,6 +1,21 @@
+---
+type: Implementation Guide
+title: 'RE-03 — Compact Context for LLM: Task Implementation Plan (Draft)'
+description: Advisory RE-03 implementation plan, dependencies, verification, and recovery steps.
+document_role: task_plan
+parent: subspec.md
+spec_status: draft
+plan_status: advisory
+task_id: RE-03
+task_type: GEN_CODE
+area: CODE
+rtype: DEVELOP
+feature_ids:
+- REVIEW.LLM_CONTEXT
+---
 # RE-03 — Compact Context for LLM: Task Implementation Plan (Draft)
 
-- **Status:** ADVISORY / DRAFT; **area:** `BACKEND`; no implementation authorization is implied.
+- **Status:** ADVISORY / DRAFT; **area:** `CODE`; no implementation authorization is implied.
 - **Normative task:** [subspec.md#re-03](subspec.md#re-03).
 - **Sub-spec:** [subspec.md](subspec.md).
 - **Dependencies:** [RE-02](subspec.md#re-02) (candidate implementation; acceptance not inferred).

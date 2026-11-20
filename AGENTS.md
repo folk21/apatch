@@ -1,3 +1,8 @@
+---
+type: Development Guide
+title: Repository Guidance for Coding Agents
+description: Repository-wide engineering, security, testing, and ownership rules for apatch.
+---
 # Repository Guidance for Coding Agents
 
 These rules govern code, tests, configuration, and documentation created or modified in the `apatch` repository. Optimize for maintainability, safe behavior, and modules that can be understood and changed independently with limited context. Keep this file about repository content, not external handoff or publication procedures.
@@ -35,10 +40,16 @@ These rules govern code, tests, configuration, and documentation created or modi
 - Keep persisted state and journals atomic and locked where required. Make retries and interrupted operations safe; do not infer successful external side effects solely from a saved checkpoint.
 - Keep runtime artifacts private and outside tracked source content. Bound and redact diagnostics; never persist complete canonical-check output or sensitive review evidence in ordinary logs.
 
+## Document metadata
+
+- Every repository Markdown document (`*.md`), including module contracts, indexes, guides, specifications, and plans, starts with Open Knowledge Format YAML front matter: `type`, `title`, and `description`. The title must match the first level-one heading; preserve the existing Markdown content after the header.
+- SDD documents additionally declare `document_role` and `spec_status`; non-umbrella documents declare a valid repository-local `parent`. Task plans declare `task_id`, `task_type`, `area`, `rtype`, `feature_ids`, and `plan_status: advisory`. Metadata is documentation/SDD identity, not executable workflow state.
+- Validate headers and task linkage with `python3 tools/specs/validate_docs.py`, and run the corresponding regression tests before changing document metadata.
+
 ## Task area and test policy
 
-- Every task declares exactly one `area`: `BACKEND`, `FRONTEND`, `DOCS`, or `E2E_TESTS`. Edit only files owned by that area; read dependencies through public contracts. Cross-area behavior is delivered by sequential tasks, not mixed-scope patches. This repository has no current FRONTEND area.
-- BACKEND tasks include their own focused unit/regression tests for defects, security, recovery and stable contracts. E2E_TESTS owns end-to-end/integration tests and the final full check; failures requiring backend edits must return to the appropriate BACKEND task. DOCS never edits module `contract.md`.
+- Every task declares exactly one `area`: `CODE`, `DOCS`, or `E2E_TESTS`. Edit only files owned by that area; read dependencies through public contracts. Cross-area behavior is delivered by sequential tasks, not mixed-scope patches. This CLI has no separate backend/frontend areas; `CODE` owns both core logic and its focused tests.
+- `CODE` tasks include their own focused unit/regression tests for defects, security, recovery and stable contracts. E2E_TESTS owns end-to-end/integration tests and the final full check; failures requiring application code edits must return to the appropriate `CODE` task. DOCS never edits module `contract.md`.
 - Feature IDs identify capabilities and their traceability in documentation only, not live Git/ZIP state, and do not imply acceptance or deployment.
 
 ## Documentation size and ownership

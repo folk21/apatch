@@ -1,3 +1,8 @@
+---
+type: Architecture
+title: Architecture
+description: Architecture boundaries, Git/ZIP safety, evidence pipeline, recovery, and verification ownership.
+---
 # Architecture
 
 `apatch` is a Python CLI for verified ZIP patch handoffs and guarded Git/GitHub workflows. This document describes ownership, data flow, safety and development checks; [Usage](USAGE.md) documents commands and configuration, while module-level `contract.md` files define their public APIs. It is not an SDD normative specification.
@@ -55,9 +60,57 @@ Push is non-forced and requires compatible local/remote ancestry. PR creation ch
 
 ## Review evidence boundary
 
-Configured script and LLM reviewers are trusted *executables* but their output is untrusted data. `REV` uses bounded time and stream limits, a validated report schema and explicit verdicts. Optional raw capture stores private stdout/stderr and a manifest in `.apatch/reviews/`; stdout and stderr are drained separately and capped, and timeouts or malformed output cannot become PASS. Structured normalization records scanner findings and provenance without treating wrapper exit zero as proof that required scanners succeeded.
+`13 [REV]` runs explicitly configured script and LLM executables only after
+fresh `CHK` evidence. Executables use the invoking user's OS permissions;
+scanner output, LLM responses, paths and finding text are **untrusted data**,
+not executable instructions. A failed command, invalid verdict or changed
+source/index/branch/policy snapshot cannot be recorded as a passing review.
+The complete review verdict remains independent of GitHub approval and CI.
 
-A compact LLM context is deterministic, bounded and metadata-only by default. Including finding messages or diff text requires explicit disclosure consent. Selective evidence lookup is a local internal API with exact finding IDs, SHA-256 checks, per-request/output budgets, private no-follow traversal and source-path restrictions; it is not a public network/model dispatcher. Configured retention defaults to off. Opt-in pruning protects unknown, partial, changed or unsafe evidence and uses a journal for interrupted deletion. Export requires explicit consent and produces limited metadata, never full logs, prompts, findings or source. No stored review evidence by itself constitutes GitHub approval or live CI status.
+### Local evidence lifecycle
+
+The review pipeline has separate, opt-in boundaries:
+
+| Boundary | Owner | Data and safety guarantee |
+| --- | --- | --- |
+| Capture | `review_artifacts.py`, `code_review.py` | `review_artifacts_enabled` defaults to false. When enabled, `REV` writes separate bounded stdout/stderr streams, SHA-256 metadata and an atomic `manifest.json` under ignored `.apatch/reviews/review-<24-hex>/`. Review directories are private (`0700`), files are private (`0600`). |
+| Normalization | `review_normalizer.py` | Structured scanner reports keep tool status, finding identity and provenance. Wrapper exit code zero does not establish that all required scanners succeeded or that there are no findings. |
+| LLM context | `review_context.py` | The compact context has a byte budget and defaults to metadata only. Finding messages and source diff require explicit `review_context_external_consent` plus their individual inclusion settings. |
+| Retrieval | `review_evidence_api.py` | `ReviewEvidenceSession` is an internal, snapshot-scoped and quota-limited local reader. It verifies finding IDs, saved digests and current source bytes using no-follow file access; it cannot call reviewers or external models. |
+| Retention and export | `review_retention.py` | Private storage locks and verified member inventories constrain cleanup. `prune_review_artifacts()` previews by default; `export_review_summary()` requires explicit `consent=True` and returns bounded, metadata-only JSON. Neither is a public CLI action or a network transport. |
+
+A manifest records `STARTED`, `FAILED` or `COMPLETED`; a terminal status
+alone is not a trusted result. Review replays and lookups must verify the
+stored inventory and its hashes before using evidence. Retained output can
+contain credentials or private source text: it is not included in handoff ZIPs,
+commits or ordinary operation logs.
+
+### Retention and interruption recovery
+
+Automatic pruning is **disabled** until `review_retention_enabled: true` is
+configured. When enabled, `REV` acquires the project-local review-storage lock
+and evaluates configured count, age and byte limits **before** allocating the
+next run. This is an allocation guard, not a background service or filesystem
+quota. Unknown names, symlinks, hardlinks, partial manifests, `STARTED` runs,
+modified bytes and other unverified evidence remain protected. If that
+protected evidence makes capacity uncertain, the reviewer does not start.
+
+Explicit `prune_review_artifacts(root)` is a dry-run preview; deletion needs
+an explicit non-preview call or the retention opt-in. Eligible verified
+terminal runs are pruned oldest first and journal their exact remaining
+members before deletion. After an interruption, a subsequent maintenance
+attempt revalidates that journal and any remaining files; unexpected members
+stop cleanup instead of being erased. Pruning never deletes Git state or
+pretends that a removed review was accepted. Missing/pruned/corrupt evidence
+fails closed on future retrieval/export rather than being silently recreated.
+
+The internal `export_review_summary(root, review_id, consent=True)` validates
+terminal evidence and returns at most 8,192 bytes of provider/run references,
+statuses and a manifest hash, without prompts, source excerpts, finding
+messages or raw logs. Export consent does not trigger a transfer; callers own
+any subsequent disclosure. User-facing configuration and commands are
+specified in [Usage](USAGE.md#6-checks-formatting-builds-and-review), while
+module-level interfaces remain owned by source and `contract.md` files.
 
 ## Security and recovery
 
