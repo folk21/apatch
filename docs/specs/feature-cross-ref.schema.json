@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "apatch feature cross-reference",
+  "description": "Stable capability IDs mapped to stage IDs, implementation maturity, current code ownership and test files; see docs/FEATURES.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "features"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 2
+    },
+    "features": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "feature_id",
+          "implementation_status",
+          "stages",
+          "spec_paths",
+          "owners",
+          "test_files"
+        ],
+        "properties": {
+          "feature_id": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9]*(?:\\.[A-Z][A-Z0-9_]*)+$"
+          },
+          "stages": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z][A-Za-z0-9.-]{0,31}$"
+            }
+          },
+          "spec_paths": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^docs/specs/(?:active/(?:[a-z0-9-]+/subspec|spec-apatch-orchestrator)|planned/subspec-[0-9]{2}-[a-z0-9-]+|archive/subspecs/subspec-[0-9]{2}-[a-z0-9-]+)\\.md$"
+            }
+          },
+          "owners": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]+(?:#[A-Za-z_$][A-Za-z0-9_.$-]*)?$"
+            }
+          },
+          "test_files": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9_./-]+$"
+            }
+          },
+          "implementation_status": {
+            "type": "string",
+            "enum": [
+              "planned",
+              "partial",
+              "verified"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

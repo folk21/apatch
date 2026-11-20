@@ -1,10 +1,10 @@
 # RE-07 Implementation Plan — Review Evidence Acceptance Tests (Advisory)
 
-**Task:** [RE-07](task_07_review_acceptance_tests.md) · **type:** `GEN_TESTS` · **Proposed run type:** `GEN_FINAL` · **Dependency:** RE-06 documentation sign-off.
+**Task:** [RE-07](subspec.md#re-07) · **type:** `GEN_TESTS` · **area:** `E2E_TESTS` · **Proposed run type:** `ACCEPT` · **Dependency:** RE-06 documentation sign-off.
 
 ## Source inventory and implementation scope
 
-Inspect existing `apatch_lib/code_review.py`, `review_artifacts.py`, `review_normalizer.py`, `review_context.py`, `review_evidence_api.py`, `review_retention.py`, `configuration/loaders.py`, and their `api.py`/`contract.md` owners where present. Reconcile exact functions and return formats with the current checkout before editing tests.
+Inspect existing public `api.py` and `contract.md` interfaces, test fixtures and recorded assertions. Treat backend implementation as an independent area: request contract clarification from its owner rather than loading or modifying unrelated private modules. Reconcile exact observable return formats with the current checkout before editing integration tests.
 
 | Test owner (verified snapshot) | Required coverage / source task |
 | --- | --- |
@@ -16,7 +16,7 @@ Inspect existing `apatch_lib/code_review.py`, `review_artifacts.py`, `review_nor
 | `tests/test_config_cli.py` | RE-01/02/03/05 invalid project policy, defaults and backwards compatibility |
 | `tests/test_spec_state.py` | RE-06/07 task ordering, type metadata, selected checkpoint and plan pairing |
 
-Do not assume existing tests already cover every edge case. First map normative IDs to specific test methods and inspect their assertions for real behavior. Add names below only when evidence is missing. Use the original acceptance text in RE-01…RE-05 as the oracle.
+Do not assume existing tests already cover every edge case. Map normative IDs to specific methods and inspect their assertions. The table is a verification inventory, not blanket authorization to edit each test file: BACKEND-owned unit tests must be updated by a reopened BACKEND task; this E2E_TESTS task edits only its integration/acceptance test cases and harness. Add new cases only when evidence is missing, using RE-01…RE-05 as the oracle.
 
 ## Test skeletons (illustrative only; write real tests in test owners)
 
@@ -82,8 +82,8 @@ Each skeleton is a **design sketch**, not a skipped test or assertion of coverag
 ## Ordered execution
 
 1. Read all five normative task acceptance sections; create a checklist mapping `RE-01-A` through `RE-05-D` to exact existing test methods. Mark missing verification and non-automatable cases; do not invent observed PASS.
-2. Add focused positive/negative tests for uncovered behavior using the existing fixtures (`tests/_support.py`) and local temporary Git remotes. Explicitly test legacy default-off compatibility and mode/phase guards.
-3. Run affected review suites first; fix code defects only under the owning module with focused regression and documented scope. Never weaken expected errors to make a test green.
+2. Add missing integration/E2E positive/negative tests for uncovered behavior using the existing fixtures (`tests/_support.py`) and local temporary Git remotes. Explicitly test legacy default-off compatibility and mode/phase guards.
+3. Run affected review suites first; return backend defects or missing focused unit regression tests to the owning BACKEND task; this E2E_TESTS task must not write backend code. Never weaken expected errors to make a test green.
 4. Execute `python3 tools/specs/validate_state.py`, `sh ./run_tests.sh` and `sh ./run_rare_checks.sh` as supported. Capture return codes and a bounded failure summary; do not persist raw reviewer output or secrets in ordinary logs.
 5. Run the target project's configured canonical `CHK` on the final intended revision. If `REV` is required, run it after fresh CHK, before commit. Confirm source/commit tree evidence and active publication policy; the developer separately authorizes any PSH/PR/MRG/SYN actions.
 6. Deliver the test matrix and exact results. Update the current task state only on developer instruction; submission, green tests or merge are not automatic sub-spec acceptance.

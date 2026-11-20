@@ -5,9 +5,9 @@ These rules govern code, tests, configuration, and documentation created or modi
 ## Source and ownership
 
 - Read [README.md](README.md), the relevant [Architecture](docs/ARCHITECTURE.md) and [Usage](docs/USAGE.md) sections, and the owning code and tests before editing. Use verified current source; a concatenated snapshot may omit files or lag behind the installed repository.
-- For SDD work, follow the flat active-task layout under `docs/specs/active/<scope>/`: read `subspec.md`, the selected `task_<nn>_<slug>.md` and matching `task_impl_plan_<nn>_<slug>.md`, plus `impl_plan.md` only for cross-task decisions. `docs/specs/planned/` contains unselected draft workstreams; selection, implementation and acceptance remain separate developer decisions. Keep project-specific SDD work distinct from installed `apatch` deployment.
+- For SDD work, read the single normative `docs/specs/active/<scope>/subspec.md` and the matching `task_impl_plan_<nn>_<slug>.md` for the selected task. There are no separate task requirement files or duplicate integration plan. `docs/specs/planned/` contains unselected draft workstreams; selection, implementation and acceptance remain separate developer decisions. Keep project-specific SDD work distinct from installed `apatch` deployment.
 - Identify the module that owns the behavior. Change the smallest cohesive set of files, keep unrelated behavior untouched, and update existing abstractions instead of creating parallel implementations.
-- Follow the active requirements in the [SDD index](docs/specs/README.md) when applicable. Work under `docs/specs/` must also follow its [local instructions](docs/specs/AGENTS.md). Do not invent requirements or treat an implementation as acceptance of a specification.
+- Follow the active requirements and stable feature IDs in [FEATURES](docs/FEATURES.md) and the [SDD index](docs/specs/README.md) when applicable; maintain [feature cross-reference](docs/specs/feature-cross-ref.yaml) against verified owners and tests. Work under `docs/specs/` must also follow its [local instructions](docs/specs/AGENTS.md). Do not invent requirements or treat an implementation as acceptance of a specification.
 
 ## Architecture and module boundaries
 
@@ -34,6 +34,12 @@ These rules govern code, tests, configuration, and documentation created or modi
 - Treat ZIPs, paths, configuration, external output, and Git/GitHub state as untrusted until validated. Protect dirty worktrees, explicit deletions, branch/HEAD/remote identity, fast-forward publication, review/CI gates, and recovery after partial failures.
 - Keep persisted state and journals atomic and locked where required. Make retries and interrupted operations safe; do not infer successful external side effects solely from a saved checkpoint.
 - Keep runtime artifacts private and outside tracked source content. Bound and redact diagnostics; never persist complete canonical-check output or sensitive review evidence in ordinary logs.
+
+## Task area and test policy
+
+- Every task declares exactly one `area`: `BACKEND`, `FRONTEND`, `DOCS`, or `E2E_TESTS`. Edit only files owned by that area; read dependencies through public contracts. Cross-area behavior is delivered by sequential tasks, not mixed-scope patches. This repository has no current FRONTEND area.
+- BACKEND tasks include their own focused unit/regression tests for defects, security, recovery and stable contracts. E2E_TESTS owns end-to-end/integration tests and the final full check; failures requiring backend edits must return to the appropriate BACKEND task. DOCS never edits module `contract.md`.
+- Feature IDs identify capabilities and their traceability in documentation only, not live Git/ZIP state, and do not imply acceptance or deployment.
 
 ## Documentation size and ownership
 

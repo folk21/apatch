@@ -13,13 +13,14 @@ see [SDD agent instructions](AGENTS.md). For contributor workflow and testing, s
 | Specification | Advisory integration plan | Current focus |
 | --- | --- | --- |
 | [APATCH-SPEC-001 — Orchestrator](active/spec-apatch-orchestrator.md) | [Future umbrella stages](active/apatch-orchestrator-implementation-plan.md) | DRAFT; future proposals |
-| [SUB-006 — Review Evidence Pipeline](active/review-evidence/subspec.md) | [Workstream integration plan](active/review-evidence/impl_plan.md) | [RE-05 — Retention, Export and Recovery](active/review-evidence/task_05_retention_export_recovery.md), `READY_FOR_REVIEW`; no acceptance |
+| [SUB-006 — Review Evidence Pipeline](active/review-evidence/subspec.md) | [Seven linked task plans](active/review-evidence/subspec.md#3-features-and-task-execution-boundaries) | [RE-05 — Retention, Export and Recovery](active/review-evidence/subspec.md#re-05), `READY_FOR_REVIEW`; no acceptance |
 
-An active workstream has a flat directory with `subspec.md`, `impl_plan.md`,
-matched `task_<nn>_<slug>.md` and `task_impl_plan_<nn>_<slug>.md` files.
-See [SUB-006's task index](active/review-evidence/subspec.md#3-task-index-and-dependencies)
-for all seven normative task / implementation plan pairs. The final two tasks are `RE-06 / UPD_DOCS` and `RE-07 / GEN_TESTS`. The active umbrella
-and its future-stage plan remain directly under `active/`.
+An active workstream has a single normative `subspec.md` containing all
+features, tasks and acceptance oracles, and one `task_impl_plan_<nn>_*.md` per
+task. See the [SUB-006 task index](active/review-evidence/subspec.md#3-features-and-task-execution-boundaries).
+The final two tasks remain `RE-06 / UPD_DOCS` and `RE-07 / GEN_TESTS`.
+Feature catalog and ownership: [FEATURES](../FEATURES.md) and
+[feature cross-reference](feature-cross-ref.yaml).
 
 ## Planned, unselected drafts
 
@@ -56,11 +57,12 @@ Its structure is described in [`state.schema.json`](state.schema.json).
 
 ```bash
 python3 tools/specs/validate_state.py
+python3 tools/specs/validate_features.py
 sh ./run_tests.sh
 ```
 
 The selected workstream is SUB-006 / RE-05 at `READY_FOR_REVIEW`; RE-06 and RE-07 are future draft tasks, not completed;
-its selected task is `active/review-evidence/task_05_retention_export_recovery.md`.
+its selected task is `active/review-evidence/subspec.md#re-05`.
 SUB-003 and SUB-004 are unselected drafts under `planned/`, not accepted.
 The checkpoint may advance at a developer-directed stage boundary.
 Product behavior is documented in [Usage](../USAGE.md) and

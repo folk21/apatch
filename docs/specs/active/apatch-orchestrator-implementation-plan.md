@@ -29,7 +29,7 @@
 
 The review-evidence capture, normalization, and compact LLM-context work is
 scoped separately under [SUB-006](review-evidence/subspec.md)
-and [PLAN-006](review-evidence/impl_plan.md).
+and [PLAN-006](review-evidence/subspec.md#3-features-and-task-execution-boundaries).
 The remaining adapter and scheduling proposals below are not included in RE-01.
 
 1. Add an external-review adapter with explicit endpoint/CLI choice, budget, cooldown, patch-size thresholds, and data redaction.

@@ -1,0 +1,165 @@
+# Capability traceability; a partial implementation is not developer acceptance.
+schema_version: 2
+features:
+- feature_id: HANDOFF.ZIP_INPUT
+  implementation_status: partial
+  stages:
+  - P0.3c
+  spec_paths:
+  - docs/specs/archive/subspecs/subspec-01-workflow-control.md
+  owners:
+  - apatch_lib/handoff/api.py
+  - apatch_lib/handoff/extraction.py
+  test_files:
+  - tests/test_handoffs.py
+  - tests/test_safety.py
+- feature_id: HANDOFF.ZIP_PRODUCER
+  implementation_status: partial
+  stages:
+  - P0.3c
+  spec_paths:
+  - docs/specs/archive/subspecs/subspec-01-workflow-control.md
+  owners:
+  - apatch_lib/handoff/producer/packaging.py
+  - apatch_lib/handoff/producer/preflight.py
+  test_files:
+  - tests/test_artifact_packaging.py
+  - tests/test_artifact_preflight.py
+- feature_id: WORKFLOW.SEQUENCES
+  implementation_status: partial
+  stages:
+  - P0.4a
+  spec_paths:
+  - docs/specs/archive/subspecs/subspec-01-workflow-control.md
+  owners:
+  - apatch_lib/sequence.py
+  - apatch_lib/workflows/api.py
+  test_files:
+  - tests/test_sequences.py
+  - tests/test_modes.py
+- feature_id: WORKFLOW.FEATURE_SESSIONS
+  implementation_status: partial
+  stages:
+  - FS-03
+  spec_paths:
+  - docs/specs/planned/subspec-03-feature-session-planning.md
+  owners:
+  - apatch_lib/session.py
+  - apatch_lib/session_continuation.py
+  test_files:
+  - tests/test_feature_sessions.py
+  - tests/test_session_continuation.py
+- feature_id: WORKFLOW.BUILD_ONLY
+  implementation_status: partial
+  stages:
+  - WM-04
+  spec_paths:
+  - docs/specs/planned/subspec-04-operational-workflows.md
+  owners:
+  - apatch_lib/building.py
+  - apatch_lib/configuration/loaders.py
+  test_files:
+  - tests/test_building.py
+- feature_id: PUBLICATION.PR_GUARDS
+  implementation_status: partial
+  stages:
+  - P0-2e
+  spec_paths:
+  - docs/specs/archive/subspecs/subspec-01-workflow-control.md
+  owners:
+  - apatch_lib/github.py
+  - apatch_lib/publication/api.py
+  test_files:
+  - tests/test_github.py
+  - tests/test_publication_goals.py
+- feature_id: PUBLICATION.MERGE_SYNC
+  implementation_status: partial
+  stages:
+  - WM-05
+  spec_paths:
+  - docs/specs/planned/subspec-04-operational-workflows.md
+  owners:
+  - apatch_lib/github.py
+  - apatch_lib/macros.py
+  test_files:
+  - tests/test_remote_macros.py
+  - tests/test_github.py
+- feature_id: STATE.OPERATION_JOURNAL
+  implementation_status: partial
+  stages:
+  - P1.1
+  spec_paths:
+  - docs/specs/archive/subspecs/subspec-02-state-history-audit.md
+  owners:
+  - apatch_lib/operation_events.py
+  - apatch_lib/state.py
+  test_files:
+  - tests/test_operation_journal.py
+  - tests/test_history.py
+- feature_id: STATE.AUDIT
+  implementation_status: partial
+  stages:
+  - P1.2
+  spec_paths:
+  - docs/specs/archive/subspecs/subspec-02-state-history-audit.md
+  owners:
+  - apatch_lib/audit_collectors.py
+  - apatch_lib/audit_rules.py
+  test_files:
+  - tests/test_audit.py
+  - tests/test_audit_rules.py
+- feature_id: REVIEW.RAW_CAPTURE
+  implementation_status: partial
+  stages:
+  - RE-01
+  spec_paths:
+  - docs/specs/active/review-evidence/subspec.md
+  owners:
+  - apatch_lib/review_artifacts.py
+  - apatch_lib/code_review.py
+  test_files:
+  - tests/test_code_review.py
+- feature_id: REVIEW.NORMALIZATION
+  implementation_status: partial
+  stages:
+  - RE-02
+  spec_paths:
+  - docs/specs/active/review-evidence/subspec.md
+  owners:
+  - apatch_lib/review_normalizer.py
+  - apatch_lib/code_review.py
+  test_files:
+  - tests/test_review_normalizer.py
+  - tests/test_code_review.py
+- feature_id: REVIEW.LLM_CONTEXT
+  implementation_status: partial
+  stages:
+  - RE-03
+  spec_paths:
+  - docs/specs/active/review-evidence/subspec.md
+  owners:
+  - apatch_lib/review_context.py
+  - apatch_lib/code_review.py
+  test_files:
+  - tests/test_review_context.py
+- feature_id: REVIEW.RETRIEVAL
+  implementation_status: partial
+  stages:
+  - RE-04
+  spec_paths:
+  - docs/specs/active/review-evidence/subspec.md
+  owners:
+  - apatch_lib/review_evidence_api.py
+  test_files:
+  - tests/test_review_evidence_api.py
+- feature_id: REVIEW.RETENTION_EXPORT
+  implementation_status: partial
+  stages:
+  - RE-05
+  spec_paths:
+  - docs/specs/active/review-evidence/subspec.md
+  owners:
+  - apatch_lib/review_retention.py
+  - apatch_lib/review_artifacts.py
+  test_files:
+  - tests/test_review_retention.py

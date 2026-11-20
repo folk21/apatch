@@ -39,8 +39,7 @@ class SpecStateTests(unittest.TestCase):
         self.assertEqual(result["selectedWorkstreamId"], "review-evidence")
         self.assertEqual(self.record(result, "review-evidence")["stageId"], "RE-05")
         self.assertEqual({item["id"] for item in result["workstreams"]}, {"review-evidence"})
-        self.assertEqual(result["selectedTaskPath"],
-                         "docs/specs/active/review-evidence/task_05_retention_export_recovery.md")
+        self.assertEqual(result["selectedTaskId"], "RE-05")
         self.assertEqual(STATE_PATH.read_bytes(), before)
 
     def test_cli_reports_selected_focus_without_mutating_source(self) -> None:
@@ -121,46 +120,72 @@ class SpecStateTests(unittest.TestCase):
                 self.assertTrue((planned / f"{stem}-implementation-plan.md").is_file())
                 self.assertFalse((specs / "active/subspecs" / f"{stem}.md").exists())
         self.assertTrue((active / "subspec.md").is_file())
-        self.assertTrue((active / "impl_plan.md").is_file())
-        tasks = sorted(active.glob("task_[0-9][0-9]_*.md"))
+        self.assertFalse((active / "impl_plan.md").exists())
+        self.assertEqual(list(active.glob("task_[0-9][0-9]_*.md")), [])
         plans = sorted(active.glob("task_impl_plan_[0-9][0-9]_*.md"))
-        self.assertEqual(len(tasks), 7)
         self.assertEqual(len(plans), 7)
-        self.assertEqual({file.name.removeprefix("task_") for file in tasks},
-                         {file.name.removeprefix("task_impl_plan_") for file in plans})
-        task_types = []
-        for task in tasks:
-            paired = active / task.name.replace("task_", "task_impl_plan_", 1)
-            self.assertTrue(paired.is_file())
-            self.assertIn(task.name, paired.read_text(encoding="utf-8"))
-            header = task.read_text(encoding="utf-8").split("\n## ", 1)[0]
-            types = re.findall(r"^- \*\*type:\*\* `([A-Z_]+)`\.$", header, re.MULTILINE)
-            self.assertEqual(len(types), 1, task.name)
-            self.assertIn(types[0], {"GEN_CODE", "UPD_DOCS", "GEN_TESTS"})
-            task_types.append(types[0])
-        self.assertEqual(task_types, ["GEN_CODE"] * 5 + ["UPD_DOCS", "GEN_TESTS"])
+        text = (active / "subspec.md").read_text(encoding="utf-8")
+        tasks = re.findall(r"(?m)^### (RE-[0-9]{2})$", text)
+        self.assertEqual(tasks, [f"RE-{n:02}" for n in range(1, 8)])
+        types = re.findall(r"(?m)^- \*\*type:\*\* `([A-Z_]+)`\.$", text)
+        areas = re.findall(r"(?m)^- \*\*area:\*\* `([A-Z0-9_]+)`\.$", text)
+        self.assertEqual(types, ["GEN_CODE"] * 5 + ["UPD_DOCS", "GEN_TESTS"])
+        self.assertEqual(areas, ["BACKEND"] * 5 + ["DOCS", "E2E_TESTS"])
+        for number, plan in enumerate(plans, start=1):
+            self.assertIn(f"task_impl_plan_{number:02}_", plan.name)
+            self.assertIn(f"]({plan.name})", text)
+            self.assertIn("subspec.md#re-", plan.read_text(encoding="utf-8"))
         self.assertFalse((ROOT / "docs/DEVELOPMENT.md").exists())
         self.assertFalse((ROOT / "docs/SECURITY.md").exists())
         self.assertFalse(any((specs / "active/subspecs").glob("*.md")))
         self.assertTrue((specs / "AGENTS.md").is_file())
 
-    def test_selected_task_path_is_exact_and_matches_selected_stage(self) -> None:
+    def test_selected_task_id_is_exact_and_matches_selected_stage(self) -> None:
         for value, expected in (
-            ("docs/specs/planned/subspec-03-feature-session-planning.md", "Invalid selectedTaskPath"),
-            ("docs/specs/active/review-evidence/task_04_selective_evidence_retrieval.md", "disagree"),
-            ("docs/specs/active/other-scope/task_05_retention_export_recovery.md", "does not belong"),
-            ("docs/specs/active/review-evidence/task_05_not_present.md", "Missing or unsafe"),
-            ("docs/specs/active/review-evidence/../task_05_retention_export_recovery.md", "Invalid selectedTaskPath"),
+            ("RE-04", "disagree"),
+            ("RE-99", "Missing selected task"),
+            ("../RE-05", "Invalid selectedTaskId"),
+            (3, "Invalid selectedTaskId"),
         ):
             with self.subTest(value=value):
                 data = copy.deepcopy(self.original)
-                data["selectedTaskPath"] = value
+                data["selectedTaskId"] = value
                 self.assert_invalid(data, expected)
 
-    def test_task_pointer_is_optional_for_legacy_compatibility(self) -> None:
+    def test_task_id_pointer_is_optional_for_existing_checkpoints(self) -> None:
         data = copy.deepcopy(self.original)
-        data.pop("selectedTaskPath")
+        data.pop("selectedTaskId")
         self.assertEqual(self.verify_payload(data)["selectedWorkstreamId"], "review-evidence")
+
+    def test_invalid_task_type_area_or_plan_blocks_checkpoint(self) -> None:
+        spec = ROOT / "docs/specs/active/review-evidence/subspec.md"
+        source = spec.read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as directory:
+            temporary_root = Path(directory)
+            target = temporary_root / "docs/specs/active/review-evidence/subspec.md"
+            target.parent.mkdir(parents=True)
+            for path in (ROOT / "docs/specs/active/review-evidence").glob("task_impl_plan_*.md"):
+                (target.parent / path.name).write_bytes(path.read_bytes())
+            features = temporary_root / "docs/FEATURES.md"
+            features.parent.mkdir(exist_ok=True, parents=True)
+            features.write_bytes((ROOT / "docs/FEATURES.md").read_bytes())
+            for replace, expected in (
+                ("- **area:** `BACKEND`.", "Invalid task area"),
+                ("- **type:** `GEN_CODE`.", "Invalid task type"),
+                ("- **Implementation plan:** [RE-05 plan](task_impl_plan_05_retention_export_recovery.md).", "Invalid task plan"),
+                ("`REVIEW.RETENTION_EXPORT`", "Invalid feature IDs"),
+            ):
+                with self.subTest(replace=replace):
+                    modified = source.replace(replace, "INVALID", 1)
+                    target.write_text(modified, encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, expected):
+                        self.verify_custom_root(temporary_root)
+
+    def verify_custom_root(self, root: Path) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "STATE.json"
+            path.write_text(json.dumps(self.original) + "\n", encoding="utf-8")
+            validate_state(path, root)
 
     def test_sdd_markdown_relative_links_resolve_after_archival(self) -> None:
         specs = ROOT / "docs/specs"
