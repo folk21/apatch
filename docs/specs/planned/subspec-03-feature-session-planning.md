@@ -2,7 +2,7 @@
 
 **Status:** PLANNED / DRAFT (GENSPEC). FS-00 checkpoint-linkage correction and FS-00R deterministic ZIP resume are present in the inspected source; FS-01–FS-06 context-aware behavior remains proposed. Implementation evidence does not constitute final developer acceptance.
 
-**Parent:** [APATCH-SPEC-001](../active/spec-apatch-orchestrator.md). **Implementation plan:** [APATCH-PLAN-003](subspec-03-feature-session-planning-implementation-plan.md).
+**Parent:** [APATCH-SPEC-001](../umbrella_spec_apatch.md). **Implementation plan:** [APATCH-PLAN-003](subspec-03-feature-session-planning-implementation-plan.md).
 
 ## 1. Purpose and boundaries
 

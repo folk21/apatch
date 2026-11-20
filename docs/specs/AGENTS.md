@@ -52,9 +52,12 @@ ownership and lifecycle.
    new-format accepted workstreams move in full to
    `archive/workstreams/<scope>/` only upon developer confirmation. Preserve
    stage IDs, feature references, and links during moves.
-7. The umbrella specification and its future-stage plan remain under `active/`.
-   Treat plans as advisory and task types/areas as SDD metadata; they never
-   execute `apatch` or authorize product changes, merges or acceptance.
+7. The single umbrella specification is `docs/specs/umbrella_spec_apatch.md`.
+   It owns project-wide goals, roadmap and invariants and has no umbrella
+   implementation plan. Each selected sub-specification owns its normative
+   tasks and separate advisory task implementation plans. Task types/areas
+   are SDD metadata; they do not execute `apatch` or authorize product
+   changes, merges or acceptance.
 
 ## Iterative specification design and implementation planning
 
@@ -89,8 +92,9 @@ ownership and lifecycle.
    in the plan. Leave unresolved choices explicitly provisional. Do not
    assume the model's first implementation plan is uniquely optimal, and
    avoid prolonging design discussions over low-impact details.
-6. **Iterate the plan together with the specification.** Maintain a separate,
-   linked advisory implementation plan with concrete incremental stages,
+6. **Iterate sub-spec task plans together with their requirements.** For
+   each scoped sub-specification task, maintain a separate linked advisory
+   implementation plan with concrete incremental stages,
    dependencies, verified code ownership, failure/recovery handling, and
    validation evidence as required below. Revise it when research, developer
    feedback, or normative requirements change materially. Draft planning may

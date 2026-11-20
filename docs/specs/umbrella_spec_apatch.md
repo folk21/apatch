@@ -1,10 +1,16 @@
-# APATCH-SPEC-001 — Patch Workflow and Quality Orchestrator
+# APATCH-SPEC-001 — Patch Workflow and Quality Orchestrator (Umbrella Specification)
 
 **Status:** DRAFT (GENSPEC); implementation is not authorized by this document.
 
 **Owner:** `apatch` CLI and target-repository `.apatch/` integration.
 
-**Current active sub-specification:** [SUB-006 — Review Evidence Pipeline](review-evidence/subspec.md). **Planned, unselected drafts:** [SUB-003 — Feature Sessions](../planned/subspec-03-feature-session-planning.md) and [SUB-004 — Operational Workflows](../planned/subspec-04-operational-workflows.md). **Accepted archives:** [SUB-001 — Workflow Control](../archive/subspecs/subspec-01-workflow-control.md), [SUB-002 — Execution History and Audit](../archive/subspecs/subspec-02-state-history-audit.md), and [SUB-005 — Architectural Simplification](../archive/subspecs/subspec-05-architectural-simplification.md). **Active plans:** [umbrella future stages](apatch-orchestrator-implementation-plan.md) and [SUB-006 task plans](review-evidence/subspec.md#3-features-and-task-execution-boundaries). **Planned plans:** [PLAN-003](../planned/subspec-03-feature-session-planning-implementation-plan.md) and [PLAN-004](../planned/subspec-04-operational-workflows-implementation-plan.md). **Archived plans:** [SUB-001 P0](../archive/subspecs/subspec-01-workflow-control-implementation-plan.md), [SUB-002 P1.1–P1.2](../archive/subspecs/subspec-02-state-history-audit-implementation-plan.md), and [PLAN-005](../archive/subspecs/subspec-05-architectural-simplification-implementation-plan.md).
+**Current active sub-specification:** [SUB-006 — Review Evidence Pipeline](active/review-evidence/subspec.md).
+**Unselected drafts:** [SUB-003 — Feature Sessions](planned/subspec-03-feature-session-planning.md) and
+[SUB-004 — Operational Workflows](planned/subspec-04-operational-workflows.md).
+**Accepted archives:** [SUB-001 — Workflow Control](archive/subspecs/subspec-01-workflow-control.md),
+[SUB-002 — Execution History and Audit](archive/subspecs/subspec-02-state-history-audit.md),
+and [SUB-005 — Architectural Simplification](archive/subspecs/subspec-05-architectural-simplification.md).
+Detailed implementation plans belong to the corresponding sub-specifications and tasks, not to this umbrella.
 
 ## 1. Purpose
 
@@ -21,7 +27,7 @@
 - Keep GitHub review/check requirements distinct from interactive user approvals and remote branch protections.
 - Before creating a new feature branch, reject any other unfinished local or remote feature branch; this mandatory gate cannot be disabled by a mode or confirmation option.
 
-Current behavior is documented in [Usage](../../USAGE.md) and [Architecture](../../ARCHITECTURE.md). These DRAFT requirements are not assertions about the current implementation.
+Current behavior is documented in [Usage](../USAGE.md) and [Architecture](../ARCHITECTURE.md). These DRAFT requirements are not assertions about the current implementation.
 
 ## 3. Capability roadmap
 
@@ -49,11 +55,20 @@ Current behavior is documented in [Usage](../../USAGE.md) and [Architecture](../
 | Independent model review | Invoke Codex/API reviewers with budget and policy limits | P3 |
 | Extension contracts | Add new check adapters without changing core Git orchestration | P3 |
 
-The completed P0 behavior, including lightweight cross-project progress summaries, is documented by [APATCH-SUB-001](../archive/subspecs/subspec-01-workflow-control.md). The completed per-target execution evidence journal and historical reconciliation audit are documented by [APATCH-SUB-002](../archive/subspecs/subspec-02-state-history-audit.md); they correlate with P0 progress events instead of creating conflicting independent histories. Other future capabilities require subordinate specs before implementation.
+The completed P0 behavior, including lightweight cross-project progress summaries, is documented by [APATCH-SUB-001](archive/subspecs/subspec-01-workflow-control.md). The completed per-target execution evidence journal and historical reconciliation audit are documented by [APATCH-SUB-002](archive/subspecs/subspec-02-state-history-audit.md); they correlate with P0 progress events instead of creating conflicting independent histories. Other future capabilities require subordinate specs before implementation.
 
 ### Git-format patch support (future scope)
 
 `apatch` SHOULD support LLM-generated Git-native patches as an alternative to ZIP overlays, while preserving the existing explicit verification, commit, push, PR, and merge steps. The future format-specific sub-spec MUST distinguish plain Git diffs (`git diff` / `git apply`) from mailbox patches (`git format-patch`), define accepted extensions and handoff metadata, and specify path/mode/binary/rename/deletion validation, applicability checks, conflicts, rollback or forward recovery, and integrity verification. Ingesting a patch MUST NOT create a Git commit implicitly. Patch-order tracking and applied-patch history MUST eventually work across both ZIP and Git-patch handoffs without invalidating legacy ZIP records. Git-format input support is a roadmap item, **not** current functionality or part of P0.
+
+### Roadmap ownership
+
+The P1.3 check-adapter and scheduling work, future Git-native patch ingestion,
+P2 health/stage evidence, and P3 independent-review extensions each require a
+separately approved sub-specification with its own implementation plan and
+verification matrix. Their proposed scope is summarized in the roadmap and
+requirements below; no umbrella-wide execution plan or implementation approval
+is implied. Accepted sub-specifications retain their historical stage plans.
 
 ## 4. Planned quality-check policy
 
@@ -96,4 +111,4 @@ Do not implement the future plugin framework, model reviews, scanner integration
 
 ## 9. Approval gate
 
-This umbrella remains an active draft for future capabilities; acceptance of [SUB-001](../archive/subspecs/subspec-01-workflow-control.md) and the other completed sub-specifications does not accept the umbrella or authorize its remaining future stages. Historical open decisions in the archived records are preserved for traceability.
+This umbrella remains an active draft for future capabilities; acceptance of [SUB-001](archive/subspecs/subspec-01-workflow-control.md) and the other completed sub-specifications does not accept the umbrella or authorize its remaining future stages. Historical open decisions in the archived records are preserved for traceability.
