@@ -6,22 +6,33 @@ plans record incremental engineering work. Acceptance is a developer decision,
 not an automatic consequence of code or tests.
 
 For rules governing spec changes, plan ownership, acceptance, and archiving,
-see [SDD agent instructions](AGENTS.md). For contributor workflow and testing,
-see [Development](../DEVELOPMENT.md).
+see [SDD agent instructions](AGENTS.md). For contributor workflow and testing, see [Architecture](../ARCHITECTURE.md#development-and-verification) and [repository agent instructions](../../AGENTS.md).
 
 ## Active work
 
-| Specification | Advisory plan | Current focus |
+| Specification | Advisory integration plan | Current focus |
 | --- | --- | --- |
 | [APATCH-SPEC-001 — Orchestrator](active/spec-apatch-orchestrator.md) | [Future umbrella stages](active/apatch-orchestrator-implementation-plan.md) | DRAFT; future proposals |
-| [SUB-003 — Feature Sessions](active/subspecs/subspec-03-feature-session-planning.md) | [PLAN-003](active/subspec-03-feature-session-planning-implementation-plan.md) | FS-06 review; acceptance pending |
-| [SUB-004 — Operational Workflows](active/subspecs/subspec-04-operational-workflows.md) | [PLAN-004](active/subspec-04-operational-workflows-implementation-plan.md) | WM-01–WM-04 implemented; WM-04 review; WM-05 proposed |
-| [SUB-006 — Review Evidence Pipeline](active/subspecs/subspec-06-review-evidence-pipeline.md) | [PLAN-006](active/subspec-06-review-evidence-pipeline-implementation-plan.md) | RE-01–RE-05 candidates; acceptance pending |
+| [SUB-006 — Review Evidence Pipeline](active/review-evidence/subspec.md) | [Workstream integration plan](active/review-evidence/impl_plan.md) | [RE-05 — Retention, Export and Recovery](active/review-evidence/task_05_retention_export_recovery.md), `READY_FOR_REVIEW`; no acceptance |
 
-Active sub-specifications live in `active/subspecs/`; **their active plans live
-directly in `active/`**, with matching `subspec-XX-...-implementation-plan.md`
-filenames. The umbrella and its remaining future-stage plan also live in
-`active/`.
+An active workstream has a flat directory with `subspec.md`, `impl_plan.md`,
+matched `task_<nn>_<slug>.md` and `task_impl_plan_<nn>_<slug>.md` files.
+See [SUB-006's task index](active/review-evidence/subspec.md#3-task-index-and-dependencies)
+for all seven normative task / implementation plan pairs. The final two tasks are `RE-06 / UPD_DOCS` and `RE-07 / GEN_TESTS`. The active umbrella
+and its future-stage plan remain directly under `active/`.
+
+## Planned, unselected drafts
+
+| Specification | Advisory plan | Status |
+| --- | --- | --- |
+| [SUB-003 — Feature Sessions](planned/subspec-03-feature-session-planning.md) | [PLAN-003](planned/subspec-03-feature-session-planning-implementation-plan.md) | DRAFT / ON_HOLD; FS-06 previously selected for review; unaccepted |
+| [SUB-004 — Operational Workflows](planned/subspec-04-operational-workflows.md) | [PLAN-004](planned/subspec-04-operational-workflows-implementation-plan.md) | DRAFT / ON_HOLD; WM-04 review; WM-05 proposed; unaccepted |
+
+Planned means *not currently selected*, not *unimplemented*. The original
+plans and recorded candidate implementation status are retained. Move a
+workstream into `active/<scope>/` and select a task only by developer direction.
+No `apatch` production deployment or Git/GitHub publication is implied by
+this SDD reorganization.
 
 ## Accepted and archived work
 
@@ -48,11 +59,9 @@ python3 tools/specs/validate_state.py
 sh ./run_tests.sh
 ```
 
-The current selected workstream is SUB-006 / RE-05 at `READY_FOR_REVIEW`;
-SUB-004 / WM-04 and SUB-003 / FS-06 remain `ON_HOLD`, unaccepted.
+The selected workstream is SUB-006 / RE-05 at `READY_FOR_REVIEW`; RE-06 and RE-07 are future draft tasks, not completed;
+its selected task is `active/review-evidence/task_05_retention_export_recovery.md`.
+SUB-003 and SUB-004 are unselected drafts under `planned/`, not accepted.
 The checkpoint may advance at a developer-directed stage boundary.
 Product behavior is documented in [Usage](../USAGE.md) and
 [Architecture](../ARCHITECTURE.md).
-
-
-

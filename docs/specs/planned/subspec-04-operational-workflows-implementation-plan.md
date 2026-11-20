@@ -2,7 +2,7 @@
 
 **Status:** Advisory plan. WM-01–WM-04 implementations are present in the current source, pending developer stage acceptance. WM-05 remains proposed; WM-06 is explicitly deferred.
 
-**Normative owner:** [APATCH-SUB-004](subspecs/subspec-04-operational-workflows.md). **Dependencies:** [SUB-001](../archive/subspecs/subspec-01-workflow-control.md), [SUB-002](../archive/subspecs/subspec-02-state-history-audit.md), and [SUB-003](subspecs/subspec-03-feature-session-planning.md). The original design baseline is `9f256d7`; a newer inspected clean `main` snapshot is `efb94f794b06489c3d4898ffd42218f7b16e69fd` (2026-10-27 11:25 UTC). Installation-local `apatch.conf` and target `.apatch/config.yaml` are excluded from the snapshot; use isolated config fixtures and never package private settings.
+**Normative owner:** [APATCH-SUB-004](subspec-04-operational-workflows.md). **Dependencies:** [SUB-001](../archive/subspecs/subspec-01-workflow-control.md), [SUB-002](../archive/subspecs/subspec-02-state-history-audit.md), and [SUB-003](subspec-03-feature-session-planning.md). The original design baseline is `9f256d7`; a newer inspected clean `main` snapshot is `efb94f794b06489c3d4898ffd42218f7b16e69fd` (2026-10-27 11:25 UTC). Installation-local `apatch.conf` and target `.apatch/config.yaml` are excluded from the snapshot; use isolated config fixtures and never package private settings.
 
 ## 1. Sequencing and cross-cutting rules
 
@@ -143,7 +143,7 @@ raise ChecksChangedWorktreeWithRecovery()
 | `apatch_lib/github.py`, `apatch_lib/loose.py`, `apatch_lib/force.py` | Delegate only to existing guarded publication operations after independent prerequisite checks. Do not reissue remote writes with unknown outcomes. Ensure synchronized completion checks the configured base branch. |
 | `apatch.py`, `apatch_lib/status.py`, `apatch_lib/console.py` | Publish final macro outcome and always attempt read-only `STS` without suppressing remote uncertainty or changed-check failure. Clearly warn when `skipApproves=true` allows GitHub mutation. |
 | `tests/test_github.py`, `tests/test_branches.py`, `tests/test_sequences.py`, `tests/test_operation_journal.py`, `tests/test_status.py` | End-to-end synthetic Git lifecycle; reused commit/open PR/merged PR; PR source SHA changed; protected target; review/CI pending/failing; remote unreachable; mutation timeout; failed sync after merge; manual commit/push; dirty unrelated file; two successive feature sessions; failed final status. |
-| `README.md`, `docs/USAGE.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md` | Publish copyable macro examples only after the corresponding implementation is verified; do not claim planned macros are available prematurely. |
+| `README.md`, `docs/USAGE.md`, `docs/ARCHITECTURE.md`, `docs/ARCHITECTURE.md` | Publish copyable macro examples only after the corresponding implementation is verified; do not claim planned macros are available prematurely. |
 
 Publication sketch:
 
@@ -176,7 +176,7 @@ background worker, or silently converting ambiguous remote evidence to success.
 | `apatch_lib/gitutil.py`, `apatch_lib/console.py` | Supply bounded timeout/cancellation and flushed attempt/progress output, including start, attempt `i/n`, remaining budget, backoff and optional low-frequency heartbeat. Sanitize terminal output and redact PR body/credentials. Terminate timed-out child processes safely; never leave silent indefinite calls. |
 | `apatch_lib/loose.py`, `apatch_lib/force.py`, `apatch_lib/status.py`, `apatch.py` | Reconcile remote results only through existing protected PR/revision checks. Preserve local state and `UNKNOWN_REMOTE_RESULT` if evidence remains ambiguous; give precise recovery commands and distinguish recorded from verified outcomes. |
 | `tests/test_github.py`, `tests/test_sequences.py`, `tests/test_operation_journal.py` | Mock GraphQL 504 and 502/503, DNS/timeouts, transient success, permanent 401/403 and invalid requests; lost PR-create acknowledgement with matching PR, no PR, multiple PRs and incorrect SHA; uncertain merge with and without live proof; budget expiration, explicit cancellation, redirected `NO_COLOR` output and no second remote mutation. |
-| `docs/USAGE.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md` | Document knobs and copyable recovery examples **after** implementation, without claiming speculative retries are installed. |
+| `docs/USAGE.md`, `docs/ARCHITECTURE.md`, `docs/ARCHITECTURE.md` | Document knobs and copyable recovery examples **after** implementation, without claiming speculative retries are installed. |
 
 **Algorithm:** Reserve a monotonic wall-clock deadline for the entire transport
 recovery operation, not just each subprocess. Before every read-only attempt,
@@ -203,4 +203,3 @@ complete canonical suites and terminal behavior review on target platforms.
 3. Verify CLI alias compatibility, status/progress immutability, terminal and redirected output, and behavior when activity/history is missing or malicious.
 4. Verify the one-ZIP handoff has only modified source/docs/tests plus embedded `.apatch/params.json`, correct repository and new feature-branch metadata, and externally computed final digest.
 5. Mark a stage implemented only after review of the resulting code and passing acceptance evidence. Keep later CLI options documented as **proposed** until shipped.
-

@@ -2,7 +2,7 @@
 
 **Status:** ARCHIVED / ADVISORY. AS-01–AS-07 implementation, regression, and optional quality-tooling work was accepted by the developer on 2026-10-28. The plan remains a historical implementation record and does not authorize new product changes.
 
-**Normative owner:** [APATCH-SUB-005](subspec-05-architectural-simplification.md). **Related owners:** [SUB-001](subspec-01-workflow-control.md), [SUB-002](subspec-02-state-history-audit.md), [SUB-003](../../active/subspecs/subspec-03-feature-session-planning.md), and [SUB-004](../../active/subspecs/subspec-04-operational-workflows.md).
+**Normative owner:** [APATCH-SUB-005](subspec-05-architectural-simplification.md). **Related owners:** [SUB-001](subspec-01-workflow-control.md), [SUB-002](subspec-02-state-history-audit.md), [SUB-003](../../planned/subspec-03-feature-session-planning.md), and [SUB-004](../../planned/subspec-04-operational-workflows.md).
 
 **Inspected baseline:** original design snapshot `9f256d786d29d4121ea0116758af85a903d9636a` (2026-10-26) and newer clean source snapshot `efb94f794b06489c3d4898ffd42218f7b16e69fd` (2026-10-27 11:25 UTC). Implementation MUST re-read the installed source and tests before editing. Any already implemented stage is verification-only until independent review; do not introduce replacement modules simply because an older plan still says proposed.
 

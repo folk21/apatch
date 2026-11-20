@@ -49,7 +49,11 @@ def validate_state(source: Path = STATE_PATH, repo_root: Path = ROOT) -> dict:
     except (UnicodeError, json.JSONDecodeError) as error:
         raise ValueError(f"Invalid STATE.json: {error}") from error
 
-    document = _exact_fields(document, schema["required"], "STATE.json")
+    if not isinstance(document, dict) or not (
+        set(document) in (set(schema["required"]),
+                          set(schema["required"]) | {"selectedTaskPath"})
+    ):
+        raise ValueError("Invalid STATE.json fields")
     if type(document["schemaVersion"]) is not int or document["schemaVersion"] != 1:
         raise ValueError("Unsupported schemaVersion")
     if document["mode"] != "SINGLE":
@@ -64,6 +68,8 @@ def validate_state(source: Path = STATE_PATH, repo_root: Path = ROOT) -> dict:
     identifiers: set[str] = set()
     paths: set[str] = set()
     selected_phase = None
+    selected_spec_path: str | None = None
+    selected_stage_id: str | None = None
     for record in records:
         record = _exact_fields(record, item["required"], "workstream")
         identifier = _matching(record["id"], fields["id"]["pattern"], "workstream ID")
@@ -81,6 +87,8 @@ def validate_state(source: Path = STATE_PATH, repo_root: Path = ROOT) -> dict:
             raise ValueError(f"Missing or unsafe active sub-specification: {path}")
         if identifier == selected:
             selected_phase = phase
+            selected_spec_path = path
+            selected_stage_id = record["stageId"]
         elif phase == "READY_FOR_IMPLEMENTATION":
             raise ValueError("Only the selected SINGLE workstream may be ready for implementation")
 
@@ -88,6 +96,29 @@ def validate_state(source: Path = STATE_PATH, repo_root: Path = ROOT) -> dict:
         raise ValueError("Selected workstream does not exist")
     if selected_phase in {"PAUSED", "ON_HOLD"}:
         raise ValueError("Selected workstream cannot be paused or on hold")
+    if "selectedTaskPath" in document:
+        task = _matching(document["selectedTaskPath"],
+                         properties["selectedTaskPath"]["pattern"],
+                         "selectedTaskPath")
+        if selected_spec_path is None or selected_stage_id is None:
+            raise ValueError("Selected task requires a selected workstream")
+        task_path = Path(task)
+        if task_path.parent != Path(selected_spec_path).parent:
+            raise ValueError("Selected task does not belong to the selected sub-spec")
+        selected_number = re.fullmatch(r"[A-Z][A-Za-z0-9.]*-([0-9]{2})", selected_stage_id)
+        task_number = re.fullmatch(r"task_([0-9]{2})_[a-z0-9_]+\.md", task_path.name)
+        if selected_number is None or task_number is None or selected_number.group(1) != task_number.group(1):
+            raise ValueError("Selected task and stageId disagree")
+        selected_task_file = repo_root / task_path
+        counterpart = selected_task_file.with_name(
+            "task_impl_plan_" + selected_task_file.name.removeprefix("task_"))
+        for candidate in (selected_task_file, counterpart):
+            if candidate.is_symlink() or not candidate.is_file():
+                raise ValueError(f"Missing or unsafe selected task/plan: {candidate}")
+        header = selected_task_file.read_text(encoding="utf-8").split("\n## ", 1)[0]
+        types = re.findall(r"^- \*\*type:\*\* `([A-Z_]+)`\.$", header, re.MULTILINE)
+        if len(types) != 1 or types[0] not in {"GEN_CODE", "GEN_TESTS", "UPD_DOCS"}:
+            raise ValueError("Selected task must declare a supported type")
     return document
 
 

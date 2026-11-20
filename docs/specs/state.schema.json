@@ -3,10 +3,19 @@
   "title": "apatch SDD processing checkpoint",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "mode", "selectedWorkstreamId", "workstreams"],
+  "required": [
+    "schemaVersion",
+    "mode",
+    "selectedWorkstreamId",
+    "workstreams"
+  ],
   "properties": {
-    "schemaVersion": {"const": 1},
-    "mode": {"const": "SINGLE"},
+    "schemaVersion": {
+      "const": 1
+    },
+    "mode": {
+      "const": "SINGLE"
+    },
     "selectedWorkstreamId": {
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{1,63}$"
@@ -18,22 +27,42 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "specPath", "stageId", "phase"],
+        "required": [
+          "id",
+          "specPath",
+          "stageId",
+          "phase"
+        ],
         "properties": {
-          "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,63}$"},
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,63}$"
+          },
           "specPath": {
             "type": "string",
-            "pattern": "^docs/specs/active/subspecs/subspec-[0-9]{2}-[a-z0-9-]+\\.md$"
+            "pattern": "^docs/specs/active/[a-z][a-z0-9-]+/subspec\\.md$"
           },
-          "stageId": {"type": "string", "pattern": "^[A-Z][A-Za-z0-9.-]{0,31}$"},
+          "stageId": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Za-z0-9.-]{0,31}$"
+          },
           "phase": {
             "enum": [
-              "DESIGN", "READY_FOR_IMPLEMENTATION", "READY_FOR_REVIEW",
-              "AWAITING_DEVELOPER_DECISION", "BLOCKED", "PAUSED", "ON_HOLD"
+              "DESIGN",
+              "READY_FOR_IMPLEMENTATION",
+              "READY_FOR_REVIEW",
+              "AWAITING_DEVELOPER_DECISION",
+              "BLOCKED",
+              "PAUSED",
+              "ON_HOLD"
             ]
           }
         }
       }
+    },
+    "selectedTaskPath": {
+      "type": "string",
+      "pattern": "^docs/specs/active/[a-z][a-z0-9-]+/task_[0-9]{2}_[a-z0-9_]+\\.md$"
     }
   }
 }

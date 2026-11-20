@@ -1,6 +1,6 @@
 # APATCH-PLAN-003 — Feature Session and Context-Aware Workflow Implementation
 
-**Status:** ADVISORY / DRAFT (GENSPEC). **Normative contract:** [APATCH-SUB-003](subspecs/subspec-03-feature-session-planning.md). **Parent:** [APATCH-SPEC-001](spec-apatch-orchestrator.md).
+**Status:** ADVISORY / DRAFT (GENSPEC). **Normative contract:** [APATCH-SUB-003](subspec-03-feature-session-planning.md). **Parent:** [APATCH-SPEC-001](../active/spec-apatch-orchestrator.md).
 
 No stage below authorizes product implementation without a subsequent DEFAULT request. The clean `efb94f794b06489c3d4898ffd42218f7b16e69fd` snapshot contains P1.2 `AUD`, typed `CheckWorktreeChanged` recovery, FS-00 linkage and FS-00R ZIP resume implementation and tests. This source evidence does not prove developer installation, formal acceptance or verification on every platform. Reinspect the actual repository HEAD before further work.
 
@@ -60,7 +60,7 @@ else:
 | `apatch_lib/sequence.py:execute_sequence` | Keep the exact requested order and evaluate every step. Continue on `SUCCESS` or **proven** `ALREADY_SATISFIED`; stop on unverified `NO_OP`, `BLOCKED`, `ERROR` and unknown remote result. Accumulate executed, satisfied and not-executed steps without inventing a successful operation attempt. |
 | `apatch_lib/status.py:select_record`, `apatch_lib/console.py`, `apatch_lib/presentation/execution.py` | Print selected ZIP, checkpoint phase, current/planned branch, evidence, no-replay assurance and a precise recovery command; show source/config command failures separately. Provide compact per-step `ALREADY_SATISFIED` notices and one final summary grouping executed, already-satisfied and unexecuted steps. Use subdued amber for satisfied skips, red only for actual blockers; respect non-TTY/`NO_COLOR`. |
 | `tests/test_handoffs.py`, `tests/test_sequences.py`, `tests/test_config_cli.py`, `tests/test_operation_journal.py` | Add synthetic Git cases enumerated below; assert zero extra extraction/backup/history/branch operations on a successful resume or satisfied prefix and byte-identical protected state on rejected selection. |
-| `docs/USAGE.md`, `docs/SECURITY.md` | Move copyable explicit ZIP-resume examples into current-facing documentation **only after** passing tests; clarify that repeated `APL` remains separately guarded. |
+| `docs/USAGE.md`, `docs/ARCHITECTURE.md` | Move copyable explicit ZIP-resume examples into current-facing documentation **only after** passing tests; clarify that repeated `APL` remains separately guarded. |
 
 Algorithm sketch (names below are illustrative, not claims that helpers already exist):
 
@@ -192,7 +192,7 @@ An existing PR remains tied to its historical source SHA until a new commit/push
 | `apatch_lib/context.py`, `apatch_lib/session.py` | Track patch footprints, pre-existing staged files, explicitly accepted manual paths and unclassified files. Guard exact branch/head/fingerprint and check configuration revision before committing. |
 | `apatch_lib/presentation/execution.py` | Show `NEEDS_VERIFICATION` and `WAITING_FOR_USER` with safe continuation rather than generic `NO_OP`. |
 | `tests/test_handoffs.py`, `tests/test_modes.py`, `tests/test_safety.py`, `tests/test_sequences.py` | Worktree mutations during tests, formatter stabilization, deleted/untracked files, unrelated staged changes, mismatched branch, skipApproves=true, scope drift between check and commit, interrupted staging. |
-| `docs/SECURITY.md`, `docs/USAGE.md` | Document planner-only stricter gates when actually implemented. |
+| `docs/ARCHITECTURE.md`, `docs/USAGE.md` | Document planner-only stricter gates when actually implemented. |
 
 Minimal safe sequence:
 
@@ -259,7 +259,7 @@ Start with `goal=CHECKED` and `goal=COMMITTED`; gate `PUSHED` on proven remote c
 | `apatch_lib/branch_guard.py`, `apatch_lib/branch_patch.py` | Reuse non-configurable outstanding-feature preflight and fast-forward synchronization. |
 | `apatch_lib/context.py`, `apatch_lib/session.py` | Track historical PR revisions separately from the newly pushed HEAD; reconcile manually pushed/merged outcomes without overwriting earlier evidence. |
 | `tests/test_github.py`, `tests/test_branches.py`, `tests/test_modes.py`, `tests/test_operation_journal.py` | Open PR updated by new SHA, stale merged PR, same branch reused, approvals disabled by project policy, CI required or disabled, fast-forward/no-FF, transient reads, uncertain mutation, separately retryable SYN. |
-| `README.md`, `docs/USAGE.md`, `docs/ARCHITECTURE.md`, `docs/SECURITY.md` | Enable examples only after implementation and tests; distinguish explicit goal authorization from prompt skipping. |
+| `README.md`, `docs/USAGE.md`, `docs/ARCHITECTURE.md`, `docs/ARCHITECTURE.md` | Enable examples only after implementation and tests; distinguish explicit goal authorization from prompt skipping. |
 
 Publication algorithm:
 
