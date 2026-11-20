@@ -1,10 +1,10 @@
 # RE-03 — Compact Context for LLM: Task Implementation Plan (Draft)
 
-- **Status:** ADVISORY / DRAFT; no implementation authorization is implied.
-- **Normative task:** [task_03_bounded_llm_context.md](task_03_bounded_llm_context.md).
+- **Status:** ADVISORY / DRAFT; **area:** `BACKEND`; no implementation authorization is implied.
+- **Normative task:** [subspec.md#re-03](subspec.md#re-03).
 - **Sub-spec:** [subspec.md](subspec.md).
-- **Dependencies:** [RE-02](task_02_structured_normalization.md) (candidate implementation; acceptance not inferred).
-- **Verified baseline:** `apatch_files.txt` snapshot `3538c08a033eb31d7cffcbb96c4e87212aa9460d`, 2026-11-18 19:41 UTC; installed/runtime behavior is not independently verified.
+- **Dependencies:** [RE-02](subspec.md#re-02) (candidate implementation; acceptance not inferred).
+- **Verified baseline:** `apatch_files.txt` snapshot `c518880c1c065be10ed267d5dba763e6bebdaa07`, 2026-11-20 05:06 UTC; installed/runtime behavior is not independently verified.
 
 ## Ownership and verification entry points
 

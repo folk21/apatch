@@ -2,7 +2,7 @@
 
 **Status:** DRAFT. RE-01–RE-05 are candidate implementations pending independent developer acceptance; only the selected task RE-05 is at `READY_FOR_REVIEW`. The older 2026-11-05 RE-05 baseline remains historical evidence, not the current repository revision.
 
-**Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Plan:** [integration plan](impl_plan.md). **Related:** [SUB-003](../../planned/subspec-03-feature-session-planning.md), [SUB-004](../../planned/subspec-04-operational-workflows.md).
+**Parent:** [APATCH-SPEC-001](../spec-apatch-orchestrator.md). **Related:** [SUB-003](../../planned/subspec-03-feature-session-planning.md), [SUB-004](../../planned/subspec-04-operational-workflows.md).
 
 ## 1. Objective and boundary
 
@@ -16,27 +16,334 @@ No new atomic action ID, implicit model invocation, shell interpolation, remote 
 
 The existing strict output parser limits LLM findings and the full diff input. The existing legacy `REV` invocation remains the compatibility behavior when evidence capture is not enabled. Capture does not change scanner pass/fail semantics; a future structured adapter must not infer that exit 0 means zero findings unless the adapter contract proves it.
 
+## 3. Features and task execution boundaries
 
-## 3. Task index and dependencies
+Feature IDs are stable documentation identifiers, not persisted workflow or ZIP fields. The [feature catalog](../../../FEATURES.md) is the human-facing registry; [feature cross-reference](../../feature-cross-ref.yaml) links requirements, source owners and tests. A feature may span tasks or areas, but every individual task has exactly one `area`.
 
-Tasks declare one `type` from `GEN_CODE`, `UPD_DOCS`, and `GEN_TESTS`.
-`type` is SDD metadata, not an executable `apatch` option. The final
-`GEN_TESTS` task runs canonical `CHK`; earlier code-task verification
-requirements remain normative and are reconciled by RE-07.
+| Task | Type | Area | Feature IDs | Advisory plan | Status |
+| --- | --- | --- | --- | --- | --- |
+| [`RE-01`](#re-01) | `GEN_CODE` | `BACKEND` | REVIEW.RAW_CAPTURE | [Plan](task_impl_plan_01_raw_evidence_capture.md) | Candidate; not accepted |
+| [`RE-02`](#re-02) | `GEN_CODE` | `BACKEND` | REVIEW.NORMALIZATION | [Plan](task_impl_plan_02_structured_normalization.md) | Candidate; not accepted |
+| [`RE-03`](#re-03) | `GEN_CODE` | `BACKEND` | REVIEW.LLM_CONTEXT | [Plan](task_impl_plan_03_bounded_llm_context.md) | Candidate; not accepted |
+| [`RE-04`](#re-04) | `GEN_CODE` | `BACKEND` | REVIEW.RETRIEVAL | [Plan](task_impl_plan_04_selective_evidence_retrieval.md) | Candidate; not accepted |
+| [`RE-05`](#re-05) | `GEN_CODE` | `BACKEND` | REVIEW.RETENTION_EXPORT | [Plan](task_impl_plan_05_retention_export_recovery.md) | Selected / READY_FOR_REVIEW |
+| [`RE-06`](#re-06) | `UPD_DOCS` | `DOCS` | REVIEW.RAW_CAPTURE, REVIEW.NORMALIZATION, REVIEW.LLM_CONTEXT, REVIEW.RETRIEVAL, REVIEW.RETENTION_EXPORT | [Plan](task_impl_plan_06_documentation_sync.md) | Draft; not started |
+| [`RE-07`](#re-07) | `GEN_TESTS` | `E2E_TESTS` | REVIEW.RAW_CAPTURE, REVIEW.NORMALIZATION, REVIEW.LLM_CONTEXT, REVIEW.RETRIEVAL, REVIEW.RETENTION_EXPORT | [Plan](task_impl_plan_07_review_acceptance_tests.md) | Draft; not started |
+
+**Execution:** `RE-01 → RE-02 → RE-03 → RE-04 → RE-05 → RE-06 → RE-07`. The selected RE-05 checkpoint remains pending independent review; RE-06 and RE-07 have not started. Proposed run types are `DEVELOP` for ordinary tasks and `ACCEPT` only for RE-07; `rtype` has no runtime effect until separately implemented.
+
+**Area ownership:** `BACKEND` changes Python CLI, adapters, module contracts and their focused unit/regression tests; `FRONTEND` is reserved for a future client and has no implementation in this repository; `DOCS` owns non-contract developer/user guides; `E2E_TESTS` owns integration, cross-module and acceptance test harnesses plus final verification. Read other areas only through relevant public contracts and stable documented interfaces. For a feature spanning BACKEND and FRONTEND, create ordered separate tasks; never make one task write to both. If final verification finds a backend defect, reopen the owning BACKEND task instead of changing backend code under E2E_TESTS.
+
+**Incremental testing:** Every GEN_CODE task must implement and execute focused regression tests for security, recovery, bug fixes and stable contracts in its owned area. Exploratory coverage may be deferred only with a documented gap. RE-07 reconciles the complete requirement-to-test matrix, implements missing E2E/integration coverage and runs canonical CHK against the exact final revision. Missing backend-specific unit coverage is returned to its BACKEND owner.
+
+## 4. Normative tasks and acceptance criteria
+
+### RE-01
+
+**Private Bounded Raw Evidence Capture**
+
+- **type:** `GEN_CODE`.
+- **area:** `BACKEND`.
+- **feature_ids:** `REVIEW.RAW_CAPTURE`.
+- **Implementation plan:** [RE-01 plan](task_impl_plan_01_raw_evidence_capture.md).
+- **Status:** Draft; acceptance not inferred.
+
+#### Normative requirements and acceptance oracles
+
+The acceptance test cases below are requirements. RE-07 owns the final suite reconciliation and canonical CHK execution; task-specific security failures remain blocking during implementation. This task does not authorize bypassing existing runtime checks or publication gates.
 
 
-| Task | Type | Normative scope | Advisory task plan | State |
-| --- | --- | --- | --- | --- |
-| `RE-01` | `GEN_CODE` | [Private Bounded Raw Evidence Capture](task_01_raw_evidence_capture.md) | [Task plan](task_impl_plan_01_raw_evidence_capture.md) | Candidate; not accepted |
-| `RE-02` | `GEN_CODE` | [Structured Adapter Normalization](task_02_structured_normalization.md) | [Task plan](task_impl_plan_02_structured_normalization.md) | Candidate; not accepted |
-| `RE-03` | `GEN_CODE` | [Compact Context for LLM](task_03_bounded_llm_context.md) | [Task plan](task_impl_plan_03_bounded_llm_context.md) | Candidate; not accepted |
-| `RE-04` | `GEN_CODE` | [Selective Evidence Retrieval](task_04_selective_evidence_retrieval.md) | [Task plan](task_impl_plan_04_selective_evidence_retrieval.md) | Candidate; not accepted |
-| `RE-05` | `GEN_CODE` | [Retention, Export and Recovery](task_05_retention_export_recovery.md) | [Task plan](task_impl_plan_05_retention_export_recovery.md) | Selected, ready for review |
-| `RE-06` | `UPD_DOCS` | [Documentation Synchronization](task_06_documentation_sync.md) | [Task plan](task_impl_plan_06_documentation_sync.md) | Draft; not started |
-| `RE-07` | `GEN_TESTS` | [Review Evidence Acceptance Tests](task_07_review_acceptance_tests.md) | [Task plan](task_impl_plan_07_review_acceptance_tests.md) | Draft; final task |
+**RE-01-A** Project schema-v1 YAML SHALL accept `review_artifacts_enabled` (boolean, default false) and `review_artifact_max_bytes` (integer 65,536–67,108,864, default 8,388,608), rejecting unknown or invalid values. Existing configs without the keys SHALL retain behavior. No implicit network/model calls are introduced.
 
-`RE-01 → RE-02 → RE-03 → RE-04 → RE-05 → RE-06 → RE-07`. Each normative requirement and acceptance oracle lives in its owning task; its detailed implementation design lives only in its paired advisory plan. `RE-05` remains the selected review checkpoint; RE-06 and RE-07 have not begun. No task type is an authorization to modify product code or a claim of acceptance.
+**RE-01-B** For enabled capture, each explicit `REV` after validated CHK inputs SHALL create a unique private run directory `<root>/.apatch/reviews/review-<random>/`. Storage SHALL be ignored and untracked by Git before writing; the implementation SHALL fail closed for symlinked or otherwise unsafe storage. Directory mode SHALL be `0700`; individual files SHALL be `0600`. Persistent output is sensitive local runtime data, excluded from ZIP overlays and application logs.
 
-## 4. Compatibility and acceptance boundary
+**RE-01-C** External reviewer stdout and stderr SHALL be drained concurrently to separate files, without accumulating the full streams in RAM. Their **combined** bytes SHALL not exceed `review_artifact_max_bytes` per provider; exceeding the bound SHALL terminate the process group where supported, retain a truncated partial report, and fail `REV`. The configured timeout and no-source-mutation guards remain mandatory. LLM JSON parsing SHALL never consume more than the prior 262,144-byte stdout limit. Legacy capture-disabled behavior remains unchanged in RE-01.
 
-RE-01 is additive to current `REV` and has no migration of existing recorded reviews, operation IDs, handoff state or Git history. An external model tool dispatcher remains outside this specification. RE-01–RE-07 remain unaccepted drafts or candidate implementations. RE-07 is responsible for the final test-evidence matrix and canonical checks, not for retroactive approval of any preceding task. Review evidence is not human approval or GitHub status. Each stage requires focused regression evidence, source review and explicit developer acceptance. SUB-003/004 remain planned and unaccepted; switching the SDD focus is not their acceptance.
+**RE-01-D** A schema-v1 `manifest.json` SHALL record run identity, exact pre-review snapshot, status (`STARTED`, `FAILED`, `COMPLETED`), and each completed provider's ID/kind, exit status, stdout/stderr basename, byte counts, SHA-256 digests, truncation and timeout flags. It SHALL NOT store the diff, prompt, credentials, or argv. Manifests SHALL be replaced atomically and failed runs SHALL retain available evidence. A successful workflow checkpoint MAY include a relative artifact path; raw data SHALL NOT be embedded in the checkpoint.
+
+**RE-01-E** A nonzero exit, timeout, overflow, missing/inaccessible output, malformed model JSON, or detected source/index/branch/policy drift SHALL never produce PASS. Review artifacts are diagnostics and do not authorize commit. Missing or incomplete manifests are not evidence of success.
+
+**RE-01 acceptance:** Tests prove complete 400+ KiB scripted output capture, independent stderr, private file permissions, correct digests, failed subprocess retention and blocking, overflow and timeout blocking, symlink protection, ignored/untracked output, LLM JSON compatibility, unchanged legacy REV/CHK/CMT behavior, and no real remote actions. The regular and extended test suites and state validator SHALL be attempted before handoff; any unavailable baseline files or environments SHALL be disclosed.
+
+### RE-02
+
+**Structured Adapter Normalization**
+
+- **type:** `GEN_CODE`.
+- **area:** `BACKEND`.
+- **feature_ids:** `REVIEW.NORMALIZATION`.
+- **Implementation plan:** [RE-02 plan](task_impl_plan_02_structured_normalization.md).
+- **Status:** Draft; acceptance not inferred.
+
+#### Normative requirements and acceptance oracles
+
+The acceptance test cases below are requirements. RE-07 owns the final suite reconciliation and canonical CHK execution; task-specific security failures remain blocking during implementation. This task does not authorize bypassing existing runtime checks or publication gates.
+
+
+**RE-02-A** Accept an opt-in reviewer report envelope naming a fixed schema, adapter identity, status (`SUCCEEDED`, `FINDINGS`, `FAILED`, `TIMED_OUT`, `UNKNOWN`), output references and declared input format (`sarif`, `json`, or explicitly labelled plain text). Scanners may be invoked by a single wrapper, but individual tool outcomes MUST remain distinguishable. A wrapper SHALL NOT turn a failed mandatory scanner into PASS merely by exiting 0.
+
+**RE-02-B** Normalize supported JSON/SARIF findings into bounded records with stable local IDs, tool, rule, severity, path, line/range, message, raw evidence reference and snapshot association. Reject malformed/unsafe paths; never execute embedded content or follow links from untrusted reports. Severity mapping and unsupported formats SHALL be explicit. Deduplicate without losing source provenance; retain original raw files.
+
+**RE-02-C** A tool failure, partial report, truncation, unexpected schema, or evidence-integrity mismatch SHALL yield `UNKNOWN` or `ESCALATE`, not PASS. Advisory-only findings may warn if policy allows; mandatory/high-confidence blockers SHALL remain blocking regardless of a subsequent LLM verdict. Define exact project-level blocker policy and backward-compatible defaults before implementation.
+
+**RE-02 implementation profile (normative):** Opt-in `script` reviewers
+SHALL declare `report_format: apatch-json-v1` plus 1–16 distinct `scanners`
+entries `{id, format, required}`. `review_artifacts_enabled: true` is
+mandatory for structured mode. Allowed formats are `ruff-json`, `bandit-json`,
+`semgrep-json`, `sarif-2.1.0`; `required` is a mandatory boolean controlled by
+project YAML, never scanner stdout. Older reviewer entries retain exit-code
+semantics. The trusted script emits a single UTF-8 JSON stdout envelope
+`{schema_version: 1, tools: [...]}` with 0–16 named scanner objects containing
+`id`, `format`, `status` and `report` on success. Only `SUCCEEDED` with an
+empty parsed report and `FINDINGS` with nonempty parsed report are accepted;
+`FAILED`, `TIMED_OUT`, `UNKNOWN` omit `report`. A missing scanner is `UNKNOWN`.
+Unknown or repeated scanner IDs and mismatched formats are invalid. Wrapper
+nonzero exit, truncated raw stdout/stderr, malformed JSON, report errors, an
+unsafe path, inconsistent status or failed raw digest blocks `REV` outright.
+A `required` scanner that is unknown, failed or timed out SHALL produce
+`ESCALATE`; its `high` or `critical` finding SHALL produce `CHANGES_REQUIRED`.
+Advisory scanner failures and findings MAY warn without blocking. Existing
+`CMT` required-review gate refuses non-PASS. Ruff defaults to `medium`;
+Bandit HIGH/MEDIUM/LOW maps to high/medium/low; Semgrep
+ERROR/WARNING/INFO maps to high/medium/low; SARIF
+error/warning/note/none maps to high/medium/low/info. Raw stdout is bounded
+by RE-01; parsed JSON has a 24-level, 50,000-node and 512-finding limit,
+strict path/line/rule/message bounds and no symlink following. Reports with
+unsupported or missing information fail closed. A deterministic finding ID
+and deduplicated provenance with per-scanner source IDs SHALL be saved in a
+private `<reviewer>.normalized.json`; its digest SHALL be in the manifest,
+with the raw hash and checked snapshot recorded in the normalized report.
+Only bounded status/count/path metadata SHALL enter the workflow checkpoint.
+Raw logs and normalized findings SHALL NOT be sent to models by this stage.
+
+**RE-02 acceptance:** Synthetic fixtures for Ruff/Bandit/Semgrep/SARIF plus invalid/huge/malicious output, mixed mandatory/advisory statuses, conflicting severity, duplicate findings, manual changed files, and incomplete tools.
+
+### RE-03
+
+**Compact Context for LLM**
+
+- **type:** `GEN_CODE`.
+- **area:** `BACKEND`.
+- **feature_ids:** `REVIEW.LLM_CONTEXT`.
+- **Implementation plan:** [RE-03 plan](task_impl_plan_03_bounded_llm_context.md).
+- **Status:** Draft; acceptance not inferred.
+
+#### Normative requirements and acceptance oracles
+
+The acceptance test cases below are requirements. RE-07 owns the final suite reconciliation and canonical CHK execution; task-specific security failures remain blocking during implementation. This task does not authorize bypassing existing runtime checks or publication gates.
+
+
+**RE-03-A** Compose a deterministic `review-summary.json` or equivalent from RE-02 evidence plus a bounded reviewed diff. Sort by severity, security impact and changed-line relevance; preserve severe findings or explicitly escalate on budget overflow. Include counts, all tool status categories, truncation flag, stable evidence IDs, snapshot ID, selected excerpts and an explicit byte/token budget.
+
+**RE-03-B** No model SHALL receive raw scanner logs automatically. A configured LLM reviewer SHALL receive only an explicitly configured bounded summary, selected source/diff excerpts, and the untrusted-data instruction. Missing required findings or report truncation SHALL fail closed; never summarize by silently dropping a required security finding. Model output SHALL retain the existing JSON verdict validation and checked-byte binding.
+
+**RE-03-C** Secrets and private paths in raw reports require an explicit project policy for redaction and outbound access. The summary is not presumed secret-free; local-only execution MUST be possible. No HTTP/model call may occur without an explicit reviewer in an invoked `REV` or required guarded workflow.
+
+**RE-03 implementation profile (normative):** A `kind: llm` reviewer MAY set
+`input_mode: structured-summary`; the default remains `diff`. This mode SHALL
+require `review_artifacts_enabled: true` and the explicit project setting
+`review_context_external_consent: true`. The byte budget is
+`review_context_max_bytes` (4,096–65,536 inclusive, default 32,768) and SHALL
+include the static reviewer instruction prefix as well as the UTF-8 JSON.
+`review_context_include_messages` and `review_context_include_diff` SHALL
+both default to `false`; each requires external consent when enabled.
+Reviewers continue to run in YAML order. Summary-mode LLMs SHALL require
+at least one *prior*, successful, structured scanner provider in the current
+`REV`. Raw stdout SHALL be checked for integrity before each normalized
+report is read; the normalized file SHALL be checked against its manifest
+SHA-256, source stdout digest and exact checked snapshot. Missing or stale
+reports SHALL abort before the model starts. Prior required scanner failures
+or blocking findings still terminate `REV` before later LLMs.
+
+The model context SHALL include a deterministic snapshot digest, HEAD, every
+prior scanner status and finding count, severity totals, prioritized stable
+finding IDs with path/line/rule/provenance metadata, and explicit omission
+counts. Sorting SHALL prioritize severity, then changed-line relevance, then
+stable identity. On overflow, low/medium findings MAY be omitted with an
+explicit `truncated` flag and count; *no* high/critical finding may be omitted
+silently. If severe findings or scanner status cannot fit, abort before model
+invocation. When enabled, limited textual finding messages and added diff
+lines are the only optional untrusted text. Raw stdout/stderr, manifests,
+credentials and entire normalized files SHALL NEVER be appended to the model
+input automatically. Per-LLM `<id>.context.json` SHALL be saved as an ignored
+private local artifact with digest and byte length indexed in the manifest.
+For summary-mode LLMs, `APATCH_REVIEW_CONTEXT` points at a temporary context
+file, `APATCH_REVIEW_DIFF` is absent, and the `{diff_file}` compatibility
+placeholder resolves to the context file rather than the full diff.
+The configured executable is user-trusted, not a sandbox; no automatic secret
+redactor can guarantee confidentiality. Enabling text/diff transmission is
+explicit consent to potentially disclose source and secrets, even when the
+LLM CLI is nominally local. No HTTP call is added by `apatch` itself.
+
+**RE-03 acceptance:** Assert exact context size, no raw-log leakage, deterministic priority, blocked incomplete input, changed-line relevance, model JSON parsing, confidentiality guardrails and required-review commit gate.
+
+### RE-04
+
+**Selective Evidence Retrieval**
+
+- **type:** `GEN_CODE`.
+- **area:** `BACKEND`.
+- **feature_ids:** `REVIEW.RETRIEVAL`.
+- **Implementation plan:** [RE-04 plan](task_impl_plan_04_selective_evidence_retrieval.md).
+- **Status:** Draft; acceptance not inferred.
+
+#### Normative requirements and acceptance oracles
+
+The acceptance test cases below are requirements. RE-07 owns the final suite reconciliation and canonical CHK execution; task-specific security failures remain blocking during implementation. This task does not authorize bypassing existing runtime checks or publication gates.
+
+
+**RE-04-A** Expose `ReviewEvidenceSession.get_review_evidence(review_id, finding_id, context_lines)` as a **local, read-only** internal Python interface. The caller SHALL bind the session to a single repository root, review ID, expected checked snapshot and a live snapshot reader. The API SHALL NOT register a new CLI action, execute scripts, invoke a model, perform network access or write application state. Requests SHALL identify an exact existing 24-hex finding ID from a SHA-256-verified normalized report. The completed manifest and normalized result SHALL match the requested review and expected snapshot. A non-PASS scanner result MAY be retrieved for diagnostics, but it SHALL never authorize a PASS or bypass a required scanner gate.
+
+**RE-04-B** Evidence lookup SHALL open `.apatch/reviews/<review_id>/` through file-descriptor-relative, no-follow directory traversal. Review/run directories MUST have mode `0700`; manifest, raw stdout and normalized JSON MUST be private regular files with mode `0600`. The provider's raw stdout byte count/hash and the normalized JSON digest, snapshot, reviewer identity and raw source digest SHALL be reverified for every request. Unknown, ambiguous, malformed, truncated, symlinked, missing or modified evidence SHALL fail closed with `REVIEW_EVIDENCE_UNKNOWN`. A partial or `STARTED`/`FAILED` run SHALL NOT be used for lookup. Manifest hash references are integrity checks, not independent cryptographic attestation against a privileged actor who can replace both file and manifest.
+
+**RE-04-C** Source retrieval SHALL follow only the normalized finding's repository-relative path. `.git` and `.apatch` are prohibited; traversal and symlinked path components SHALL be refused. Each file SHALL be an ordinary UTF-8 text file of at most 1 MiB; a missing finding line or source file SHALL be `UNKNOWN`. An excerpt SHALL include only the specified line and at most 20 surrounding lines in each direction. The response SHALL include review and finding IDs, the original scanner verdict, snapshot SHA-256, relative source path, selected line numbers/text, source content SHA-256, normalized evidence SHA-256 and raw stdout SHA-256. The snapshot reader SHALL match before and after retrieval; a changed file descriptor or checked Git state fails closed. Source excerpts can contain secrets and SHALL NOT be automatically forwarded to any LLM.
+
+**RE-04-D** A session SHALL allow at most 1–8 requests (default 4), with each JSON response capped at 1,024–8,192 bytes (default 8,192) and total output capped at the session's configured 8,192–65,536 bytes (default 16,384). Invalid requests and exhausted budgets SHALL not fetch additional evidence. Valid requests consume a call quota even if the report is missing or oversized. Output construction SHALL remain deterministic and shall never silently truncate a returned source line. Budgets are per in-process session, not a persistent global rate limit; future model tool-routing requires separate authorization and enforcement.
+
+**RE-04 acceptance:** Tests for exact lookup, privacy, SHA-256 and snapshot binding, severity-independent diagnostics, no process/network calls, output and request quotas, malformed/partial manifests, symlinked directories/files, traversal, missing and oversized source, binary input, ambiguous IDs and drift before/after retrieval. `run_tests.sh`, `run_rare_checks.sh` and `tools/specs/validate_state.py` SHALL be attempted and reported. This candidate does not implement an external LLM tool-call dispatcher; that integration requires a separately reviewed disclosure and invocation contract.
+
+### RE-05
+
+**Retention, Export and Recovery**
+
+- **type:** `GEN_CODE`.
+- **area:** `BACKEND`.
+- **feature_ids:** `REVIEW.RETENTION_EXPORT`.
+- **Implementation plan:** [RE-05 plan](task_impl_plan_05_retention_export_recovery.md).
+- **Status:** Selected for review; developer acceptance pending.
+
+#### Normative requirements and acceptance oracles
+
+The acceptance test cases below are requirements. RE-07 owns the final suite reconciliation and canonical CHK execution; task-specific security failures remain blocking during implementation. This task does not authorize bypassing existing runtime checks or publication gates.
+
+
+**RE-05-A — Policy and scope.** Schema-v1 project YAML SHALL accept
+`review_retention_enabled: false` (default) and bounded
+`review_retention_max_runs` (1–10,000; default 100),
+`review_retention_max_bytes` (1 MiB–10 GiB; default 512 MiB), and
+`review_retention_max_age_days` (1–3,650; default 30). Invalid values SHALL
+fail configuration loading, including boolean values supplied as integer
+limits. Disabled retention SHALL never initiate an automatic deletion.
+Explicit `prune_review_artifacts()` SHALL default to a non-destructive preview.
+When enabled, `REV` SHALL apply retention under an exclusive project-local
+lock immediately before allocating a new run; no independent scheduler is
+introduced. Count and byte limits SHALL reserve space for the new run;
+limits are conservative allocation checks, not guaranteed filesystem quotas.
+If protected evidence prevents proving storage usage, fail closed before
+starting a new reviewer process.
+
+**RE-05-B — Protected deletion.** Retention SHALL inspect only
+`<root>/.apatch/reviews/review-<24-hex>/` directories through no-follow
+file descriptors. Terminal `COMPLETED` or `FAILED` manifests with recognized
+provider/context files, private modes, exact member inventory and matching
+SHA-256 references are eligible for pruning. Apply age, count and size rules
+oldest first, with stable tie ordering. Unknown names, unexpected files,
+symlinks, hardlinks, changed contents, unreadable/partial manifests, and
+`STARTED` runs SHALL remain protected. No Git or checkpoint/history record is
+removed. The lock file SHALL be private and no-follow; completed known runs
+SHALL be removed only by explicit pruning or the explicit project retention
+opt-in. A deletion journal inside each eligible run SHALL allow an interrupted
+partial cleanup to complete on the next requested maintenance, after strictly
+rechecking remaining members. An invalid journal or unexpected member SHALL
+block further cleanup of that run. Do not infer review success from pruning.
+
+**RE-05-C — Redacted references.** Local internal
+`export_review_summary(root, review_id, consent=True)` SHALL require explicit
+consent and a safe review ID. It SHALL verify the entire terminal manifest,
+raw stdout/stderr sizes and SHA-256 and all indexed derivatives before
+returning a deterministic UTF-8 JSON document of at most 8,192 bytes.
+Export SHALL expose only a relative review reference, manifest SHA-256,
+provider IDs/kinds, command exit/truncation/timeout status and completed/failed
+run status. Source paths, Git snapshots, prompts, findings, raw logs, stderr,
+normalization bodies, secret-bearing messages and full LLM context SHALL NOT
+be exported. No transport, network call, CLI action, external model dispatcher
+or automatic export is introduced. Missing or modified evidence SHALL fail
+closed; this is metadata minimization, not a guarantee that user-assigned
+provider IDs are semantically secret-free.
+
+**RE-05-D — Failure and compatibility.** Interrupted captures retain
+`STARTED` or `FAILED` evidence without implied PASS or automatic paid-provider
+retry. Existing valid CHK and previously recorded review verdicts SHALL remain
+untouched by retention. Fresh replay, retrieval or export requiring deleted
+artifacts SHALL fail closed. Filesystem errors and unavailable locks SHALL
+abort without modifying Git/PR state. LOOSE, STRICT, FORCE and legacy handoffs
+remain unchanged.
+
+**RE-05 acceptance:** Focused and integration tests for default preview,
+count/age/size selection, project policy validation, ignored/private file
+modes, concurrent lockers, unknown entries, symlink/hardlink attacks,
+truncated/changed files, interruption during deletion and safe resumption,
+explicit consent, absent/stale evidence, metadata-only export and CHK/REV
+compatibility. Attempt regular/rare suites and checkpoint validation; report
+all verification environment limitations. Developer acceptance is separate.
+
+### RE-06
+
+**Documentation Synchronization**
+
+- **type:** `UPD_DOCS`.
+- **area:** `DOCS`.
+- **feature_ids:** `REVIEW.RAW_CAPTURE`, `REVIEW.NORMALIZATION`, `REVIEW.LLM_CONTEXT`, `REVIEW.RETRIEVAL`, `REVIEW.RETENTION_EXPORT`.
+- **Implementation plan:** [RE-06 plan](task_impl_plan_06_documentation_sync.md).
+- **Status:** Draft; acceptance not inferred.
+
+#### Required outcome
+
+Synchronize concise, accurate human-facing descriptions of the review evidence pipeline with verified behavior. This is the penultimate task; its output should allow a developer to understand configuration, privacy and recovery without reading historical implementation notes.
+
+#### Normative requirements and acceptance oracles
+
+**RE-06-A — Current behavior.** Review `README.md`, `docs/USAGE.md`, `docs/ARCHITECTURE.md`, `docs/INSTALLATION.md` and `docs/specs/README.md` only for relevant public or architectural behavior. Update stale descriptions and links, avoiding duplicate explanations. Do not add a new guide unless an existing owner is demonstrably unsuitable.
+
+**RE-06-B — Correct ownership.** Public settings and user commands belong to `docs/USAGE.md`; data flow, evidence trust, no-follow file access and retention/recovery boundaries belong to `docs/ARCHITECTURE.md`. Module-specific `contract.md` is a code-owned API contract and SHALL be updated in the relevant `GEN_CODE` task, not here.
+
+**RE-06-C — Truthful security and scope.** Distinguish default-disabled evidence capture/retention, explicit consent for content disclosure/export, recorded data from live GitHub evidence, and unsupported model tool-call routing. Preserve warning that configured reviewers run with the user's OS permissions. Do not assert implementation acceptance from a passing test, and do not claim automatically executed network calls when no such integration exists.
+
+**RE-06-D — Small and verifiable.** Check repository-relative Markdown links, existing file references, command examples and configuration keys against verified code. Remove stale progress narration and obsolete duplication. A reviewer SHALL be able to identify which document owns each current contract without consulting archival material.
+
+#### Non-goals
+
+- No review runtime, public API, Git/GitHub, or test behavior changes.
+- No edits to module `contract.md`, source docstrings or configuration defaults.
+- No new publication behavior, no acceptance of SUB-006 and no deployment.
+
+#### Acceptance evidence
+
+A scoped documentation diff, link/path check and explicit list of any unresolved source-document mismatches. RE-07 subsequently verifies documentation-dependent CLI/config assertions as part of the final check.
+
+### RE-07
+
+**Review Evidence Acceptance Tests**
+
+- **type:** `GEN_TESTS`.
+- **area:** `E2E_TESTS`.
+- **feature_ids:** `REVIEW.RAW_CAPTURE`, `REVIEW.NORMALIZATION`, `REVIEW.LLM_CONTEXT`, `REVIEW.RETRIEVAL`, `REVIEW.RETENTION_EXPORT`.
+- **Implementation plan:** [RE-07 plan](task_impl_plan_07_review_acceptance_tests.md).
+- **Status:** Draft; acceptance not inferred.
+
+#### Required outcome
+
+Generate missing acceptance tests and update existing tests so each normative `RE-01-A`–`RE-05-D` requirement has deterministic positive, negative and recovery evidence. This task concludes the sub-spec development cycle, executes the configured canonical `CHK`, reviews failures and prepares truthful acceptance evidence before any permitted merge. It may write E2E/integration tests and their harnesses only; missing BACKEND unit coverage must be returned to the owning BACKEND task before a renewed final CHK.
+
+#### Normative requirements and acceptance oracles
+
+**RE-07-A — Matrix coverage.** Maintain a requirement-to-test map covering private capture, structured normalization, bounded LLM context, selective local retrieval, and retention/export recovery. Prefer extending existing tests to avoid duplicates; create new tests only for missing behavior. Tests SHALL be real executable assertions, not skipped placeholders or a fabricated PASS report.
+
+**RE-07-B — Safety and isolation.** Use disposable Git repositories and isolated private review storage. GitHub/network and external model interactions SHALL be mocked or explicitly blocked. Cover malformed evidence, symlink/hardlink/traversal attacks, changed bytes, failed or timed-out providers, bounded outputs, and interrupted deletion and retries. No test may modify the developer's active repository, contact a live paid model, or weaken consent/review/CI gates.
+
+**RE-07-C — End-to-end verification.** Run the actual project-defined `CHK` after tests are generated and updated; run focused review tests and the regular and extended suites (`sh ./run_tests.sh`, `sh ./run_rare_checks.sh`) when feasible. Report exact commands, pass/fail/timeout outcomes and macOS/Linux limitations. A failed, partial or unavailable required check SHALL block claiming a verified final revision.
+
+**RE-07-D — Publication preconditions.** For a configured `ACCEPT` workflow, `CHK` must be fresh for the exact final worktree/commit tree, and configured `REV`, required GitHub review/CI and merge safety remain in force. Final PR/merge/sync are not authorized merely by selecting this task or naming a run type; they require separate explicit invocation and live guards.
+
+#### Non-goals
+
+- No feature expansion beyond RE-01–RE-05 or code changes unrelated to a demonstrated correctness defect.
+- No automatic developer acceptance, deployment, forced push or bypass of review requirements.
+
+#### Acceptance evidence
+
+A reviewed requirement-to-test matrix, passing canonical check on the final revision (or a recorded blocker), and concise summary of residual manual cases and developer acceptance status. Test skeletons and an implementation sequence are specified in the paired plan; they are not production tests yet.
+
+## 5. Compatibility and acceptance boundary
+
+RE-01 is additive to the configured REV flow and does not migrate recorded reviews, operation IDs, handoff state or Git history. Each task is scoped to a single area; cross-area dependencies consume declared contracts. RE-07 provides final checks, not retroactive developer acceptance. No task permits implicit external model invocation, forced publication or automatic acceptance. SUB-003 and SUB-004 remain planned and unaccepted.

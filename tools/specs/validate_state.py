@@ -51,7 +51,7 @@ def validate_state(source: Path = STATE_PATH, repo_root: Path = ROOT) -> dict:
 
     if not isinstance(document, dict) or not (
         set(document) in (set(schema["required"]),
-                          set(schema["required"]) | {"selectedTaskPath"})
+                          set(schema["required"]) | {"selectedTaskId"})
     ):
         raise ValueError("Invalid STATE.json fields")
     if type(document["schemaVersion"]) is not int or document["schemaVersion"] != 1:
@@ -96,29 +96,65 @@ def validate_state(source: Path = STATE_PATH, repo_root: Path = ROOT) -> dict:
         raise ValueError("Selected workstream does not exist")
     if selected_phase in {"PAUSED", "ON_HOLD"}:
         raise ValueError("Selected workstream cannot be paused or on hold")
-    if "selectedTaskPath" in document:
-        task = _matching(document["selectedTaskPath"],
-                         properties["selectedTaskPath"]["pattern"],
-                         "selectedTaskPath")
-        if selected_spec_path is None or selected_stage_id is None:
-            raise ValueError("Selected task requires a selected workstream")
-        task_path = Path(task)
-        if task_path.parent != Path(selected_spec_path).parent:
-            raise ValueError("Selected task does not belong to the selected sub-spec")
-        selected_number = re.fullmatch(r"[A-Z][A-Za-z0-9.]*-([0-9]{2})", selected_stage_id)
-        task_number = re.fullmatch(r"task_([0-9]{2})_[a-z0-9_]+\.md", task_path.name)
-        if selected_number is None or task_number is None or selected_number.group(1) != task_number.group(1):
+    if selected_spec_path is None or selected_stage_id is None:
+        raise ValueError("Selected task requires a selected workstream")
+    spec_text = (repo_root / selected_spec_path).read_text(encoding="utf-8")
+    heading = re.compile(r"(?m)^### ([A-Z][A-Za-z0-9.]*-[0-9]{2})$", re.MULTILINE)
+    matches = list(heading.finditer(spec_text))
+    if not matches:
+        raise ValueError("Selected sub-spec has no normative task sections")
+    known_features = set(re.findall(
+        r"(?m)^\| `([A-Z][A-Z0-9]*(?:\.[A-Z][A-Z0-9_]*)+)` \|",
+        (repo_root / "docs/FEATURES.md").read_text(encoding="utf-8")))
+    seen_ids: set[str] = set()
+    seen_plans: set[str] = set()
+    task_types: list[tuple[str, str]] = []
+    for index, match in enumerate(matches):
+        task_id = match.group(1)
+        if task_id in seen_ids:
+            raise ValueError(f"Duplicate task ID: {task_id}")
+        seen_ids.add(task_id)
+        task_end = matches[index + 1].start() if index + 1 < len(matches) else len(spec_text)
+        section = spec_text[match.end():task_end].split("\n## ", 1)[0]
+        task_type = re.findall(r"(?m)^- \*\*type:\*\* `([A-Z0-9_]+)`\.$", section)
+        area = re.findall(r"(?m)^- \*\*area:\*\* `([A-Z0-9_]+)`\.$", section)
+        plan = re.findall(
+            r"(?m)^- \*\*Implementation plan:\*\* \[[^]\n]+\]\((task_impl_plan_[0-9]{2}_[a-z0-9_]+\.md)\)\.$",
+            section)
+        feature_row = re.findall(r"(?m)^- \*\*feature_ids:\*\* (.+)\.$", section)
+        if len(task_type) != 1 or task_type[0] not in {"GEN_CODE", "GEN_TESTS", "UPD_DOCS"}:
+            raise ValueError(f"Invalid task type for {task_id}")
+        if len(area) != 1 or area[0] not in {"BACKEND", "FRONTEND", "DOCS", "E2E_TESTS"}:
+            raise ValueError(f"Invalid task area for {task_id}")
+        allowed_area = {"GEN_CODE": {"BACKEND", "FRONTEND"},
+                        "GEN_TESTS": {"E2E_TESTS"}, "UPD_DOCS": {"DOCS"}}
+        if area[0] not in allowed_area[task_type[0]]:
+            raise ValueError(f"Task type/area conflict for {task_id}")
+        if len(plan) != 1 or plan[0] in seen_plans or not plan[0].startswith(
+                f"task_impl_plan_{task_id.rsplit('-', 1)[1]}_"):
+            raise ValueError(f"Invalid task plan for {task_id}")
+        seen_plans.add(plan[0])
+        planned = repo_root / Path(selected_spec_path).parent / plan[0]
+        if planned.is_symlink() or not planned.is_file():
+            raise ValueError(f"Missing or unsafe task plan: {planned}")
+        if len(feature_row) != 1:
+            raise ValueError(f"Missing feature IDs for {task_id}")
+        actual_features = re.findall(r"`([A-Z][A-Z0-9]*(?:\.[A-Z][A-Z0-9_]*)+)`", feature_row[0])
+        if not actual_features or len(actual_features) != len(set(actual_features)) or (
+                set(actual_features) - known_features):
+            raise ValueError(f"Invalid feature IDs for {task_id}")
+        task_types.append((task_type[0], area[0]))
+    if task_types[-2:] != [("UPD_DOCS", "DOCS"), ("GEN_TESTS", "E2E_TESTS")]:
+        raise ValueError("Last tasks must be UPD_DOCS/DOCS and GEN_TESTS/E2E_TESTS")
+    if "selectedTaskId" in document:
+        chosen = _matching(document["selectedTaskId"],
+                           properties["selectedTaskId"]["pattern"], "selectedTaskId")
+        if chosen not in seen_ids:
+            raise ValueError("Missing selected task in selected sub-spec")
+        if chosen != selected_stage_id:
             raise ValueError("Selected task and stageId disagree")
-        selected_task_file = repo_root / task_path
-        counterpart = selected_task_file.with_name(
-            "task_impl_plan_" + selected_task_file.name.removeprefix("task_"))
-        for candidate in (selected_task_file, counterpart):
-            if candidate.is_symlink() or not candidate.is_file():
-                raise ValueError(f"Missing or unsafe selected task/plan: {candidate}")
-        header = selected_task_file.read_text(encoding="utf-8").split("\n## ", 1)[0]
-        types = re.findall(r"^- \*\*type:\*\* `([A-Z_]+)`\.$", header, re.MULTILINE)
-        if len(types) != 1 or types[0] not in {"GEN_CODE", "GEN_TESTS", "UPD_DOCS"}:
-            raise ValueError("Selected task must declare a supported type")
+    elif selected_stage_id not in seen_ids:
+        raise ValueError("Selected stageId is absent from the sub-spec")
     return document
 
 

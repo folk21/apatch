@@ -1,10 +1,10 @@
 # RE-02 — Structured Adapter Normalization: Task Implementation Plan (Draft)
 
-- **Status:** ADVISORY / DRAFT; no implementation authorization is implied.
-- **Normative task:** [task_02_structured_normalization.md](task_02_structured_normalization.md).
+- **Status:** ADVISORY / DRAFT; **area:** `BACKEND`; no implementation authorization is implied.
+- **Normative task:** [subspec.md#re-02](subspec.md#re-02).
 - **Sub-spec:** [subspec.md](subspec.md).
-- **Dependencies:** [RE-01](task_01_raw_evidence_capture.md) (candidate implementation; acceptance not inferred).
-- **Verified baseline:** `apatch_files.txt` snapshot `3538c08a033eb31d7cffcbb96c4e87212aa9460d`, 2026-11-18 19:41 UTC; installed/runtime behavior is not independently verified.
+- **Dependencies:** [RE-01](subspec.md#re-01) (candidate implementation; acceptance not inferred).
+- **Verified baseline:** `apatch_files.txt` snapshot `c518880c1c065be10ed267d5dba763e6bebdaa07`, 2026-11-20 05:06 UTC; installed/runtime behavior is not independently verified.
 
 ## Ownership and verification entry points
 

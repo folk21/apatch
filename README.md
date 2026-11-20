@@ -7,6 +7,7 @@
 - [Installation](docs/INSTALLATION.md) — standalone deployment, local configuration and setup.
 - [Usage](docs/USAGE.md) — actions, modes, project checks and operational recovery.
 - [Architecture](docs/ARCHITECTURE.md) — module ownership, safety, privacy, development and tests.
+- [Features](docs/FEATURES.md) — stable capability IDs and ownership links.
 - [SDD specifications](docs/specs/README.md) — active tasks and plans, planned drafts, archived work and checkpoint.
 - [Repository guidance](AGENTS.md) / [SDD guidance](docs/specs/AGENTS.md) — engineering and documentation rules.
 

@@ -26,6 +26,15 @@
 
 Use stable `api.py` and `contract.md` boundaries for cross-domain calls; compatibility adapters preserve old imports. Avoid deep peer-to-peer imports, hidden mutable global state, duplicate validation and dependency cycles. Keep module contracts next to code, not in general documentation.
 
+## Architectural dependency rules
+
+The historical modular redesign is superseded by implemented module APIs and
+colocated `contract.md` files. The CLI/application layer composes domain owners;
+Git, handoff, publication and review remain independent effect/validation
+boundaries. Favor one-way dependencies and exact source-tested behavior over
+proposed package names. Contract ownership, action compatibility and recovery
+guarantees must be validated against the current source, never a redesign diary.
+
 ## Configuration and persistence
 
 `apatch.conf` lives in the installation and defines global paths, limits, remote/base defaults and approval policy. The **target** repository's tracked `.apatch/config.yaml` owns its canonical `checks`, optional `build_commands`/`format_commands`, reviewers and bounded settings. Project overrides have defined precedence and schema-v1 validation. Configured commands execute as argv, without implicit shell interpolation; running a shell script explicitly can still execute arbitrary code.
@@ -71,6 +80,7 @@ Use Python 3.10+, Git and the dependencies from `requirements.txt`. The standalo
 sh ./run_tests.sh
 sh ./run_rare_checks.sh
 python3 tools/specs/validate_state.py
+python3 tools/specs/validate_features.py
 sh -n apatch.sh
 sh -n run_tests.sh
 sh -n run_rare_checks.sh

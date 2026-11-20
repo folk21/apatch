@@ -8,42 +8,53 @@ ownership and lifecycle.
 
 ## Ownership and file layout
 
-1. Each selected sub-specification owns one flat directory
-   `docs/specs/active/<scope>/` with exactly these SDD artifacts:
-   `subspec.md` (normative workstream requirements), `impl_plan.md`
-   (short advisory integration/dependency map), and one matched pair
-   `task_<nn>_<slug>.md` / `task_impl_plan_<nn>_<slug>.md` per task.
-   No nested `tasks/`, `subspecs/`, or `implementation_plans/` directories.
-2. Each task has a stable normative stage ID and acceptance oracles. The
-   task document owns WHAT is required; its implementation plan owns HOW,
-   with concrete verified source paths, interfaces, test inventory, negative
-   cases and recovery. Do not duplicate complete requirements in plans or
-   keep a second normative copy in an old `active/subspecs/` location.
-   Each task MUST declare exactly one `- **type:**` in its header, with
-   value `GEN_CODE`, `UPD_DOCS` or `GEN_TESTS`. `GEN_CODE` owns product source,
-   code-level module `contract.md` and associated interfaces. `UPD_DOCS` owns
-   concise public/developer documentation but not `contract.md`. The last
-   two tasks in a workstream SHOULD be `UPD_DOCS`, then `GEN_TESTS`, unless
-   an explicit developer-approved exception is recorded. `GEN_TESTS` owns
-   missing/new tests, maintenance of existing tests, exact coverage evidence,
-   and the final canonical `CHK`; its paired plan must include concrete
-   English-commented test skeletons, failure/recovery cases and commands.
-   These types are task metadata; they do not run `apatch`, grant permission
-   to bypass checks or automatically select a run profile.
-3. Unselected draft workstreams and their paired advisory plans live under
-   `docs/specs/planned/`. This is not the accepted archive: moving an
-   unaccepted candidate to `planned` does not erase its code/evidence or
-   assert that its implementation is missing. Resume only on explicit
-   developer selection, then move the canonical pair into `active/<scope>/`
-   before task-scoped work. Planning does not authorize product changes.
-4. The active umbrella specification and its independent future-stage plan
-   remain directly in `active/`. Accepted legacy documents remain under
-   `archive/subspecs/`; after a **new-format** workstream is explicitly
-   accepted, archive its entire canonical flat directory under
-   `archive/workstreams/<scope>/`, preserving task IDs and links.
-5. Keep all cross-references in the umbrella, other sub-specs, plans, index,
-   checkpoint and README valid after every move. Never maintain parallel
-   normative active, planned and archive copies of the same owner.
+1. A selected sub-spec has exactly one normative `docs/specs/active/<scope>/subspec.md`
+   containing all task requirements, acceptance oracles, stable IDs, `type`, `area`,
+   feature IDs, sequence and links. Keep exactly one separate advisory
+   `task_impl_plan_<nn>_<slug>.md` for each task. Do not create normative
+   `task_<nn>_*.md` files or a duplicating `impl_plan.md`.
+2. Every task declares exactly one `type` (`GEN_CODE`, `UPD_DOCS`, `GEN_TESTS`)
+   and one `area` (`BACKEND`, `FRONTEND`, `DOCS`, `E2E_TESTS`). The task's
+   normative section in `subspec.md` owns WHAT; its linked plan owns HOW,
+   verified file paths, dependencies, algorithms, tests and recovery.
+   The selected model may read another area's public contracts but must not
+   edit its implementation. Split features crossing backend and frontend into
+   separate ordered tasks with explicit handoff contracts. `FRONTEND` is
+   currently unused in `apatch`.
+3. For this repository, `BACKEND` owns Python application/CLI/source modules,
+   their code-owned `contract.md` files and focused unit/regression tests.
+   `E2E_TESTS` owns cross-component integration/E2E tests, verification scripts
+   and final canonical CHK. Existing test files can mix granularities: assign
+   individual functions to the task's owner and do not silently rework the
+   other area. `DOCS` owns general user/developer documentation and SDD
+   navigation, not source contracts. No task is authorized to edit a second
+   area's implementation merely because a test fails.
+4. Adopt **Incremental Tests, Final Verification**: `GEN_CODE` implements and
+   executes focused regressions for security, recovery, bug fixes and stable
+   contracts when changing those behaviors. Exploratory tests can be deferred
+   with an explicit gap recorded for final reconciliation. The penultimate
+   task is `UPD_DOCS`/`DOCS`; the last is `GEN_TESTS`/`E2E_TESTS`, covering
+   the complete requirement-to-test matrix, missing end-to-end tests, full
+   canonical CHK, and final revision evidence. Missing BACKEND unit coverage
+   or a backend bug discovered at the end reopens that BACKEND task and
+   requires a fresh final check. No skipped or invented PASS is accepted.
+5. Maintain stable `feature_id` references from
+   [`docs/FEATURES.md`](../FEATURES.md),
+   [`feature-cross-ref.yaml`](feature-cross-ref.yaml) and its schema. A feature
+   can span tasks and areas; a task cannot. Cross-reference entries include
+   real spec paths, stages, owning code and existing tests; use `planned`,
+   `partial`, `verified` conservatively. `verified` must not be mistaken for
+   developer acceptance. Feature IDs are documentation identity and must not
+   be silently added as mandatory runtime ZIP/checkpoint fields.
+6. Unselected drafts and plans live in `docs/specs/planned/`, not the accepted
+   archive. When explicitly selected, move the canonical documents into the
+   active workstream. Accepted legacy records stay under `archive/subspecs/`;
+   new-format accepted workstreams move in full to
+   `archive/workstreams/<scope>/` only upon developer confirmation. Preserve
+   stage IDs, feature references, and links during moves.
+7. The umbrella specification and its future-stage plan remain under `active/`.
+   Treat plans as advisory and task types/areas as SDD metadata; they never
+   execute `apatch` or authorize product changes, merges or acceptance.
 
 ## Iterative specification design and implementation planning
 
@@ -106,8 +117,8 @@ ownership and lifecycle.
    target-local `.apatch/apply_patch.state.json`. Validate it with
    `python3 tools/specs/validate_state.py`. `mode: SINGLE` has exactly one
    selected workstream in `active/<scope>/`, and may contain a
-   `selectedTaskPath` to an adjacent task file matching `stageId`. A task
-   pointer is not approval, a progress inference, or permission to mutate.
+   `selectedTaskId` matching the corresponding task section in `subspec.md`
+   and a safe existing advisory plan. A task pointer is not approval, a progress inference, or permission to mutate.
    Planned workstreams must not occur in the active checkpoint. The
    active stage ID remains stable across file moves.
 6. Allowed phases are `DESIGN`, `READY_FOR_IMPLEMENTATION`,
@@ -137,7 +148,7 @@ current instructions into the owning guide and repair links before removal.
    counts as acceptance of that completed scope. Do not infer acceptance
    from checks, source presence, or an agent's own assessment.
 3. **Immediately after explicit acceptance**, archive the selected complete
-   flat workstream directory, including every task and plan, under
+   flat workstream directory, including `subspec.md` and every task plan, under
    `archive/workstreams/<scope>/`. Legacy accepted work remains in
    `archive/subspecs/`. Never treat moving a draft into `planned` as
    acceptance. Change `STATE.json` only after explicit successor selection.
