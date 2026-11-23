@@ -15,7 +15,15 @@ see [SDD agent instructions](AGENTS.md). For contributor workflow and testing, s
 
 ## Document metadata
 
-Every Markdown document has Open Knowledge Format YAML front matter (`type`, `title`, `description`). SDD files also identify their role, parent and status. Individual task plans store `task_id`, `task_type` (`GEN_CODE`, `UPD_DOCS`, `GEN_TESTS`), `area` (`CODE`, `DOCS`, `E2E_TESTS`), proposed `rtype` (`DEVELOP`, `ACCEPT`), and stable `feature_ids` in the header. The normative task contract remains in the owning `subspec.md`; metadata does not select a task or authorize implementation. Validate the cross-document contract with `python3 tools/specs/validate_docs.py`.
+Every repository Markdown document uses `type`, `title`, and `description` in its
+Open Knowledge Format YAML header. An individual `task_impl_plan_<nn>_*.md`
+additionally uses `area` and `runType`: its `type` is `GEN_CODE`, `UPD_DOCS`, or
+`GEN_TESTS`; its `area` is `CODE`, `DOCS`, or `E2E_TESTS`; and `runType` is
+`DEVELOP` or `ACCEPT`. The matching task ID, normative `rtype`, dependencies,
+feature IDs, approvals, plan link and status live only in `subspec.md`. The
+validator checks exact plan-to-task pairing, catalog feature IDs and the three
+routing fields against that source; no header authorizes implementation.
+Run `python3 tools/specs/validate_docs.py` to validate the contract.
 
 ## Umbrella specification
 

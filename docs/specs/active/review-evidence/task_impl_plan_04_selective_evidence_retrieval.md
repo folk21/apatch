@@ -1,17 +1,9 @@
 ---
-type: Implementation Guide
+type: GEN_CODE
 title: 'RE-04 — Selective Evidence Retrieval: Task Implementation Plan (Draft)'
 description: Advisory RE-04 implementation plan, dependencies, verification, and recovery steps.
-document_role: task_plan
-parent: subspec.md
-spec_status: draft
-plan_status: advisory
-task_id: RE-04
-task_type: GEN_CODE
 area: CODE
-rtype: DEVELOP
-feature_ids:
-- REVIEW.RETRIEVAL
+runType: DEVELOP
 ---
 # RE-04 — Selective Evidence Retrieval: Task Implementation Plan (Draft)
 

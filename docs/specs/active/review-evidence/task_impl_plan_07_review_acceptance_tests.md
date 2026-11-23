@@ -1,21 +1,9 @@
 ---
-type: Implementation Guide
+type: GEN_TESTS
 title: RE-07 Implementation Plan — Review Evidence Acceptance Tests (Advisory)
 description: Advisory RE-07 implementation plan, dependencies, verification, and recovery steps.
-document_role: task_plan
-parent: subspec.md
-spec_status: draft
-plan_status: advisory
-task_id: RE-07
-task_type: GEN_TESTS
 area: E2E_TESTS
-rtype: ACCEPT
-feature_ids:
-- REVIEW.RAW_CAPTURE
-- REVIEW.NORMALIZATION
-- REVIEW.LLM_CONTEXT
-- REVIEW.RETRIEVAL
-- REVIEW.RETENTION_EXPORT
+runType: ACCEPT
 ---
 # RE-07 Implementation Plan — Review Evidence Acceptance Tests (Advisory)
 

@@ -1,17 +1,9 @@
 ---
-type: Implementation Guide
+type: GEN_CODE
 title: 'RE-03 — Compact Context for LLM: Task Implementation Plan (Draft)'
 description: Advisory RE-03 implementation plan, dependencies, verification, and recovery steps.
-document_role: task_plan
-parent: subspec.md
-spec_status: draft
-plan_status: advisory
-task_id: RE-03
-task_type: GEN_CODE
 area: CODE
-rtype: DEVELOP
-feature_ids:
-- REVIEW.LLM_CONTEXT
+runType: DEVELOP
 ---
 # RE-03 — Compact Context for LLM: Task Implementation Plan (Draft)
 

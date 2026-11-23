@@ -2,9 +2,6 @@
 type: Implementation Guide
 title: APATCH-PLAN-003 — Feature Session and Context-Aware Workflow Implementation
 description: Advisory implementation stages for feature sessions and context-aware execution.
-document_role: implementation_plan
-parent: subspec-03-feature-session-planning.md
-spec_status: planned
 ---
 # APATCH-PLAN-003 — Feature Session and Context-Aware Workflow Implementation
 

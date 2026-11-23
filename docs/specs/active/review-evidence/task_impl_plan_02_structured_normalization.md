@@ -1,17 +1,9 @@
 ---
-type: Implementation Guide
+type: GEN_CODE
 title: 'RE-02 — Structured Adapter Normalization: Task Implementation Plan (Draft)'
 description: Advisory RE-02 implementation plan, dependencies, verification, and recovery steps.
-document_role: task_plan
-parent: subspec.md
-spec_status: draft
-plan_status: advisory
-task_id: RE-02
-task_type: GEN_CODE
 area: CODE
-rtype: DEVELOP
-feature_ids:
-- REVIEW.NORMALIZATION
+runType: DEVELOP
 ---
 # RE-02 — Structured Adapter Normalization: Task Implementation Plan (Draft)
 

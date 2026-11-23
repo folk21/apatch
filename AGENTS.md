@@ -43,7 +43,7 @@ These rules govern code, tests, configuration, and documentation created or modi
 ## Document metadata
 
 - Every repository Markdown document (`*.md`), including module contracts, indexes, guides, specifications, and plans, starts with Open Knowledge Format YAML front matter: `type`, `title`, and `description`. The title must match the first level-one heading; preserve the existing Markdown content after the header.
-- SDD documents additionally declare `document_role` and `spec_status`; non-umbrella documents declare a valid repository-local `parent`. Task plans declare `task_id`, `task_type`, `area`, `rtype`, `feature_ids`, and `plan_status: advisory`. Metadata is documentation/SDD identity, not executable workflow state.
+- Only `task_impl_plan_<nn>_*.md` adds `area` and `runType`; its `type` is the execution task type. Other Markdown documents use `type` for the document kind. Task IDs, `rtype`, dependencies, feature IDs, statuses and plan links are normative in `subspec.md` and are not duplicated in YAML. A task plan must match its normative task classification and filename-derived identity.
 - Validate headers and task linkage with `python3 tools/specs/validate_docs.py`, and run the corresponding regression tests before changing document metadata.
 
 ## Task area and test policy
