@@ -99,10 +99,13 @@ Explicit `prune_review_artifacts(root)` is a dry-run preview; deletion needs
 an explicit non-preview call or the retention opt-in. Eligible verified
 terminal runs are pruned oldest first and journal their exact remaining
 members before deletion. After an interruption, a subsequent maintenance
-attempt revalidates that journal and any remaining files; unexpected members
-stop cleanup instead of being erased. Pruning never deletes Git state or
-pretends that a removed review was accepted. Missing/pruned/corrupt evidence
-fails closed on future retrieval/export rather than being silently recreated.
+attempt revalidates that journal and any remaining files, including a
+previously interrupted final directory removal; unexpected members stop
+cleanup instead of being erased. Storage lookup errors, unknown paths and
+changed manifests are safety failures, not permission for a best-effort
+recursive deletion. Pruning never deletes Git state or pretends that a removed
+review was accepted. Missing/pruned/corrupt evidence fails closed on future
+retrieval/export rather than being silently recreated.
 
 The internal `export_review_summary(root, review_id, consent=True)` validates
 terminal evidence and returns at most 8,192 bytes of provider/run references,

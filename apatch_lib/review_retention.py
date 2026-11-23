@@ -126,7 +126,10 @@ def review_storage_lock(root: Path):
     """Lock a single project storage root; reject symlink traversal and unsafe locks."""
     if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
         raise _error("Secure review storage requires POSIX no-follow descriptors")
-    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise _error("Cannot open project root for retention") from exc
     descriptors = [root_fd]
     try:
         apatch_fd = _directory(root_fd, ".apatch")
@@ -179,6 +182,11 @@ def _recover_marked(reviews_fd: int, dirname: str, *, preview: bool = False) -> 
         raise _error("Invalid pruning directory identity")
     run_fd = _directory(reviews_fd, dirname, private=True)
     try:
+        if match and not os.listdir(run_fd):
+            # The journal is removed immediately before rmdir; retry that final step.
+            if not preview:
+                os.rmdir(dirname, dir_fd=reviews_fd)
+            return
         marker = _json_file(run_fd, _PRUNE_MARKER, _MAX_MANIFEST)
         files = marker.get("files")
         if (marker.get("schema_version") != 1 or marker.get("review_id") != original

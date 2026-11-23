@@ -28,6 +28,8 @@ case "${1:-regular}" in
             tests.test_review_normalizer \
             tests.test_review_context \
             tests.test_review_evidence_api \
+            tests.test_review_retention \
+            tests.test_review_acceptance \
             tests.test_code_review.CodeReviewTests.test_structured_review_persists_normalized_report_and_blocks_high_findings \
             tests.test_code_review.CodeReviewTests.test_structured_missing_required_scanner_escalates_and_advisory_missing_warns \
             tests.test_code_review.CodeReviewTests.test_structured_zero_findings_allows_required_review_to_commit \

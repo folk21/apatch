@@ -74,7 +74,9 @@ class RunnerScriptsTests(unittest.TestCase):
                 self.assertIn("tests.test_check_gate", args)
                 self.assertNotIn("tests.test_publication_goals", args)
                 self.assertIn("tests.test_document_frontmatter", args)
-                self.assertLess(len(args), 94)
+                self.assertIn("tests.test_review_acceptance", args)
+                self.assertIn("tests.test_review_retention", args)
+                self.assertEqual(len(args), 95)
 
     def test_rare_launcher_and_full_alias_run_all_tests(self):
         for script, options in (("run_rare_checks.sh", ()), ("run_tests.sh", ("full",))):

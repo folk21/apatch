@@ -127,5 +127,5 @@ Replace the example with the repository's actual verification commands. Checks a
 
 Place a self-contained ZIP under `downloads_dir` (`~/Downloads` by default). It must contain exactly one regular `<repository>/.apatch/params.json` metadata member. No separate JSON download is required. Start with `apatch.sh <zip-stem> op=APL`, then use `apatch.sh op=BRN`, followed by checks and publication actions; later invocations read the validated `.apatch/params.json` cache. An explicit legacy JSON handoff remains supported for migration. See [Usage](USAGE.md#4-continue-a-feature-with-another-zip) for one-command sequences and `handoffSeq`.
 
-Next: [Usage](USAGE.md) for commands and handoffs; [Architecture](ARCHITECTURE.md#development-and-verification) for test commands and developer guidance.
+Next: [Usage](USAGE.md) for commands and handoffs, including [opt-in review evidence settings](USAGE.md#review-evidence-configuration-and-privacy); [Architecture](ARCHITECTURE.md#development-and-verification) for test commands and developer guidance.
 
