@@ -2,9 +2,6 @@
 type: Specification
 title: APATCH-SUB-003 — Feature Sessions and Context-Aware Execution
 description: Proposed feature sessions and context-aware execution, with safety and recovery requirements.
-document_role: subspec
-parent: ../umbrella_spec_apatch.md
-spec_status: planned
 ---
 # APATCH-SUB-003 — Feature Sessions and Context-Aware Execution
 

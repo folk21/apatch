@@ -2,9 +2,6 @@
 type: Specification
 title: APATCH-SUB-005 — Architectural Simplification, Typed Boundaries, and Explicit Outcomes
 description: Accepted historical requirements for architectural simplification and typed boundaries.
-document_role: subspec
-parent: ../../umbrella_spec_apatch.md
-spec_status: completed
 ---
 # APATCH-SUB-005 — Architectural Simplification, Typed Boundaries, and Explicit Outcomes
 

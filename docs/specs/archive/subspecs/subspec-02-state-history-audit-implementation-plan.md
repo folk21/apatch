@@ -2,9 +2,6 @@
 type: Implementation Guide
 title: APATCH-PLAN-001-P1 — Execution History and Audit Implementation Plan
 description: Archived advisory implementation stages for execution history and audit.
-document_role: implementation_plan
-parent: subspec-02-state-history-audit.md
-spec_status: completed
 ---
 # APATCH-PLAN-001-P1 — Execution History and Audit Implementation Plan
 

@@ -1,17 +1,9 @@
 ---
-type: Implementation Guide
+type: GEN_CODE
 title: 'RE-01 — Private Bounded Raw Evidence Capture: Task Implementation Plan (Draft)'
 description: Advisory RE-01 implementation plan, dependencies, verification, and recovery steps.
-document_role: task_plan
-parent: subspec.md
-spec_status: draft
-plan_status: advisory
-task_id: RE-01
-task_type: GEN_CODE
 area: CODE
-rtype: DEVELOP
-feature_ids:
-- REVIEW.RAW_CAPTURE
+runType: DEVELOP
 ---
 # RE-01 — Private Bounded Raw Evidence Capture: Task Implementation Plan (Draft)
 

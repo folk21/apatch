@@ -1,21 +1,9 @@
 ---
-type: Implementation Guide
+type: UPD_DOCS
 title: RE-06 Implementation Plan — Documentation Synchronization (Advisory)
 description: Advisory RE-06 implementation plan, dependencies, verification, and recovery steps.
-document_role: task_plan
-parent: subspec.md
-spec_status: draft
-plan_status: advisory
-task_id: RE-06
-task_type: UPD_DOCS
 area: DOCS
-rtype: DEVELOP
-feature_ids:
-- REVIEW.RAW_CAPTURE
-- REVIEW.NORMALIZATION
-- REVIEW.LLM_CONTEXT
-- REVIEW.RETRIEVAL
-- REVIEW.RETENTION_EXPORT
+runType: DEVELOP
 ---
 # RE-06 Implementation Plan — Documentation Synchronization (Advisory)
 

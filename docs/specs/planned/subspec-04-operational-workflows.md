@@ -2,9 +2,6 @@
 type: Specification
 title: APATCH-SUB-004 — Operational Workflows, Activity Dashboard, and Stable Checks
 description: Proposed operational workflow planning, checks, and publication contracts.
-document_role: subspec
-parent: ../umbrella_spec_apatch.md
-spec_status: planned
 ---
 # APATCH-SUB-004 — Operational Workflows, Activity Dashboard, and Stable Checks
 

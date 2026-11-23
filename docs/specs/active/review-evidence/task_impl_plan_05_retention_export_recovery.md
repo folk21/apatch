@@ -1,17 +1,9 @@
 ---
-type: Implementation Guide
+type: GEN_CODE
 title: 'RE-05 — Retention, Export and Recovery: Task Implementation Plan (Draft)'
 description: Advisory RE-05 implementation plan, dependencies, verification, and recovery steps.
-document_role: task_plan
-parent: subspec.md
-spec_status: draft
-plan_status: advisory
-task_id: RE-05
-task_type: GEN_CODE
 area: CODE
-rtype: DEVELOP
-feature_ids:
-- REVIEW.RETENTION_EXPORT
+runType: DEVELOP
 ---
 # RE-05 — Retention, Export and Recovery: Task Implementation Plan (Draft)
 

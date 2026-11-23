@@ -109,11 +109,27 @@ ownership and lifecycle.
 
 ## Open Knowledge Format front matter
 
-All repository Markdown documents begin with a YAML front matter block as used by the project documentation: `type`, `title`, and `description`. The heading and body remain authoritative for human-readable requirements. Keep these metadata fields synchronized with the content and repair relative links when moving documents.
+All repository Markdown documents begin with YAML front matter containing exactly
+`type`, `title`, and `description`. Only `task_impl_plan_<nn>_<slug>.md`
+adds `area` and `runType`; it uses the execution task type as `type`, not
+`Implementation Guide`. The plan's document role and task identity derive from
+its path and the normative link in `subspec.md`. The first H1 equals `title`.
 
-Umbrella and sub-specifications declare `type: Specification`, `document_role: umbrella|subspec`, and a conservative `spec_status`. A sub-spec declares a relative `parent` pointing to the umbrella; the umbrella has no `parent` and no implementation plan. Standalone sub-spec plans declare `type: Implementation Guide`, `document_role: implementation_plan`, and a parent pointing to the owning sub-spec.
+The normative `subspec.md` owns task IDs, types, areas, `rtype`, dependencies,
+feature IDs, approvals, status and links to individual advisory task plans.
+Each plan repeats only its `type` (`GEN_CODE`, `UPD_DOCS`, `GEN_TESTS`),
+`area` (`CODE`, `DOCS`, `E2E_TESTS`) and `runType` (`DEVELOP`, `ACCEPT`) in
+front matter for deterministic routing. Valid combinations are
+`GEN_CODE/CODE/DEVELOP`, `UPD_DOCS/DOCS/DEVELOP`, and
+`GEN_TESTS/E2E_TESTS/ACCEPT`. `runType` is the plan-header spelling of
+normative `rtype`; both are SDD metadata, not supported runtime CLI switches.
 
-Each advisory `task_impl_plan_XX_*.md` declares `type: Implementation Guide`, `document_role: task_plan`, `parent: subspec.md`, `spec_status`, `plan_status: advisory`, `task_id`, `task_type`, `area`, `rtype`, and `feature_ids` in front matter. Valid task combinations in this code-only CLI are `GEN_CODE/CODE`, `UPD_DOCS/DOCS`, and `GEN_TESTS/E2E_TESTS`. Proposed `rtype` is `DEVELOP` for normal tasks and `ACCEPT` for final acceptance tests. These are SDD labels only, not supported `apatch` CLI runtime options. Task headers must agree with the normative task sections and the feature catalog; do not infer completion or acceptance from metadata.
+Do not duplicate `task_id`, `task_type`, `rtype`, `feature_ids`, `parent`,
+`spec_status`, `plan_status`, or `document_role` in front matter. Validate
+path-based task-plan pairing and exact classification against the normative
+sub-spec, and verify its feature IDs against the catalog. The umbrella and
+historical standalone specifications retain status and parent links in their
+Markdown bodies, not duplicate YAML fields.
 
 Run `python3 tools/specs/validate_docs.py` with `python3 tools/specs/validate_state.py` and `python3 tools/specs/validate_features.py` after modifying specifications, plans, or document headers.
 

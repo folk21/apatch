@@ -2,9 +2,6 @@
 type: Implementation Guide
 title: APATCH-PLAN-005 — Incremental Architectural Simplification
 description: Archived advisory stages for module ownership and explicit action results.
-document_role: implementation_plan
-parent: subspec-05-architectural-simplification.md
-spec_status: completed
 ---
 # APATCH-PLAN-005 — Incremental Architectural Simplification
 
