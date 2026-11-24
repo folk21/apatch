@@ -2,7 +2,7 @@
 
 from textwrap import dedent
 
-from .mo_core.actions import ACTION_CODES
+from ..mo_core.actions import ACTION_CODES
 
 
 HELP_EPILOG = dedent("""
@@ -274,5 +274,3 @@ PREFLIGHT_HELP_EPILOG = dedent("""
       source drift before publishing the archive. CHK remains mandatory in
       the destination repository after ZIP application.
 """).strip()
-
-

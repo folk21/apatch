@@ -6,9 +6,9 @@ import time
 from pathlib import Path
 from typing import cast
 
-from .mo_core.contracts import GitHubPr
-from .gitutil import confirm, head, output, remote_head, require_clean, run
-from .model import Abort, Config, RemoteOutcomeUnknown
+from ..mo_core.contracts import GitHubPr
+from ..gitutil import confirm, head, output, remote_head, require_clean, run
+from ..model import Abort, Config, RemoteOutcomeUnknown
 
 
 _TRANSIENT_GITHUB_ERROR = re.compile(

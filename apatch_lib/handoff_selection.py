@@ -6,7 +6,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Mapping
 
-from .cli_request import CliRequest
+from .mo_cli.api import CliRequest
 from .model import (Abort, BASENAME_PATTERN, Config, Handoff,
                     load_handoff)
 from .params_cache import load_cached_handoff
@@ -161,5 +161,3 @@ def resolve_handoffs(
             and sum(action in {2, 3} for action in request.op_seq.actions) > 1):
         raise Abort("Multiple APL actions require explicit handoffSeq ZIP selections")
     return resolve_selected_handoff(request.handoff, config, root, cache_ops=cache_ops)
-
-

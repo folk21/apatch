@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
-from .model import Abort
+from ..model import Abort
 from .review_evidence_api import (_REVIEW_ID, _PROVIDER_ID, _SHA256, _directory,
                                   _json_file, _private_file,
                                   _verify_private_digest)

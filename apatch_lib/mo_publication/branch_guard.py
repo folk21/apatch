@@ -4,8 +4,8 @@ import json
 import re
 
 from . import github
-from .gitutil import current_branch, output, run
-from .model import Abort
+from ..gitutil import current_branch, output, run
+from ..model import Abort
 
 
 FEATURE_PREFIX = "feature/"

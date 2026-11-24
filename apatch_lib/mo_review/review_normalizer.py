@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 
-from .model import Abort, safe_relative
+from ..model import Abort, safe_relative
 
 
 MAX_REPORT_NODES = 50000

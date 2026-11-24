@@ -45,7 +45,7 @@ class RunnerScriptsTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(args[:4], ["-B", "-m", "tests.timeout_runner", "-v"])
                 self.assertNotIn("discover", args)
-                self.assertEqual(len(args), 51)
+                self.assertEqual(len(args), 53)
                 self.assertEqual(len(args[4:]), len(set(args[4:])))
                 for required in (
                     "tests.test_spec_state",
@@ -75,6 +75,8 @@ class RunnerScriptsTests(unittest.TestCase):
                     "test_failed_check_never_produces_zip",
                     "tests.test_runner_scripts",
                     "tests.test_module_prefixes",
+                    "tests.test_r1_module_ownership",
+                    "tests.test_r2_cli_presentation",
                 ):
                     self.assertIn(required, args)
                 for deferred in (
@@ -161,7 +163,7 @@ class RunnerScriptsTests(unittest.TestCase):
         lint, formatting, types = (command.splitlines() for command in commands)
         self.assertEqual(lint[:3], ["-m", "ruff", "check"])
         self.assertIn("--no-cache", lint)
-        self.assertIn("apatch_lib/audit_rules.py", lint)
+        self.assertIn("apatch_lib/mo_audit/audit_rules.py", lint)
         self.assertEqual(formatting[:3], ["-m", "ruff", "format"])
         self.assertIn("--check", formatting)
         self.assertIn("--no-cache", formatting)
@@ -190,4 +192,3 @@ class RunnerScriptsTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("Usage:", result.stderr)
         self.assertEqual(arguments, [])
-

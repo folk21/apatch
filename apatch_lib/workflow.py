@@ -10,7 +10,7 @@ from . import github
 from .action_applicability import (ActionFacts, action_unavailable,
                                    DEPRECATED_BAP_REASON)
 from .branch_patch import BranchPatchActions
-from .console import outcome_label, terminal_style
+from .mo_presentation.console import outcome_label, terminal_style
 from .code_review import run_review, require_fresh_review
 from .mo_workflows.api import ACTION_CODES, action_number
 from .mo_workflows.api import PHASE_VALUES, WorkflowPhase
@@ -614,5 +614,3 @@ class Workflow(OperationPresentation):
             (f"Resume synchronization of local {self.config.base}", self.sync,
              unavailable(9)),
         ]
-
-

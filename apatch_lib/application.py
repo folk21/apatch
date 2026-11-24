@@ -4,9 +4,9 @@ import logging
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from .cli_inspection import (select_without_handoff, show_audit_with_activity,
+from .mo_cli.api import (select_without_handoff, show_audit_with_activity,
                              show_status_with_progress, show_unresolved_operations)
-from .cli_request import (CliRequest, validate_progress_request,
+from .mo_cli.api import (CliRequest, validate_progress_request,
                           validate_repository_request)
 from .branch_reassignment import reassign_pending_branch
 from .mo_core.actions import ACTION_CODES, action_number

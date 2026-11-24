@@ -13,7 +13,7 @@ from .created_patches import persist_registry
 from .commit_scope import (NeedsVerification, WaitingForUser, assert_scope_unchanged,
                            changed_contents_fingerprint, inspect_commit_scope,
                            policy_fingerprint)
-from .console import check_result_label
+from .mo_presentation.console import check_result_label
 from .gitutil import (branch_exists, confirm, current_branch, head, output,
                       remote_head, run, status_paths, worktree_fingerprint,
                       worktree_inventory, worktree_change_details)
@@ -669,7 +669,3 @@ class LooseActions:
 
     def sync(self):
         return self.w.force_actions.sync()
-
-
-
-

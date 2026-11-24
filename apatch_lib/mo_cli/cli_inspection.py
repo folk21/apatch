@@ -3,15 +3,15 @@
 import time
 from pathlib import Path
 
-from .mo_core.actions import ACTION_CODES, action_number
-from .gitutil import current_branch
-from .model import Abort, Config, Handoff
-from .operation_events import unresolved_runs
-from .progress import (ProgressEvent, ProgressRecorder, ProgressStore,
+from ..mo_core.actions import ACTION_CODES, action_number
+from ..gitutil import current_branch
+from ..model import Abort, Config, Handoff
+from ..operation_events import unresolved_runs
+from ..progress import (ProgressEvent, ProgressRecorder, ProgressStore,
                        render_progress, utc_now)
-from .reconciliation import audit_repository, format_audit
-from .state import read_state_snapshot
-from .status import display_status, inspect_patch, select_record
+from ..mo_audit.api import audit_repository, format_audit
+from ..state import read_state_snapshot
+from ..status import display_status, inspect_patch, select_record
 
 
 def show_status_with_progress(

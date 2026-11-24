@@ -1,4 +1,4 @@
-"""Public review value objects; provider execution remains in legacy adapters."""
+"""Effect-free public review provider and scanner policy contracts."""
 
 from .models import ReviewProvider, ScannerPolicy
 

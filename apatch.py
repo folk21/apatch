@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import Sequence
 
 from apatch_lib.application import execute_request
-from apatch_lib.cli_inspection import (select_without_handoff,
+from apatch_lib.mo_cli.api import (select_without_handoff,
                                        show_audit_with_activity,
                                        show_status_with_progress,
                                        show_unresolved_operations)
-from apatch_lib.cli_request import (normalize_arguments, parse_boolean,
+from apatch_lib.mo_cli.api import (normalize_arguments, parse_boolean,
                                     parse_operation, parse_operation_sequence,
                                     parse_request)
 from apatch_lib.handoff_selection import (resolve_handoff_path,

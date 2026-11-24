@@ -5,10 +5,10 @@ import sys
 from dataclasses import dataclass
 from typing import Sequence
 
-from .mo_core.actions import action_number
+from ..mo_core.actions import action_number
 from .help_reference import HELP_EPILOG
-from .model import Abort, BASENAME_PATTERN, BRANCH_PATTERN
-from .sequence import OperationSequence
+from ..model import Abort, BASENAME_PATTERN, BRANCH_PATTERN
+from ..sequence import OperationSequence
 
 
 MACRO_OPERATIONS = frozenset({"APPLY_PATCH", "APPLY_PATCH_CHECK", "MERGE", "RUN_ALL"})
@@ -241,4 +241,3 @@ def validate_repository_request(request: CliRequest) -> None:
             raise Abort("followup=true is only for applying a new ZIP: provide the ZIP "
                         "and start with APL. To resume an already applied patch, use "
                         "opSeq=CHK,STS without the ZIP or followup=true")
-

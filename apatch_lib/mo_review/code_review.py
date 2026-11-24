@@ -7,9 +7,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from .commit_scope import policy_fingerprint
-from .gitutil import current_branch, head, run, worktree_fingerprint
-from .model import Abort, safe_relative
+from ..commit_scope import policy_fingerprint
+from ..gitutil import current_branch, head, run, worktree_fingerprint
+from ..model import Abort, safe_relative
 from .review_artifacts import ReviewArtifacts
 from .review_context import build_review_context
 from .review_normalizer import normalize_report

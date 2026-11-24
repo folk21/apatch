@@ -31,7 +31,7 @@ if [ "$MODE" = "all" ] || [ "$MODE" = "lint" ]; then
     fi
 
     "$QUALITY_PYTHON" -B -m ruff check --no-cache \
-        apatch_lib/mo_core apatch_lib/action_applicability.py apatch_lib/audit_rules.py
+        apatch_lib/mo_core apatch_lib/action_applicability.py apatch_lib/mo_audit/audit_rules.py
     "$QUALITY_PYTHON" -B -m ruff format --check --no-cache \
         apatch_lib/mo_core/__init__.py apatch_lib/mo_core/contracts.py apatch_lib/mo_core/enums.py
 fi

@@ -12,6 +12,10 @@ from types import ModuleType
 # Legacy names map to the canonical prefixed packages without duplicate classes.
 _LEGACY_PACKAGES = {
     "configuration": "mo_configuration",
+    "cli_request": "mo_cli.cli_request",
+    "cli_inspection": "mo_cli.cli_inspection",
+    "help_reference": "mo_cli.help_reference",
+    "console": "mo_presentation.console",
     "core": "mo_core",
     "git": "mo_git",
     "handoff": "mo_handoff",
@@ -22,6 +26,17 @@ _LEGACY_PACKAGES = {
     "workflows": "mo_workflows",
     "mo_handoff_cache": "mo_handoff.cache",
     "mo_handoff_resume": "mo_handoff.resume",
+    "code_review": "mo_review.code_review",
+    "review_artifacts": "mo_review.review_artifacts",
+    "review_context": "mo_review.review_context",
+    "review_evidence_api": "mo_review.review_evidence_api",
+    "review_normalizer": "mo_review.review_normalizer",
+    "review_retention": "mo_review.review_retention",
+    "github": "mo_publication.github",
+    "branch_guard": "mo_publication.branch_guard",
+    "audit_collectors": "mo_audit.audit_collectors",
+    "audit_rules": "mo_audit.audit_rules",
+    "reconciliation": "mo_audit.reconciliation",
 }
 _HANDOFF_PACKAGES = {
     "cache": "mo_handoff.cache",

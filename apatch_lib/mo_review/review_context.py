@@ -5,7 +5,7 @@ import json
 import re
 from collections import Counter
 
-from .model import Abort
+from ..model import Abort
 
 
 SEVERITY = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}

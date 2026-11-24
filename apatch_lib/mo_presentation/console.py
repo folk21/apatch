@@ -27,4 +27,3 @@ def next_action_label(number: int, code: str) -> str:
 def check_result_label(value: str, *, stable: bool) -> str:
     """Use terminal-only amber for drift and green for verified stable bytes."""
     return terminal_style(value, "32" if stable else "33")
-

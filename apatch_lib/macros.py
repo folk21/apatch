@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from .cli_inspection import show_status_with_progress
-from .cli_request import CliRequest, MACRO_OPERATIONS
+from .mo_cli.api import show_status_with_progress
+from .mo_cli.api import CliRequest, MACRO_OPERATIONS
 from .handoff_selection import HandoffSelection, SelectionKind, resolve_handoffs
 from .model import Abort, Config
 from .planner import build_plan, execute_goal
@@ -136,4 +136,3 @@ def execute_macro(request: CliRequest, root: Path, config: Config,
         except (Exception, KeyboardInterrupt) as exc:
             print(f"WARNING: MACRO_FINAL_STS_UNAVAILABLE ({type(exc).__name__}): "
                   "the original macro outcome is unchanged")
-

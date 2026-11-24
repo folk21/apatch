@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .action_applicability import ActionFacts, action_unavailable
-from .console import next_action_label
 from .mo_core.enums import WorkflowPhase
 from .gitutil import worktree_fingerprint
 from .model import Abort, BRANCH_PATTERN
@@ -299,24 +298,13 @@ def inspect_patch(root: Path, config, record: dict, patch: str,
     return PatchStatus(patch, planned_branch, phase, current, facts, next_action, alternate, guidance)
 
 
-def display_recommendation(status: PatchStatus):
-    if status.next_action is None:
-        print("==> Next suggested: NONE — " + status.guidance)
-    else:
-        code, label = ACTION_NAMES[status.next_action]
-        print(f"==> {next_action_label(status.next_action, code)} — {label}")
-        print("    " + status.guidance)
-    if status.alternate_action is not None:
-        code, label = ACTION_NAMES[status.alternate_action]
-        print(f"Alternative: {status.alternate_action} [{code}] — {label}")
+def display_recommendation(status: PatchStatus) -> None:
+    """Preserve the former status presentation entry point."""
+    from .mo_presentation.status import display_recommendation as render
+    render(status)
 
 
-def display_status(status: PatchStatus):
-    print("\n==> PATCH STATUS 10 [STS]")
-    print(f"Patch: {status.patch}")
-    print(f"Planned branch: {status.planned_branch}")
-    print(f"Recorded phase: {status.phase}")
-    for name, fact in status.facts.items():
-        suffix = f" — {fact.detail}" if fact.detail else ""
-        print(f"{name}: {fact.value} [{fact.evidence}]{suffix}")
-    display_recommendation(status)
+def display_status(status: PatchStatus) -> None:
+    """Preserve the former status presentation entry point."""
+    from .mo_presentation.status import display_status as render
+    render(status)

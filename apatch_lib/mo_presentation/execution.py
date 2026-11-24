@@ -4,7 +4,7 @@ import logging
 import time
 
 from ..action_executor import execute_workflow_action
-from ..console import next_action_label, outcome_label
+from .console import next_action_label, outcome_label
 from ..mo_core.actions import ACTION_CODES, action_number
 from ..mo_core.contracts import ActionResult
 from ..mo_core.enums import OperationOutcome
@@ -244,4 +244,3 @@ class OperationPresentation:
         self._record_progress(number, started_at, elapsed, action_result.progress_outcome,
                               before_phase, before_branch, after_branch)
         return result
-
