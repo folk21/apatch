@@ -5,7 +5,8 @@ description: Terminal output and action-result rendering without owning state tr
 ---
 # Presentation Module Contract
 
-`mo_presentation` owns terminal coloring, workflow menu output, action-result
+`mo_presentation` owns approval context (`confirmation.py`), terminal coloring,
+workflow menu output, action-result
 formatting and status display. It does not own Git state, check authorization,
 archive extraction, durable records or remote publication.
 

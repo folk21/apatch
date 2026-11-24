@@ -19,13 +19,15 @@ description: Architecture boundaries, Git/ZIP safety, evidence pipeline, recover
 
 | Concern | Owner / boundary |
 | --- | --- |
+| User confirmation and terminal output | `mo_presentation/confirmation.py`, `mo_presentation/console.py` |
 | CLI grammar, navigation | `apatch.py`, `mo_cli/`, `application.py` |
 | ZIP schema, safe archive extraction, cache | `mo_handoff/` (internal `cache/` and `resume/`), `handoff_selection.py`, compatibility `patch.py` / `params_cache.py` |
 | Archive generation | `mo_handoff_producer/`, compatibility `artifact_packaging.py` and `artifact_preflight.py` |
 | Workflow phases, actions, modes, goals | `workflow.py`, `mo_workflows/`, `loose.py`, `force.py`, `planner.py`, `macros.py` |
+| Canonical checks, formatting, builds and check policy | `mo_verification/` (`checks.py`, `formatting.py`, `building.py`, `check_gates.py`) |
 | Feature sessions, scope verification | `mo_feature_sessions/` (identity, continuation, context and guarded scope) |
 | Configuration and validation | `mo_configuration/api.py`, `mo_configuration/loaders.py`, `mo_configuration/validators.py` |
-| Git and GitHub publication | `mo_git/`, `gitutil.py`, `mo_publication/github.py`, `mo_publication/branch_guard.py` |
+| Git and GitHub publication | `mo_git/` (`repository.py`, `inspection.py`, `commands.py`), `gitutil.py` compatibility facade, `mo_publication/github.py`, `mo_publication/branch_guard.py` |
 | Review and evidence | `mo_review/` (execution, normalization, capture, context, retrieval, retention) |
 | Audit, checkpoint, logs, progress | `mo_audit/`, `mo_storage/` (checkpoint, journal, progress, migration and runtime files) |
 

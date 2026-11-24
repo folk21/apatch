@@ -4,9 +4,9 @@ Only the configured boundary can be relaxed. The final merge remains protected
 whenever any earlier feature commit was made without canonical verification.
 """
 
-from .commit_scope import policy_fingerprint
-from .gitutil import current_branch, head, status_paths, worktree_fingerprint
-from .model import Abort
+from ..mo_feature_sessions.commit_scope import policy_fingerprint
+from ..gitutil import current_branch, head, status_paths, worktree_fingerprint
+from ..model import Abort
 
 BOUNDARIES = ("CMT", "PSH", "PR", "MRG")
 

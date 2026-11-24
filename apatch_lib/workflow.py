@@ -16,7 +16,8 @@ from .mo_workflows.api import ACTION_CODES, action_number
 from .mo_workflows.api import PHASE_VALUES, WorkflowPhase
 from .mo_workflows.api import ActionResult
 from .force import ForceActions
-from .formatting import run_formatters
+from .mo_verification.formatting import run_formatters
+from .mo_verification.checks import run_checks
 from .loose import LooseActions
 from .gitutil import (confirm, current_branch, head, is_clean, output, remote_head,
                       require_branch, require_clean, run, worktree_fingerprint)
@@ -408,31 +409,7 @@ class Workflow(OperationPresentation):
         return current
 
     def verify(self):
-        if self.phase not in {WorkflowPhase.PATCH_APPLIED, WorkflowPhase.VERIFIED}:
-            raise Abort("There is no uncommitted applied patch to verify")
-        self.record.pop("code_review", None)
-        require_branch(self.root, self.applied_branch)
-        self.assert_remote_unchanged()
-        if head(self.root) != self.record.get("before_patch_head"):
-            raise Abort("HEAD drifted after patch application")
-        self.assert_patch_identity()
-        before, _ = self.assert_expected_paths()
-        run(["git", "diff", "--check"], self.root)
-        if not self.config.checks:
-            raise Abort("No project verification commands configured")
-        for command in self.config.checks:
-            run(list(command), self.root, stream_output=True,
-                timeout=self.config.check_timeout_seconds,
-                idle_timeout=self.config.check_idle_timeout_seconds)
-        after, _ = self.assert_expected_paths()
-        if before != after:
-            self.record["phase"] = WorkflowPhase.PATCH_APPLIED.value
-            self.persist()
-            raise Abort("Tests changed repository files; verification invalidated")
-        self.record.update(phase="verified", verified_fingerprint=after)
-        self.persist()
-        print("Canonical checks passed for the current changed bytes. Review the diff before commit.")
-        return True
+        return run_checks(self)
 
     def format(self):
         """Prepare the applied worktree explicitly without authorizing verification."""

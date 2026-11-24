@@ -49,6 +49,7 @@ case "${1:-regular}" in
             tests.test_r1_module_ownership \
             tests.test_r2_cli_presentation \
             tests.test_r3_sessions_storage \
+            tests.test_r4_verification_git \
             tests.test_deploy_apatch.StandaloneDeployTests.test_failed_validation_preserves_current_release \
             tests.test_timeout_reporting.TimeoutReportingTests.test_clean_run_reports_zero_timeouts \
             tests.test_timeout_reporting.TimeoutReportingTests.test_isolated_runner_blocks_unmocked_gh_commands \

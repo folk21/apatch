@@ -45,7 +45,7 @@ class RunnerScriptsTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(args[:4], ["-B", "-m", "tests.timeout_runner", "-v"])
                 self.assertNotIn("discover", args)
-                self.assertEqual(len(args), 54)
+                self.assertEqual(len(args), 55)
                 self.assertEqual(len(args[4:]), len(set(args[4:])))
                 for required in (
                     "tests.test_spec_state",
@@ -78,6 +78,7 @@ class RunnerScriptsTests(unittest.TestCase):
                     "tests.test_r1_module_ownership",
                     "tests.test_r2_cli_presentation",
                     "tests.test_r3_sessions_storage",
+                    "tests.test_r4_verification_git",
                 ):
                     self.assertIn(required, args)
                 for deferred in (

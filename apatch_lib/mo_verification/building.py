@@ -1,10 +1,10 @@
 """Run an explicit build without granting canonical verification evidence."""
 
-from .commit_scope import policy_fingerprint
-from .mo_core.enums import WorkflowPhase
-from .mo_git.api import index_entries
-from .gitutil import current_branch, head, run, worktree_change_details, worktree_inventory
-from .model import Abort
+from ..mo_feature_sessions.commit_scope import policy_fingerprint
+from ..mo_core.enums import WorkflowPhase
+from ..mo_git.api import index_entries
+from ..gitutil import current_branch, head, run, worktree_change_details, worktree_inventory
+from ..model import Abort
 
 
 def run_build(workflow):

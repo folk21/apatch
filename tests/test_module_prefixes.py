@@ -13,7 +13,7 @@ from tempfile import TemporaryDirectory
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = (
     "cli", "configuration", "core", "feature_sessions", "git", "handoff", "presentation",
-    "publication", "review", "storage", "workflows", "audit",
+    "publication", "review", "storage", "workflows", "audit", "verification",
 )
 HANDOFF_PEERS = ("history", "producer")
 HANDOFF_INTERNAL = ("cache", "resume")

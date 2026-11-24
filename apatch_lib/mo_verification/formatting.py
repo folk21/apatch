@@ -1,11 +1,11 @@
 """Explicit, non-staging formatter operation before canonical verification."""
 
-from .commit_scope import policy_fingerprint
-from .mo_git.api import index_entries as _index_entries
-from .mo_core.enums import WorkflowPhase
-from .gitutil import (current_branch, head, run, worktree_change_details,
+from ..mo_feature_sessions.commit_scope import policy_fingerprint
+from ..mo_git.api import index_entries as _index_entries
+from ..mo_core.enums import WorkflowPhase
+from ..gitutil import (current_branch, head, run, worktree_change_details,
                       worktree_inventory)
-from .model import Abort
+from ..model import Abort
 
 
 def _print_changes(before, after):

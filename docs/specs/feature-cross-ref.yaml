@@ -56,7 +56,7 @@ features:
   spec_paths:
   - docs/specs/planned/subspec-04-operational-workflows.md
   owners:
-  - apatch_lib/building.py
+  - apatch_lib/mo_verification/building.py
   - apatch_lib/mo_configuration/loaders.py
   test_files:
   - tests/test_building.py

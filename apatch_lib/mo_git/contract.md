@@ -43,8 +43,8 @@ confirmation prompts, or lifecycle checkpoint updates.
 The Git domain may depend on the neutral `core` exception and standard
 library, never on `handoff`, `publication`, `review`, or `workflows`.
 
-The approval context and user prompts remain in `gitutil` until the runtime
-confirmation boundary is designed. Moving the subprocess transport does not
+The approval context and user prompts belong to `mo_presentation.confirmation`;
+`gitutil` retains identity-preserving compatibility exports. Moving the subprocess transport does not
 change command admission, user consent, retry decisions, or workflow safety.
 The transport cannot be treated as an authorization or policy interface.
 
