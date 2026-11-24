@@ -7,6 +7,8 @@ runType: ACCEPT
 ---
 # RE-07 Implementation Plan — Review Evidence Acceptance Tests (Advisory)
 
+**Archive note (2026-11-24):** The scoped SUB-006 task was accepted by developer direction. This original advisory plan is retained as historical implementation guidance; it does not authorize new changes or establish GitHub publication.
+
 **Task:** [RE-07](subspec.md#re-07) · **type:** `GEN_TESTS` · **area:** `E2E_TESTS` · **Proposed run type:** `ACCEPT` · **Dependency:** RE-06 documentation sign-off.
 
 ## Source inventory and implementation scope

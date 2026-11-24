@@ -34,16 +34,9 @@ plan**. Each scoped sub-specification owns its own task implementation plans.
 
 ## Active work
 
-| Specification | Task plans | Current focus |
-| --- | --- | --- |
-| [SUB-006 — Review Evidence Pipeline](active/review-evidence/subspec.md) | [Seven linked task plans](active/review-evidence/subspec.md#3-features-and-task-execution-boundaries) | [RE-05 — Retention, Export and Recovery](active/review-evidence/subspec.md#re-05), `READY_FOR_REVIEW`; no acceptance |
-
-An active workstream has a single normative `subspec.md` containing all
-features, tasks and acceptance oracles, and one `task_impl_plan_<nn>_*.md` per
-task. See the [SUB-006 task index](active/review-evidence/subspec.md#3-features-and-task-execution-boundaries).
-The final two tasks remain `RE-06 / UPD_DOCS` and `RE-07 / GEN_TESTS`.
-Feature catalog and ownership: [FEATURES](../FEATURES.md) and
-[feature cross-reference](feature-cross-ref.yaml).
+No workstream is currently selected. `STATE.json` uses `IDLE` with an empty
+workstream list until the developer explicitly selects the next scope.
+Acceptance of SUB-006 does not automatically authorize SUB-003 or SUB-004.
 
 ## Planned, unselected drafts
 
@@ -60,13 +53,14 @@ this SDD reorganization.
 
 ## Accepted and archived work
 
-Developer acceptance recorded on **2026-10-28**:
+Developer-accepted workstreams:
 
 | Completed specification | Archived advisory plan | Accepted scope |
 | --- | --- | --- |
 | [SUB-001 — Workflow Control](archive/subspecs/subspec-01-workflow-control.md) | [P0 plan](archive/subspecs/subspec-01-workflow-control-implementation-plan.md) | P0.1–P0.5b |
 | [SUB-002 — Execution History and Audit](archive/subspecs/subspec-02-state-history-audit.md) | [P1.1–P1.2 plan](archive/subspecs/subspec-02-state-history-audit-implementation-plan.md) | P1.1–P1.2 |
-| [SUB-005 — Architectural Simplification](archive/subspecs/subspec-05-architectural-simplification.md) | [PLAN-005](archive/subspecs/subspec-05-architectural-simplification-implementation-plan.md) | AS-01–AS-07 |
+| [SUB-005 — Architectural Simplification](archive/subspecs/subspec-05-architectural-simplification.md) | [PLAN-005](archive/subspecs/subspec-05-architectural-simplification-implementation-plan.md) | AS-01–AS-07; accepted 2026-10-28 |
+| [SUB-006 — Review Evidence Pipeline](archive/workstreams/review-evidence/subspec.md) | [RE-01–RE-07 plans](archive/workstreams/review-evidence/subspec.md#3-features-and-task-execution-boundaries) | RE-01–RE-07; accepted 2026-11-24; no Git publication claim |
 
 The original shared PLAN-001 was split by completed sub-spec ownership. P1.3,
 future Git-native format adapters, P2, and P3 remain proposals in the
@@ -85,9 +79,9 @@ python3 tools/specs/validate_features.py
 sh ./run_tests.sh
 ```
 
-The selected workstream is SUB-006 / RE-05 at `READY_FOR_REVIEW`; RE-06 and RE-07 are future draft tasks, not completed;
-its selected task is `active/review-evidence/subspec.md#re-05`.
-SUB-003 and SUB-004 are unselected drafts under `planned/`, not accepted.
-The checkpoint may advance at a developer-directed stage boundary.
+No workstream is selected (`mode: IDLE`). The latest accepted workstream is
+SUB-006, archived with all seven task plans. SUB-003 and SUB-004 remain
+unselected drafts. Future stage selection requires explicit developer direction.
+The separate repository-wide review has not yet been accepted or published.
 Product behavior is documented in [Usage](../USAGE.md) and
 [Architecture](../ARCHITECTURE.md).

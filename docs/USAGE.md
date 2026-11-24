@@ -297,16 +297,60 @@ reviewers:
     command: ["./scripts/review.sh", "{diff_file}"]
 ```
 
-For structured reports, raw stdout/stderr, normalized findings and bounded
-LLM context, additional `review_*` settings enable private capture under
-`.apatch/reviews/`. Capture and retention are opt-in. External disclosure
-requires `review_context_external_consent: true` before including messages or
-source diffs. Retention limits (`review_retention_max_runs`,
-`review_retention_max_bytes`, `review_retention_max_age_days`) protect bounded
-local storage when `review_retention_enabled: true`. Review evidence may
-contain secrets; never commit it or equate it with GitHub approval. Selective
-retrieval and metadata export are currently internal APIs, **not** general
-public CLI actions.
+### Review evidence configuration and privacy
+
+Optional project YAML settings (defaults shown; set booleans deliberately):
+
+```yaml
+review_artifacts_enabled: false
+review_artifact_max_bytes: 8388608
+review_context_max_bytes: 32768
+review_context_external_consent: false
+review_context_include_messages: false
+review_context_include_diff: false
+review_retention_enabled: false
+review_retention_max_runs: 100
+review_retention_max_bytes: 536870912
+review_retention_max_age_days: 30
+```
+
+- `review_artifacts_enabled` retains separate private reviewer stdout/stderr and
+  a SHA-256 manifest for `REV`. The per-provider combined stream limit
+  `review_artifact_max_bytes` accepts 65,536–67,108,864 bytes; exceeding it
+  fails review, retaining only bounded partial evidence. Capture is off by
+  default and does not change the legacy disabled-capture review path.
+- `review_context_max_bytes` accepts 4,096–65,536 bytes. Generated structured
+  summaries contain scanner identities, statuses and bounded finding references;
+  source excerpts and finding messages are excluded by default. Either
+  `review_context_include_messages` or `review_context_include_diff` requires
+  `review_context_external_consent: true`. An LLM reviewer using
+  `input_mode: structured-summary` also requires that explicit consent, enabled
+  capture, and prior valid structured scanner evidence.
+- Structured script review requires `report_format: apatch-json-v1`, enabled
+  capture and a nonempty `scanners` list. Each scanner declares an `id`, a
+  supported `format` (`ruff-json`, `bandit-json`, `semgrep-json` or
+  `sarif-2.1.0`) and `required: true|false`. A wrapper exit code of zero is
+  **not** proof that every required scanner succeeded or that no findings exist.
+- With `review_retention_enabled: true`, a private lock and verified evidence
+  inventory guard the next review allocation. The limits accept 1–10,000 runs,
+  1,048,576–10,737,418,240 bytes, and 1–3,650 days respectively. Only
+  verified terminal runs are eligible for pruning. Unknown, modified, linked,
+  incomplete or in-progress evidence is protected; insufficient safe capacity
+  blocks a new `REV` rather than removing unknown files. This is not a
+  background cleanup service or disk quota.
+
+The internal `prune_review_artifacts()` API defaults to a read-only preview;
+explicit deletion rechecks the exact saved member inventory and an interruption
+journal. If an interrupted cleanup or an unexpected member cannot be safely
+reconciled, maintenance stops for inspection. The internal
+`export_review_summary(..., consent=True)` API emits at most 8,192 bytes of
+verified metadata references, **not** raw output, source, prompts or finding
+messages; it does not transmit data. Selective finding retrieval is also an
+internal, bounded, read-only API, not a CLI action or a model tool-call route.
+See [Architecture](ARCHITECTURE.md#review-evidence-boundary) for ownership and
+failure guarantees. Review evidence may contain secrets: do not commit, copy
+into ZIP handoffs or disclose it without separate authorization. Neither
+local review evidence nor `STS` establishes live GitHub approval or CI status.
 
 ### Deferred canonical checks in LOOSE
 

@@ -91,7 +91,7 @@ class DocumentFrontmatterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             clone = Path(directory)
             self._copy_documents(clone)
-            target = clone / "docs/specs/active/review-evidence/task_impl_plan_05_retention_export_recovery.md"
+            target = clone / "docs/specs/archive/workstreams/review-evidence/task_impl_plan_05_retention_export_recovery.md"
             original = target.read_text(encoding="utf-8")
             for altered, pattern in (
                 (original.replace("area: CODE\n", "area: DOCS\n", 1), "routing disagrees"),
@@ -112,7 +112,7 @@ class DocumentFrontmatterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             clone = Path(directory)
             self._copy_documents(clone)
-            target = clone / "docs/specs/active/review-evidence/subspec.md"
+            target = clone / "docs/specs/archive/workstreams/review-evidence/subspec.md"
             original = target.read_text(encoding="utf-8")
             for altered, pattern in (
                 (original.replace("- **area:** `CODE`.", "- **area:** `DOCS`.", 1),

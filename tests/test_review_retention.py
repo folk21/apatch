@@ -213,6 +213,43 @@ class ReviewRetentionTests(unittest.TestCase):
         self.assertFalse(pending.exists())
         self.assertFalse(directory.exists())
 
+    def test_empty_pruning_directory_recovers_after_final_rmdir_failure(self):
+        directory = self.run_dir(1, provider=True)
+        os.utime(directory, (time.time() - 90 * 86400,) * 2)
+        pending_name = directory.name.replace("review-", "pruning-")
+        original_rmdir = os.rmdir
+        interrupted = [False]
+
+        def fail_once(name, *, dir_fd=None):
+            if name == pending_name and not interrupted[0]:
+                interrupted[0] = True
+                raise OSError("simulated failure after journal removal")
+            return original_rmdir(name, dir_fd=dir_fd)
+
+        with mock.patch("apatch_lib.review_retention.os.rmdir", side_effect=fail_once):
+            with self.assertRaisesRegex(Abort, "REVIEW_RETENTION_UNSAFE"):
+                prune_review_artifacts(self.root, dry_run=False)
+        pending = self.reviews / pending_name
+        self.assertTrue(pending.is_dir())
+        self.assertEqual(list(pending.iterdir()), [])
+        preview = prune_review_artifacts(self.root)
+        self.assertTrue(preview.dry_run)
+        self.assertTrue(pending.is_dir())
+        prune_review_artifacts(self.root, dry_run=False)
+        self.assertFalse(pending.exists())
+
+    def test_pruning_directory_without_journal_preserves_unknown_file(self):
+        pending = self.reviews / ("pruning-" + "f" * 24)
+        pending.mkdir(mode=0o700)
+        self.member(pending, "unrelated.txt", b"do-not-delete")
+        result = prune_review_artifacts(self.root, dry_run=False)
+        self.assertIn(pending.name, result.protected)
+        self.assertEqual((pending / "unrelated.txt").read_bytes(), b"do-not-delete")
+
+    def test_unavailable_project_root_raises_bounded_retention_error(self):
+        with self.assertRaisesRegex(Abort, "REVIEW_RETENTION_UNSAFE"):
+            prune_review_artifacts(self.root / "missing")
+
     def test_modified_pending_member_preserved_for_manual_recovery(self):
         directory = self.run_dir(1)
         os.utime(directory, (time.time() - 90 * 86400,) * 2)

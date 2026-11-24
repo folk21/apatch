@@ -115,10 +115,14 @@ class StatusTests(LocalGitFixture):
         self.assertEqual(self.state_path.read_bytes(), state_bytes)
 
     def test_status_does_not_claim_checks_passed_after_unverified_loose_commit(self):
-        self.assertEqual(self.invoke_loose("3\nYES\n").returncode, 0)
-        committed = self.invoke_loose("5\nYES\nYES\n")
-        self.assertEqual(committed.returncode, 0, committed.stderr)
-        result = self.invoke_cli("--loose", "op=STS")
+        stem = self.make_self_contained_zip()
+        applied = self.invoke_zip("--loose", "opSeq=APL,BRN", "skipApproves=true",
+                                  selection=stem)
+        self.assertEqual(applied.returncode, 0, applied.stderr + applied.stdout)
+        committed = self.invoke_zip("--loose", "op=CMT", "disabledWithoutChk=MRG",
+                                    "skipApproves=true")
+        self.assertEqual(committed.returncode, 0, committed.stderr + committed.stdout)
+        result = self.invoke_zip("--loose", "op=STS")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Recorded phase: committed", result.stdout)
         self.assertIn("Checks passed: UNKNOWN [UNKNOWN]", result.stdout)

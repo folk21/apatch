@@ -17,7 +17,7 @@ class FeatureTraceabilityTests(unittest.TestCase):
         by_id = {row["feature_id"]: row for row in entries}
         self.assertEqual(len(by_id), len(entries))
         self.assertEqual(by_id["REVIEW.RETENTION_EXPORT"]["stages"], ["RE-05"])
-        self.assertIn("docs/specs/active/review-evidence/subspec.md",
+        self.assertIn("docs/specs/archive/workstreams/review-evidence/subspec.md",
                       by_id["REVIEW.RETENTION_EXPORT"]["spec_paths"])
         self.assertEqual(by_id["REVIEW.RETENTION_EXPORT"]["implementation_status"], "partial")
 

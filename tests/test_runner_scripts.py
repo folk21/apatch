@@ -45,36 +45,50 @@ class RunnerScriptsTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(args[:4], ["-B", "-m", "tests.timeout_runner", "-v"])
                 self.assertNotIn("discover", args)
-                self.assertIn("tests.test_runner_scripts", args)
-                self.assertIn(
-                    "tests.test_context.ContextTests."
-                    "test_new_base_is_local_candidate_not_unverified_remote_authorization",
-                    args)
-                self.assertIn(
+                self.assertEqual(len(args), 50)
+                self.assertEqual(len(args[4:]), len(set(args[4:])))
+                for required in (
+                    "tests.test_spec_state",
+                    "tests.test_document_frontmatter",
+                    "tests.test_feature_traceability",
+                    "tests.test_review_normalizer",
+                    "tests.test_review_context",
+                    "tests.test_review_evidence_api",
+                    "tests.test_review_retention",
+                    "tests.test_code_review.CodeReviewTests."
+                    "test_required_review_blocks_commit_until_passed",
                     "tests.test_session_continuation.SessionContinuationTests."
                     "test_modified_collision_blocks_before_history_or_source_writes",
-                    args)
-                self.assertIn(
-                    "tests.test_macros.LocalMacroTests."
-                    "test_apply_patch_check_verifies_without_committing", args)
-                self.assertIn(
-                    "tests.test_code_review.CodeReviewTests."
-                    "test_required_review_blocks_commit_until_passed", args)
-                self.assertIn(
+                    "tests.test_guarded_commit.GuardedCommitTests."
+                    "test_unknown_staged_path_blocks_even_with_skip_approves",
+                    "tests.test_check_gate.CheckBoundaryTests."
+                    "test_default_blocks_cmt_and_chk_unblocks",
+                    "tests.test_check_gate.CheckBoundaryTests."
+                    "test_merge_gate_rechecks_final_head_and_policy_before_github",
+                    "tests.test_check_gate.CheckBoundaryTests."
+                    "test_unchecked_commit_on_base_is_rejected_even_when_relaxed",
+                    "tests.test_handoffs.HandoffsTests."
+                    "test_clean_committed_multi_zip_branch_accepts_explicit_followup",
+                    "tests.test_safety.SafetyTests."
+                    "test_canonical_check_timeout_stops_batch_and_preserves_commit",
                     "tests.test_artifact_packaging.ArtifactPackagingTests."
-                    "test_failed_check_never_produces_zip", args)
-                self.assertNotIn("tests.test_macros", args)
-                self.assertNotIn("tests.test_code_review", args)
-                self.assertIn(
-                    "tests.test_handoffs.HandoffsTests.test_self_contained_lifecycle_loose",
-                    args)
-                self.assertIn(
-                    "tests.test_branch_reassignment.UpfrontZipBranchSelectionTests", args)
-                self.assertIn("tests.test_building", args)
-                self.assertIn("tests.test_check_gate", args)
-                self.assertNotIn("tests.test_publication_goals", args)
-                self.assertIn("tests.test_document_frontmatter", args)
-                self.assertLess(len(args), 94)
+                    "test_failed_check_never_produces_zip",
+                    "tests.test_runner_scripts",
+                ):
+                    self.assertIn(required, args)
+                for deferred in (
+                    "tests.test_review_acceptance",
+                    "tests.test_review_acceptance.ReviewAdmissionAcceptanceTests."
+                    "test_rev_before_chk_does_not_execute_or_allocate_evidence",
+                    "tests.test_building.BuildActionTests."
+                    "test_build_only_runs_build_and_does_not_verify",
+                    "tests.test_building",
+                    "tests.test_check_gate",
+                    "tests.test_branch_reassignment.UpfrontZipBranchSelectionTests",
+                    "tests.test_remote_macros.RemoteMacroTests."
+                    "test_run_all_new_zip_completes_and_repeated_call_does_not_mutate",
+                ):
+                    self.assertNotIn(deferred, args)
 
     def test_rare_launcher_and_full_alias_run_all_tests(self):
         for script, options in (("run_rare_checks.sh", ()), ("run_tests.sh", ("full",))):
@@ -82,6 +96,34 @@ class RunnerScriptsTests(unittest.TestCase):
                 result, args = self.invoke(script, *options)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(args, ["-B", "-m", "tests.timeout_runner", "--full"])
+
+    def test_full_discovery_retains_deferred_safety_and_acceptance_cases(self):
+        """Moving slow cases out of CHK must not remove them from full verification."""
+        suite = unittest.defaultTestLoader.discover(
+            start_dir=str(SOURCE_ROOT / "tests"), pattern="test_*.py",
+            top_level_dir=str(SOURCE_ROOT))
+
+        def case_ids(group):
+            for item in group:
+                if isinstance(item, unittest.TestSuite):
+                    yield from case_ids(item)
+                else:
+                    yield item.id()
+
+        ids = set(case_ids(suite))
+        for required in (
+            "tests.test_review_acceptance.ReviewEvidenceAcceptanceTests."
+            "test_mutated_capture_rejected_by_both_retrieval_and_export",
+            "tests.test_remote_macros.RemoteMacroTests."
+            "test_run_all_new_zip_completes_and_repeated_call_does_not_mutate",
+            "tests.test_building.BuildActionTests."
+            "test_build_only_runs_build_and_does_not_verify",
+            "tests.test_branch_reassignment.UpfrontZipBranchSelectionTests."
+            "test_existing_branch_followup_overrides_different_embedded_branch",
+            "tests.test_publication_goals.PublicationGoalTests."
+            "test_stale_pr_head_blocks_merge_before_mutation",
+        ):
+            self.assertIn(required, ids)
 
     def test_invalid_mode_fails_without_launching_checks(self):
         result, args = self.invoke("run_tests.sh", "unknown")

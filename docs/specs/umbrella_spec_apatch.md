@@ -9,12 +9,13 @@ description: Project-wide apatch workflow goals, compatibility requirements, sec
 
 **Owner:** `apatch` CLI and target-repository `.apatch/` integration.
 
-**Current active sub-specification:** [SUB-006 — Review Evidence Pipeline](active/review-evidence/subspec.md).
+**Current active sub-specification:** None; `STATE.json` is `IDLE` until a developer selects a successor.
 **Unselected drafts:** [SUB-003 — Feature Sessions](planned/subspec-03-feature-session-planning.md) and
 [SUB-004 — Operational Workflows](planned/subspec-04-operational-workflows.md).
 **Accepted archives:** [SUB-001 — Workflow Control](archive/subspecs/subspec-01-workflow-control.md),
 [SUB-002 — Execution History and Audit](archive/subspecs/subspec-02-state-history-audit.md),
-and [SUB-005 — Architectural Simplification](archive/subspecs/subspec-05-architectural-simplification.md).
+[SUB-005 — Architectural Simplification](archive/subspecs/subspec-05-architectural-simplification.md),
+and [SUB-006 — Review Evidence Pipeline](archive/workstreams/review-evidence/subspec.md).
 Detailed implementation plans belong to the corresponding sub-specifications and tasks, not to this umbrella.
 
 ## 1. Purpose

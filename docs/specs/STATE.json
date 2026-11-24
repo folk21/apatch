@@ -1,14 +1,6 @@
 {
   "schemaVersion": 1,
-  "mode": "SINGLE",
-  "selectedWorkstreamId": "review-evidence",
-  "workstreams": [
-    {
-      "id": "review-evidence",
-      "specPath": "docs/specs/active/review-evidence/subspec.md",
-      "stageId": "RE-05",
-      "phase": "READY_FOR_REVIEW"
-    }
-  ],
-  "selectedTaskId": "RE-05"
+  "mode": "IDLE",
+  "selectedWorkstreamId": null,
+  "workstreams": []
 }

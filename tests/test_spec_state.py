@@ -1,6 +1,7 @@
 """SDD checkpoint validation and developer-approval safety contracts."""
 
 import copy
+import shutil
 import json
 import re
 import subprocess
@@ -14,14 +15,34 @@ from tools.specs.validate_state import ROOT, STATE_PATH, validate_state
 
 class SpecStateTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.original = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+        self.current = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+        self.original = {
+            "schemaVersion": 1,
+            "mode": "SINGLE",
+            "selectedWorkstreamId": "review-evidence",
+            "workstreams": [{
+                "id": "review-evidence",
+                "specPath": "docs/specs/active/review-evidence/subspec.md",
+                "stageId": "RE-05",
+                "phase": "READY_FOR_REVIEW",
+            }],
+            "selectedTaskId": "RE-05",
+        }
+        fixture = tempfile.TemporaryDirectory()
+        self.addCleanup(fixture.cleanup)
+        self.legacy_root = Path(fixture.name)
+        source = ROOT / "docs/specs/archive/workstreams/review-evidence"
+        shutil.copytree(source, self.legacy_root / "docs/specs/active/review-evidence")
+        features = self.legacy_root / "docs/FEATURES.md"
+        features.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(ROOT / "docs/FEATURES.md", features)
 
     def verify_payload(self, payload: dict) -> dict:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "STATE.json"
             before = (json.dumps(payload) + "\n").encode("utf-8")
             path.write_bytes(before)
-            result = validate_state(path, ROOT)
+            result = validate_state(path, self.legacy_root)
             self.assertEqual(path.read_bytes(), before)
             return result
 
@@ -45,10 +66,11 @@ class SpecStateTests(unittest.TestCase):
     def test_current_state_is_valid_read_only_and_focus_is_explicit(self) -> None:
         before = STATE_PATH.read_bytes()
         result = validate_state()
-        self.assertEqual(result["selectedWorkstreamId"], "review-evidence")
-        self.assertEqual(self.record(result, "review-evidence")["stageId"], "RE-05")
-        self.assertEqual({item["id"] for item in result["workstreams"]}, {"review-evidence"})
-        self.assertEqual(result["selectedTaskId"], "RE-05")
+        self.assertEqual(result, self.current)
+        self.assertEqual(result["mode"], "IDLE")
+        self.assertIsNone(result["selectedWorkstreamId"])
+        self.assertEqual(result["workstreams"], [])
+        self.assertNotIn("selectedTaskId", result)
         self.assertEqual(STATE_PATH.read_bytes(), before)
 
     def test_cli_reports_selected_focus_without_mutating_source(self) -> None:
@@ -58,8 +80,24 @@ class SpecStateTests(unittest.TestCase):
             cwd=ROOT, text=True, capture_output=True, check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("SDD STATE VALID: review-evidence", result.stdout)
+        self.assertIn("SDD STATE VALID: IDLE", result.stdout)
         self.assertEqual(STATE_PATH.read_bytes(), before)
+
+    def test_idle_rejects_stale_or_fabricated_selection(self) -> None:
+        for change in (
+            lambda value: value.update(selectedWorkstreamId="review-evidence"),
+            lambda value: value.update(workstreams=self.original["workstreams"]),
+            lambda value: value.update(selectedTaskId="RE-07"),
+        ):
+            with self.subTest(change=change):
+                payload = copy.deepcopy(self.current)
+                change(payload)
+                self.assert_invalid(payload, "IDLE requires")
+
+    def test_legacy_single_validates_when_workstream_is_active(self) -> None:
+        result = self.verify_payload(copy.deepcopy(self.original))
+        self.assertEqual(result["selectedTaskId"], "RE-05")
+        self.assertEqual(result["mode"], "SINGLE")
 
     def test_rejects_unknown_and_missing_root_fields(self) -> None:
         for change in (lambda value: value.update(secret="unexpected"),
@@ -112,7 +150,7 @@ class SpecStateTests(unittest.TestCase):
 
     def test_spec_lifecycle_has_flat_active_tasks_and_planned_drafts(self) -> None:
         specs = ROOT / "docs/specs"
-        active = specs / "active/review-evidence"
+        active = specs / "archive/workstreams/review-evidence"
         planned = specs / "planned"
         archived = specs / "archive/subspecs"
         self.assertFalse((specs / "plans").exists())
@@ -129,6 +167,7 @@ class SpecStateTests(unittest.TestCase):
                 self.assertTrue((planned / f"{stem}-implementation-plan.md").is_file())
                 self.assertFalse((specs / "active/subspecs" / f"{stem}.md").exists())
         self.assertTrue((active / "subspec.md").is_file())
+        self.assertFalse((specs / "active/review-evidence/subspec.md").exists())
         self.assertFalse((active / "impl_plan.md").exists())
         self.assertEqual(list(active.glob("task_[0-9][0-9]_*.md")), [])
         plans = sorted(active.glob("task_impl_plan_[0-9][0-9]_*.md"))
@@ -167,13 +206,13 @@ class SpecStateTests(unittest.TestCase):
         self.assertEqual(self.verify_payload(data)["selectedWorkstreamId"], "review-evidence")
 
     def test_invalid_task_type_area_or_plan_blocks_checkpoint(self) -> None:
-        spec = ROOT / "docs/specs/active/review-evidence/subspec.md"
+        spec = ROOT / "docs/specs/archive/workstreams/review-evidence/subspec.md"
         source = spec.read_text(encoding="utf-8")
         with tempfile.TemporaryDirectory() as directory:
             temporary_root = Path(directory)
             target = temporary_root / "docs/specs/active/review-evidence/subspec.md"
             target.parent.mkdir(parents=True)
-            for path in (ROOT / "docs/specs/active/review-evidence").glob("task_impl_plan_*.md"):
+            for path in (ROOT / "docs/specs/archive/workstreams/review-evidence").glob("task_impl_plan_*.md"):
                 (target.parent / path.name).write_bytes(path.read_bytes())
             features = temporary_root / "docs/FEATURES.md"
             features.parent.mkdir(exist_ok=True, parents=True)

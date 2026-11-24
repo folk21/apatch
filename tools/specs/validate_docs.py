@@ -147,8 +147,11 @@ def validate_documents(root: Path = ROOT) -> dict[str, dict]:
         info, _ = parse_header(file)
         if name.startswith("docs/specs/") and name not in {"docs/specs/AGENTS.md", "docs/specs/README.md"}:
             if TASK_PLAN_NAME.fullmatch(file.name):
-                if file.parent != root / "docs/specs/active/review-evidence":
-                    raise ValueError(f"Unexpected active task-plan location: {name}")
+                if file.parent not in {
+                    root / "docs/specs/active/review-evidence",
+                    root / "docs/specs/archive/workstreams/review-evidence",
+                }:
+                    raise ValueError(f"Unexpected task-plan location: {name}")
             elif file.name.endswith("-implementation-plan.md"):
                 if info["type"] != "Implementation Guide":
                     raise ValueError(f"Invalid standalone implementation-plan type: {name}")
@@ -156,17 +159,22 @@ def validate_documents(root: Path = ROOT) -> dict[str, dict]:
                 raise ValueError(f"Invalid SDD specification type: {name}")
         metadata[name] = info
 
-    sub = root / "docs/specs/active/review-evidence/subspec.md"
-    if sub.is_symlink() or not sub.is_file():
-        raise ValueError("Missing or unsafe active normative sub-spec")
+    locations = (
+        root / "docs/specs/active/review-evidence/subspec.md",
+        root / "docs/specs/archive/workstreams/review-evidence/subspec.md",
+    )
+    available = [path for path in locations if path.exists() or path.is_symlink()]
+    if len(available) != 1 or available[0].is_symlink() or not available[0].is_file():
+        raise ValueError("Expected one safe normative review-evidence sub-spec")
+    sub = available[0]
     normative = sub.read_text(encoding="utf-8")
     sections = _normative_task_sections(normative)
     table = _normative_table(normative)
     expected = {f"RE-{number:02d}" for number in range(1, 8)}
     if set(sections) != expected or set(table) != expected:
-        raise ValueError("Active task or normative table coverage is incomplete")
+        raise ValueError("Review-evidence task or normative table coverage is incomplete")
     known = _features(root)
-    plan_dir = "docs/specs/active/review-evidence/"
+    plan_dir = sub.parent.relative_to(root).as_posix() + "/"
     seen_plans: set[str] = set()
     for task_id, section in sections.items():
         task_type = _one(section, "type", task_id).strip("`")
@@ -202,7 +210,7 @@ def validate_documents(root: Path = ROOT) -> dict[str, dict]:
     actual_plans = {name for name in metadata if name.startswith(plan_dir)
                     and TASK_PLAN_NAME.fullmatch(Path(name).name)}
     if actual_plans != seen_plans:
-        raise ValueError("Unlinked or extra active task plan")
+        raise ValueError("Unlinked or extra review-evidence task plan")
     return metadata
 
 
