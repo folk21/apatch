@@ -8,12 +8,12 @@ import unittest
 from pathlib import Path
 
 from apatch_lib import model
-from apatch_lib.core.api import Abort
-from apatch_lib.core.contracts import (ActionResult, GitHubPr, GitHubPrIdentity)
-from apatch_lib.handoff import api as handoff
-from apatch_lib.handoff import constants, models as handoff_models, parsing
-from apatch_lib.publication import api as publication
-from apatch_lib.publication import errors as publication_errors, models as publication_models
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_core.contracts import (ActionResult, GitHubPr, GitHubPrIdentity)
+from apatch_lib.mo_handoff import api as handoff
+from apatch_lib.mo_handoff import constants, models as handoff_models, parsing
+from apatch_lib.mo_publication import api as publication
+from apatch_lib.mo_publication import errors as publication_errors, models as publication_models
 
 
 class DomainModelBoundaryTests(unittest.TestCase):
@@ -37,8 +37,8 @@ class DomainModelBoundaryTests(unittest.TestCase):
         self.assertIs(publication_errors.RemoteOutcomeUnknown, publication.RemoteOutcomeUnknown)
         self.assertIs(GitHubPr, publication.GitHubPr)
         self.assertIs(GitHubPrIdentity, publication.GitHubPrIdentity)
-        self.assertEqual(publication.GitHubPr.__module__, "apatch_lib.publication.models")
-        self.assertEqual(publication.GitHubPrIdentity.__module__, "apatch_lib.publication.models")
+        self.assertEqual(publication.GitHubPr.__module__, "apatch_lib.mo_publication.models")
+        self.assertEqual(publication.GitHubPrIdentity.__module__, "apatch_lib.mo_publication.models")
         self.assertTrue(issubclass(model.RemoteOutcomeUnknown, Abort))
         self.assertTrue(issubclass(model.RemoteOutcomeUnknown, RuntimeError))
         self.assertEqual(ActionResult.failed(
@@ -49,7 +49,7 @@ class DomainModelBoundaryTests(unittest.TestCase):
         ).outcome.value, "ERROR")
 
     def test_handoff_is_immutable_and_has_unchanged_subject(self):
-        self.assertEqual(handoff_models.Handoff.__module__, "apatch_lib.handoff.models")
+        self.assertEqual(handoff_models.Handoff.__module__, "apatch_lib.mo_handoff.models")
         self.assertTrue(dataclasses.is_dataclass(handoff.Handoff))
         self.assertTrue(handoff.Handoff.__dataclass_params__.frozen)
         value = handoff.Handoff("service", "feature/new", "patch.zip",
@@ -131,15 +131,15 @@ class DomainModelBoundaryTests(unittest.TestCase):
                                      for node in tree.body))
 
     def test_core_contracts_do_not_import_legacy_model_module(self):
-        from apatch_lib.core import contracts
+        from apatch_lib.mo_core import contracts
         tree = ast.parse(Path(contracts.__file__).read_text(encoding="utf-8"))
         self.assertFalse(any(isinstance(node, ast.ImportFrom) and node.module == "model"
                              for node in tree.body))
         self.assertIs(contracts.RemoteOutcomeUnknown, publication.RemoteOutcomeUnknown)
 
     def test_models_have_no_io_and_parsing_is_separate(self):
-        self.assertEqual(parsing.load_handoff.__module__, "apatch_lib.handoff.parsing")
-        self.assertEqual(parsing.safe_relative.__module__, "apatch_lib.handoff.parsing")
+        self.assertEqual(parsing.load_handoff.__module__, "apatch_lib.mo_handoff.parsing")
+        self.assertEqual(parsing.safe_relative.__module__, "apatch_lib.mo_handoff.parsing")
         self.assertEqual(constants.HANDOFF_FIELDS,
                          frozenset({"schema_version", "repository", "feature_branch",
                                     "patch_file", "commit_message", "base_commit",

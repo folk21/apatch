@@ -12,9 +12,9 @@ from .action_applicability import (ActionFacts, action_unavailable,
 from .branch_patch import BranchPatchActions
 from .console import outcome_label, terminal_style
 from .code_review import run_review, require_fresh_review
-from .workflows.api import ACTION_CODES, action_number
-from .workflows.api import PHASE_VALUES, WorkflowPhase
-from .workflows.api import ActionResult
+from .mo_workflows.api import ACTION_CODES, action_number
+from .mo_workflows.api import PHASE_VALUES, WorkflowPhase
+from .mo_workflows.api import ActionResult
 from .force import ForceActions
 from .formatting import run_formatters
 from .loose import LooseActions
@@ -22,16 +22,16 @@ from .gitutil import (confirm, current_branch, head, is_clean, output, remote_he
                       require_branch, require_clean, run, worktree_fingerprint)
 from .model import Abort, BRANCH_PATTERN
 from .operation_events import OperationRun, RunOutcome, journal_outcome_for_result
-from .handoff.api import inspect
-from .handoff.history.journal import locked_history
-from .presentation.execution import OperationPresentation
+from .mo_handoff.api import inspect
+from .mo_handoff_history.journal import locked_history
+from .mo_presentation.execution import OperationPresentation
 from .progress import utc_now
 from .session import (attach_applied_workflow, create_feature_session,
                       remote_identity)
 from .session_continuation import require_session_continuation
 from .state import finish_run, save, start_run
 from .gitutil import clear_confirmation_declined, confirmation_was_declined
-from .handoff.api import handoff_signature, verify_applied_zip
+from .mo_handoff.api import handoff_signature, verify_applied_zip
 
 
 LOGGER = logging.getLogger("apatch.workflow")

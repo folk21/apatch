@@ -6,8 +6,8 @@ import logging
 import os
 from pathlib import Path
 
-from .core.api import Abort
-from .git.commands import (
+from .mo_core.api import Abort
+from .mo_git.commands import (
     LOGGER, REDACT_FLAGS, FAILURE_TAIL_LINES, FAILURE_TAIL_LINE_CHARS,
     CHECK_SUMMARY_LINES, CHECK_SUMMARY_CHARS, ANSI_ESCAPE,
     COMMAND_DESCRIPTIONS, command_description, display_command,
@@ -155,6 +155,6 @@ def confirmation_was_declined():
     return _CONFIRMATION_DECLINED.get()
 
 # Compatibility exports retained until all internal callers use git.api.
-from .git.models import WorktreeEntry
-from .git.inspection import worktree_inventory, worktree_change_details
+from .mo_git.models import WorktreeEntry
+from .mo_git.inspection import worktree_inventory, worktree_change_details
 

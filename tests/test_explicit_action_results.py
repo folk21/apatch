@@ -6,11 +6,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from apatch_lib.core.contracts import ActionResult
-from apatch_lib.core.enums import OperationOutcome
+from apatch_lib.mo_core.contracts import ActionResult
+from apatch_lib.mo_core.enums import OperationOutcome
 from apatch_lib.model import Abort, RemoteOutcomeUnknown
 from apatch_lib.operation_events import RunOutcome, journal_outcome_for_result
-from apatch_lib.presentation.execution import OperationPresentation
+from apatch_lib.mo_presentation.execution import OperationPresentation
 
 
 class ActionResultTests(unittest.TestCase):
@@ -127,7 +127,7 @@ class _PresentationHarness(OperationPresentation):
 class PresentationResultTests(unittest.TestCase):
     def _perform(self, evidence: object, *, declined: bool = False) -> tuple[str, list[str]]:
         from apatch_lib import action_executor
-        from apatch_lib.presentation import execution
+        from apatch_lib.mo_presentation import execution
 
         harness = _PresentationHarness(evidence)
         with patch.object(execution, "current_branch", return_value="feature/test"), \
@@ -149,7 +149,7 @@ class PresentationResultTests(unittest.TestCase):
         self.assertEqual((outcome, progress), ("NO_OP", ["NO_OP"]))
 
     def test_unconfirmed_git_change_fails_closed_and_records_failure(self) -> None:
-        from apatch_lib.presentation import execution
+        from apatch_lib.mo_presentation import execution
 
         harness = _PresentationHarness(None)
         with patch.object(execution, "current_branch", return_value="feature/test"), \
@@ -162,7 +162,7 @@ class PresentationResultTests(unittest.TestCase):
         self.assertEqual(harness.progress_results, ["FAILED"])
 
     def test_confirmed_partial_effect_keeps_progress_as_no_op(self) -> None:
-        from apatch_lib.presentation import execution
+        from apatch_lib.mo_presentation import execution
 
         harness = _PresentationHarness(ActionResult.partial("Local base synchronized"))
         with patch.object(execution, "current_branch", side_effect=["feature/test", "main"]), \
@@ -179,7 +179,7 @@ class PresentationResultTests(unittest.TestCase):
         self.assertEqual((outcome, progress), ("CANCELLED", ["CANCELLED"]))
 
     def test_previously_verified_sync_preserves_legacy_progress_mapping(self) -> None:
-        from apatch_lib.presentation import execution
+        from apatch_lib.mo_presentation import execution
 
         harness = _PresentationHarness(ActionResult.already_satisfied("PR verified"))
         with patch.object(execution, "current_branch", return_value="main"), \

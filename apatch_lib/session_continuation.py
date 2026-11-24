@@ -11,8 +11,8 @@ from pathlib import Path
 from .audit_collectors import local_git, remote_snapshot, safe_text
 from .gitutil import status_paths
 from .model import Abort, Config, Handoff
-from .handoff.api import Archive, inspect
-from .handoff.history.journal import MAX_HISTORY_BYTES, parse_history
+from .mo_handoff.api import Archive, inspect
+from .mo_handoff_history.journal import MAX_HISTORY_BYTES, parse_history
 from .session import SESSION_ID, remote_identity
 from .state import read_state_snapshot
 from .status import workflow_key

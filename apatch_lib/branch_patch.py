@@ -6,11 +6,11 @@ from .branch_guard import assert_no_unfinished_feature_branches
 from .gitutil import (branch_exists, confirm, current_branch, head, remote_head,
                       require_branch, require_clean, run, skip_approvals_enabled,
                       worktree_fingerprint)
-from .core.enums import WorkflowPhase
+from .mo_core.enums import WorkflowPhase
 from .model import Abort, safe_relative
-from .handoff.history.registry import assert_patch_order, persist_registry
-from .handoff.history.journal import locked_history
-from .handoff.api import (ArchiveOperations, PatchLedgerOperations,
+from .mo_handoff_history.registry import assert_patch_order, persist_registry
+from .mo_handoff_history.journal import locked_history
+from .mo_handoff.api import (ArchiveOperations, PatchLedgerOperations,
                           ProjectPatchLedger, ZipArchiveOperations)
 
 

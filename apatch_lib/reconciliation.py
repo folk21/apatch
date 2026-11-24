@@ -11,7 +11,7 @@ from .audit_rules import (
     parse_applied_entries, parse_created_entries, reconcile_patch_history,
     reconcile_remote_evidence, reconcile_workflow_records, safe_label as _label,
 )
-from .core.contracts import GitHubPr, WorkflowRecord
+from .mo_core.contracts import GitHubPr, WorkflowRecord
 from .model import Abort, Config
 
 

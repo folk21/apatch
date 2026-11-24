@@ -9,10 +9,10 @@ from unittest.mock import Mock, patch
 
 from apatch_lib import application, zip_resume
 from apatch_lib.cli_request import parse_request
-from apatch_lib.handoff.api import (AppliedZipEvidence, AppliedZipVerifier,
+from apatch_lib.mo_handoff.api import (AppliedZipEvidence, AppliedZipVerifier,
                                    ProjectAppliedZipVerifier)
-from apatch_lib.handoff.models import Handoff
-from apatch_lib.handoff.resume import models, verification
+from apatch_lib.mo_handoff.models import Handoff
+from apatch_lib.mo_handoff.resume import models, verification
 from apatch_lib.handoff_selection import HandoffSelection, SelectionKind
 
 
@@ -31,12 +31,12 @@ class AppliedZipVerifierBoundaryTests(unittest.TestCase):
     def test_cold_import_order_and_identity_preserving_legacy_shim(self):
         commands = (
             "from apatch_lib.model import Handoff; "
-            "from apatch_lib.handoff.api import AppliedZipVerifier, ProjectAppliedZipVerifier",
-            "from apatch_lib.handoff.api import ProjectAppliedZipVerifier; "
+            "from apatch_lib.mo_handoff.api import AppliedZipVerifier, ProjectAppliedZipVerifier",
+            "from apatch_lib.mo_handoff.api import ProjectAppliedZipVerifier; "
             "from apatch_lib.zip_resume import verify_applied_zip",
-            "from apatch_lib.handoff.resume.verification import verify_applied_zip; "
+            "from apatch_lib.mo_handoff.resume.verification import verify_applied_zip; "
             "from apatch_lib.application import execute_request",
-            "from apatch_lib.handoff.resume.service import ProjectAppliedZipVerifier; "
+            "from apatch_lib.mo_handoff.resume.service import ProjectAppliedZipVerifier; "
             "from apatch_lib.model import Handoff",
         )
         for script in commands:

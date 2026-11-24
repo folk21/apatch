@@ -5,7 +5,7 @@ from pathlib import Path
 
 from .local_ignore import ensure_runtime_ignored
 from .logging_setup import LOG_FILENAME
-from .handoff.history.journal import locked_history
+from .mo_handoff_history.journal import locked_history
 from .state import locked_state, save
 
 

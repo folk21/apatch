@@ -72,7 +72,7 @@ return replace(global_config, base=effective, base_branch_source=source)
 
 | Path | Ordered work |
 | --- | --- |
-| `apatch_lib/core/actions.py` | Retain the existing tuple and numeric identifiers exactly. Do not assign numbers to macros or alter `action_number()` behavior for old input. |
+| `apatch_lib/mo_core/actions.py` | Retain the existing tuple and numeric identifiers exactly. Do not assign numbers to macros or alter `action_number()` behavior for old input. |
 | `apatch.py` | Extend top-level `op=` parsing with a separate set `APPLY_PATCH`, `APPLY_PATCH_CHECK`, `MERGE`, `RUN_ALL`; route macros separately from exact `opSeq`. Reject combination with `opSeq` or `handoffSeq` until explicitly specified. Preserve the old read-only `STS`/`AUD` fast paths. |
 | `apatch_lib/macros.py` (**new**) | Represent a plan as immutable goal, verified context, selected patch identity, step list and evidence. Implement local `APPLY_PATCH`/`APPLY_PATCH_CHECK` only in LOOSE. Recompute state after each step; use existing workflow dispatcher for each atomic action and its journal, but never replay a positively satisfied `APL`/`BRN`. Limit ambiguous contexts to a structured stop. |
 | `apatch_lib/sequence.py`, `apatch_lib/workflow.py` | Reuse operation-event recording and result taxonomy without silently changing deterministic `opSeq` behavior. A genuine `NO_OP` cannot become success without fresh proof. |
@@ -116,7 +116,7 @@ def execute_macro(name, selected_zip):
 | `apatch_lib/model.py` | Extend per-project YAML with optional `prepare_checks` list of validated argv commands and `check_worktree_policy` enum `stop|recheck_once`. Use `stop` as default; reject booleans, integers, empty commands and unsupported keys. |
 | `apatch_lib/gitutil.py` | Add a bounded per-path fingerprint inventory: path, status/index OID/mode, file bytes, execute bit and symlink identity. Preserve the old aggregate fingerprint function and avoid treating timestamp-only changes as drift. |
 | `apatch_lib/loose.py` | Factor existing verification into one complete pass. Execute optional preparation before the first pass only when invoked through the macro policy. If every check passed but bytes changed, re-run the full list **once** when authorized. Require the last pass to leave an identical before/after snapshot; clear stale verification evidence whenever anything changes. |
-| `apatch_lib/presentation/execution.py`, `apatch_lib/console.py` | Print changed path details, attempt number, stable/unstable outcome, preserved edits and recovery; do not attribute mutation to the runner without evidence. |
+| `apatch_lib/mo_presentation/execution.py`, `apatch_lib/console.py` | Print changed path details, attempt number, stable/unstable outcome, preserved edits and recovery; do not attribute mutation to the runner without evidence. |
 | `tests/test_sequences.py`, `tests/test_modes.py`, `tests/test_safety.py`, `tests/test_config_cli.py` | A formatter converges after first run; perpetual formatter changes; failed second run; manual concurrent edit; index-only mode drift; new untracked output; changed executable bit; symlink swap; repeated timeout; `skipApproves=true`; no writes to GitHub. |
 
 Algorithm:

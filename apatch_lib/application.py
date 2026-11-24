@@ -9,7 +9,7 @@ from .cli_inspection import (select_without_handoff, show_audit_with_activity,
 from .cli_request import (CliRequest, validate_progress_request,
                           validate_repository_request)
 from .branch_reassignment import reassign_pending_branch
-from .core.actions import ACTION_CODES, action_number
+from .mo_core.actions import ACTION_CODES, action_number
 from .gitutil import (output, repository_root, reset_skip_approvals,
                       set_skip_approvals)
 from .handoff_selection import (HandoffSelection, resolve_handoffs,
@@ -19,7 +19,7 @@ from .logging_setup import LOG_FILENAME, configure, set_context
 from .macros import MACRO_NAMES, execute_macro
 from .migration import migrate_legacy_artifacts
 from .model import Abort, Config, load_config, load_project_config
-from .handoff.api import (AppliedZipVerifier, ProjectAppliedZipVerifier,
+from .mo_handoff.api import (AppliedZipVerifier, ProjectAppliedZipVerifier,
                           HandoffCacheOperations, ProjectHandoffCache)
 from .planner import execute_goal
 from .progress import ProgressRecorder, ProgressStore, render_progress

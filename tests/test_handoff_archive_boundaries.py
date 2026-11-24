@@ -14,8 +14,8 @@ from unittest.mock import Mock, patch
 
 from apatch_lib import patch as legacy_patch
 from apatch_lib.branch_patch import BranchPatchActions
-from apatch_lib.core.api import Abort
-from apatch_lib.handoff import api as handoff
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_handoff import api as handoff
 
 
 class HandoffArchiveBoundariesTests(unittest.TestCase):

@@ -7,10 +7,10 @@ import unittest
 from pathlib import Path
 
 from apatch_lib import model
-from apatch_lib.configuration import api as config_api
-from apatch_lib.configuration import loaders, models, validators
-from apatch_lib.core.errors import Abort
-from apatch_lib.review import api as review_api
+from apatch_lib.mo_configuration import api as config_api
+from apatch_lib.mo_configuration import loaders, models, validators
+from apatch_lib.mo_core.errors import Abort
+from apatch_lib.mo_review import api as review_api
 
 
 class ConfigurationArchitectureTests(unittest.TestCase):
@@ -30,9 +30,9 @@ class ConfigurationArchitectureTests(unittest.TestCase):
                 self.assertIs(historical, canonical)
 
     def test_models_are_immutable_and_have_domain_owners(self) -> None:
-        self.assertEqual(models.Config.__module__, "apatch_lib.configuration.models")
-        self.assertEqual(review_api.ReviewProvider.__module__, "apatch_lib.review.models")
-        self.assertEqual(review_api.ScannerPolicy.__module__, "apatch_lib.review.models")
+        self.assertEqual(models.Config.__module__, "apatch_lib.mo_configuration.models")
+        self.assertEqual(review_api.ReviewProvider.__module__, "apatch_lib.mo_review.models")
+        self.assertEqual(review_api.ScannerPolicy.__module__, "apatch_lib.mo_review.models")
         for cls in (models.Config, review_api.ReviewProvider, review_api.ScannerPolicy):
             self.assertTrue(dataclasses.is_dataclass(cls))
             self.assertTrue(cls.__dataclass_params__.frozen)

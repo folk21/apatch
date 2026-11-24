@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .action_applicability import ActionFacts, action_unavailable
 from .console import next_action_label
-from .core.enums import WorkflowPhase
+from .mo_core.enums import WorkflowPhase
 from .gitutil import worktree_fingerprint
 from .model import Abort, BRANCH_PATTERN
 

@@ -8,13 +8,13 @@ import unittest
 from pathlib import Path
 
 from apatch_lib import model
-from apatch_lib.core import actions as old_actions
-from apatch_lib.core import contracts as old_contracts
-from apatch_lib.core import enums as old_enums
-from apatch_lib.core.api import Abort
-from apatch_lib.publication.api import RemoteOutcomeUnknown
-from apatch_lib.workflows import api as domain
-from apatch_lib.workflows import actions, enums, models, results
+from apatch_lib.mo_core import actions as old_actions
+from apatch_lib.mo_core import contracts as old_contracts
+from apatch_lib.mo_core import enums as old_enums
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_publication.api import RemoteOutcomeUnknown
+from apatch_lib.mo_workflows import api as domain
+from apatch_lib.mo_workflows import actions, enums, models, results
 
 
 class WorkflowDomainBoundaryTests(unittest.TestCase):
@@ -41,7 +41,7 @@ class WorkflowDomainBoundaryTests(unittest.TestCase):
         self.assertEqual(domain.WorkflowRecord.__module__, models.__name__)
         self.assertEqual(domain.StateDocument.__module__, models.__name__)
         self.assertEqual(domain.CheckWorktreeChanged.__module__,
-                         "apatch_lib.workflows.errors")
+                         "apatch_lib.mo_workflows.errors")
         self.assertTrue(dataclasses.is_dataclass(domain.ActionResult))
         self.assertTrue(domain.ActionResult.__dataclass_params__.frozen)
 
@@ -101,7 +101,7 @@ class WorkflowDomainBoundaryTests(unittest.TestCase):
             raise domain.CheckWorktreeChanged("modified by check")
 
     def test_public_domain_import_does_not_import_workflow_engine(self) -> None:
-        script = ("import sys; from apatch_lib.workflows import api; "
+        script = ("import sys; from apatch_lib.mo_workflows import api; "
                   "assert 'apatch_lib.workflow' not in sys.modules; "
                   "assert 'apatch_lib.state' not in sys.modules")
         proc = subprocess.run([sys.executable, "-B", "-c", script],

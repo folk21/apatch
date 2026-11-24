@@ -1,8 +1,8 @@
 """Run an explicit build without granting canonical verification evidence."""
 
 from .commit_scope import policy_fingerprint
-from .core.enums import WorkflowPhase
-from .git.api import index_entries
+from .mo_core.enums import WorkflowPhase
+from .mo_git.api import index_entries
 from .gitutil import current_branch, head, run, worktree_change_details, worktree_inventory
 from .model import Abort
 

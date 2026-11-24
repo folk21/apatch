@@ -2,10 +2,10 @@
 
 from pathlib import Path
 
-from .handoff.producer.models import PackagingResult, PreflightResult, SourceCandidates
-from .handoff.producer.packaging import (MAX_SOURCE_PATHS, _read_source_file,
+from .mo_handoff_producer.models import PackagingResult, PreflightResult, SourceCandidates
+from .mo_handoff_producer.packaging import (MAX_SOURCE_PATHS, _read_source_file,
                                         discover_source_paths, pack_source as _pack_source)
-from .handoff.producer.preflight import preflight
+from .mo_handoff_producer.preflight import preflight
 
 
 def pack_source(project: Path, installation: Path, destination: Path, *,

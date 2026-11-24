@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import uuid
 
 from .model import Abort, CheckWorktreeChanged, RemoteOutcomeUnknown
-from .workflows.api import ACTION_CODES, action_number
+from .mo_workflows.api import ACTION_CODES, action_number
 
 
 MAX_SEQUENCE_STEPS = 20

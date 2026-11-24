@@ -3,7 +3,7 @@
 import time
 from pathlib import Path
 
-from .core.actions import ACTION_CODES, action_number
+from .mo_core.actions import ACTION_CODES, action_number
 from .gitutil import current_branch
 from .model import Abort, Config, Handoff
 from .operation_events import unresolved_runs

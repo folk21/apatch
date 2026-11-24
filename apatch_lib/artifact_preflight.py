@@ -1,6 +1,6 @@
 """Compatibility exports for producer preflight; new code uses handoff.api."""
 
-from .handoff.producer.models import PreflightResult
-from .handoff.producer.preflight import preflight
+from .mo_handoff_producer.models import PreflightResult
+from .mo_handoff_producer.preflight import preflight
 
 __all__ = ("PreflightResult", "preflight")

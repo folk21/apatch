@@ -6,8 +6,8 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from .core.enums import WorkflowPhase
-from .core.contracts import ActionResult
+from .mo_core.enums import WorkflowPhase
+from .mo_core.contracts import ActionResult
 from .branch_guard import assert_no_unfinished_feature_branches
 from .created_patches import persist_registry
 from .commit_scope import (NeedsVerification, WaitingForUser, assert_scope_unchanged,
@@ -18,7 +18,7 @@ from .gitutil import (branch_exists, confirm, current_branch, head, output,
                       remote_head, run, status_paths, worktree_fingerprint,
                       worktree_inventory, worktree_change_details)
 from .model import Abort, CheckWorktreeChanged
-from .handoff.api import apply, inspect
+from .mo_handoff.api import apply, inspect
 from .patch_history import locked_history
 from .session_continuation import (require_committed_loose_followup,
                                    require_session_continuation)

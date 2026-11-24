@@ -332,7 +332,7 @@ class SequencesTests(LocalGitFixture):
             execute_sequence(ReverifiedWorkflow(("NO_OP",)), OperationSequence.parse("SYN,STS"))
 
     def test_workflow_labels_reverified_syn_as_already_satisfied(self):
-        from apatch_lib.core.contracts import ActionResult
+        from apatch_lib.mo_core.contracts import ActionResult
         from apatch_lib.workflow import Workflow
 
         config = load_project_config(self.root, load_config(self.bin))
@@ -343,8 +343,8 @@ class SequencesTests(LocalGitFixture):
         console = StringIO()
         with patch.object(workflow.force_actions, "sync",
                           return_value=ActionResult.already_satisfied("Merged PR reverified")), \
-                patch("apatch_lib.presentation.execution.inspect_patch", return_value={}), \
-                patch("apatch_lib.presentation.execution.display_recommendation"), \
+                patch("apatch_lib.mo_presentation.execution.inspect_patch", return_value={}), \
+                patch("apatch_lib.mo_presentation.execution.display_recommendation"), \
                 redirect_stdout(console):
             result = workflow.interactive("SYN")
         self.assertEqual(result, "ALREADY_SATISFIED")

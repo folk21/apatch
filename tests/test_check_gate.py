@@ -239,7 +239,7 @@ class CheckBoundaryTests(LocalGitFixture):
         self.assertEqual((self.root / "second.txt").read_text(), "second patch\n")
 
     def test_open_pr_followup_requires_exact_live_identity(self):
-        from apatch_lib.handoff.inspection import handoff_from_zip
+        from apatch_lib.mo_handoff.inspection import handoff_from_zip
         from apatch_lib.session_continuation import require_committed_loose_followup
 
         self.configure_boundary()
@@ -336,7 +336,7 @@ class CheckBoundaryTests(LocalGitFixture):
         self.assertEqual(self.invoke_zip("op=CHK", "skipApproves=true").returncode, 0)
         final = self.invoke_zip("opSeq=CMT,PSH", "skipApproves=true")
         self.assertEqual(final.returncode, 0, final.stdout + final.stderr)
-        from apatch_lib.handoff.inspection import handoff_from_zip
+        from apatch_lib.mo_handoff.inspection import handoff_from_zip
         config = load_project_config(self.root, load_config(self.bin))
         state = read_state_snapshot(config.state_path)
         handoff = handoff_from_zip(config, self.root, second.name)
