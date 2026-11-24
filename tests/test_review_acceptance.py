@@ -135,3 +135,131 @@ class ReviewEvidenceAcceptanceTests(LocalGitFixture):
         self.assertIn(directory.name, prune_review_artifacts(self.root, max_runs=1).protected)
         self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, original)
         self.assertEqual(self.invoke_zip("op=CMT", "skipApproves=true").returncode, 2)
+
+
+class ReviewAdmissionAcceptanceTests(LocalGitFixture):
+    """Verify legacy default-off behavior and pre-CHK reviewer admission."""
+
+    def _prepare_review(self, *, capture: bool, checked: bool):
+        reviewer = {"id": "static", "kind": "script",
+                    "command": [sys.executable, "-c", "print('legacy review passed')"]}
+        config = ('schema_version: 1\nchecks:\n  - ["./run_checks.sh"]\n'
+                  'review_required: true\n'
+                  f'review_artifacts_enabled: {str(capture).lower()}\n'
+                  'reviewers:\n  - ' + json.dumps(reviewer) + '\n')
+        self.configure_checks(config)
+        stem = self.make_self_contained_zip()
+        sequence = 'opSeq=APL,BRN,CHK' if checked else 'opSeq=APL,BRN'
+        result = self.invoke_zip(sequence, 'skipApproves=true', selection=stem)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+
+    def test_rev_before_chk_does_not_execute_or_allocate_evidence(self):
+        """A review cannot run or allocate evidence without verified source."""
+        self._prepare_review(capture=True, checked=False)
+        before = command('git', 'status', '--porcelain', cwd=self.root).stdout
+        refused = self.invoke_zip('op=REV', 'skipApproves=true')
+        self.assertEqual(refused.returncode, 2, refused.stderr + refused.stdout)
+        self.assertFalse((self.root / '.apatch' / 'reviews').exists())
+        self.assertEqual(command('git', 'status', '--porcelain', cwd=self.root).stdout,
+                         before)
+        record = next(iter(json.loads(self.state_path.read_text())['workflows'].values()))
+        self.assertNotIn('code_review', record)
+
+    def test_legacy_script_review_default_capture_off(self):
+        """Legacy scripts remain usable without enabling private capture."""
+        self._prepare_review(capture=False, checked=True)
+        result = self.invoke_zip('op=REV', 'skipApproves=true')
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn('CODE REVIEW: PASS', result.stdout)
+        self.assertFalse((self.root / '.apatch' / 'reviews').exists())
+        record = next(iter(json.loads(self.state_path.read_text())['workflows'].values()))
+        self.assertEqual(record['code_review']['verdict'], 'PASS')
+
+
+class PassingReviewAcceptanceTests(LocalGitFixture):
+    """Verify passing structured review evidence at the local commit boundary."""
+
+    def setUp(self):
+        super().setUp()
+        report = {"schema_version": 1, "tools": [
+            {"id": "ruff", "status": "SUCCEEDED", "format": "ruff-json", "report": []}]}
+        reviewer = {
+            "id": "static", "kind": "script",
+            "command": [sys.executable, "-c", "print(" + repr(json.dumps(report)) + ")"],
+            "report_format": "apatch-json-v1",
+            "scanners": [{"id": "ruff", "format": "ruff-json", "required": True}],
+        }
+        config = ("schema_version: 1\nchecks:\n  - [\"./run_checks.sh\"]\n"
+                  "review_required: true\nreview_artifacts_enabled: true\n"
+                  "reviewers:\n  - " + json.dumps(reviewer) + "\n")
+        self.configure_checks(config)
+        stem = self.make_self_contained_zip()
+        applied = self.invoke_zip("opSeq=APL,BRN,CHK", "skipApproves=true", selection=stem)
+        self.assertEqual(applied.returncode, 0, applied.stderr + applied.stdout)
+
+    def _pass_review(self):
+        result = self.invoke_zip("op=REV", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("CODE REVIEW: PASS", result.stdout)
+        reviews = list((self.root / ".apatch/reviews").glob("review-*"))
+        self.assertEqual(len(reviews), 1)
+        directory = reviews[0]
+        manifest = json.loads((directory / "manifest.json").read_text())
+        normalized = json.loads((directory / "static.normalized.json").read_text())
+        self.assertEqual(manifest["status"], "COMPLETED")
+        self.assertEqual(normalized["verdict"], "PASS")
+        self.assertEqual(normalized["findings"], [])
+        raw = (directory / "static.stdout").read_bytes()
+        self.assertEqual(manifest["providers"][0]["stdout_sha256"],
+                         hashlib.sha256(raw).hexdigest())
+        return directory
+
+    def test_passing_captured_structured_review_allows_local_commit(self):
+        """A fully checked PASS permits only the intended local commit."""
+        directory = self._pass_review()
+        before = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        result = self.invoke_zip("op=CMT", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        after = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        self.assertNotEqual(after, before)
+        self.assertEqual(command("git", "status", "--porcelain", cwd=self.root).stdout, "")
+        self.assertEqual(command("git", "show", "HEAD:existing.txt", cwd=self.root).stdout,
+                         "updated\n")
+        self.assertEqual(command("git", "show", "HEAD:new.txt", cwd=self.root).stdout,
+                         "new\n")
+        self.assertEqual(command("git", "ls-remote", "origin",
+                                 "refs/heads/feature/test-local-handoff", cwd=self.root).stdout,
+                         "")
+        self.assertTrue(directory.exists())
+        self.assertNotIn(".apatch/reviews/", command(
+            "git", "show", "--format=", "--name-only", "HEAD", cwd=self.root).stdout)
+
+    def test_source_drift_after_passing_review_blocks_commit_without_discarding_edits(self):
+        """Review success cannot authorize a changed source tree."""
+        directory = self._pass_review()
+        before = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        (self.root / "existing.txt").write_text("manual change after review\n")
+        refused = self.invoke_zip("op=CMT", "skipApproves=true")
+        self.assertEqual(refused.returncode, 2, refused.stderr + refused.stdout)
+        self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(),
+                         before)
+        self.assertEqual((self.root / "existing.txt").read_text(),
+                         "manual change after review\n")
+        self.assertTrue(directory.exists())
+        self.assertEqual(command("git", "ls-remote", "origin",
+                                 "refs/heads/feature/test-local-handoff", cwd=self.root).stdout,
+                         "")
+
+    def test_source_drift_after_chk_blocks_review_before_capture(self):
+        """A stale check cannot start a structured reviewer or allocate evidence."""
+        before = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
+        (self.root / "existing.txt").write_text("manual change after check\n")
+        refused = self.invoke_zip("op=REV", "skipApproves=true")
+        self.assertEqual(refused.returncode, 2, refused.stderr + refused.stdout)
+        self.assertFalse((self.root / ".apatch/reviews").exists())
+        self.assertEqual(command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip(),
+                         before)
+        self.assertEqual((self.root / "existing.txt").read_text(),
+                         "manual change after check\n")
+        record = next(iter(json.loads(self.state_path.read_text())["workflows"].values()))
+        self.assertNotIn("code_review", record)

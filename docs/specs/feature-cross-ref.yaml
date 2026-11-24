@@ -113,7 +113,7 @@ features:
   stages:
   - RE-01
   spec_paths:
-  - docs/specs/active/review-evidence/subspec.md
+  - docs/specs/archive/workstreams/review-evidence/subspec.md
   owners:
   - apatch_lib/review_artifacts.py
   - apatch_lib/code_review.py
@@ -124,7 +124,7 @@ features:
   stages:
   - RE-02
   spec_paths:
-  - docs/specs/active/review-evidence/subspec.md
+  - docs/specs/archive/workstreams/review-evidence/subspec.md
   owners:
   - apatch_lib/review_normalizer.py
   - apatch_lib/code_review.py
@@ -136,7 +136,7 @@ features:
   stages:
   - RE-03
   spec_paths:
-  - docs/specs/active/review-evidence/subspec.md
+  - docs/specs/archive/workstreams/review-evidence/subspec.md
   owners:
   - apatch_lib/review_context.py
   - apatch_lib/code_review.py
@@ -147,7 +147,7 @@ features:
   stages:
   - RE-04
   spec_paths:
-  - docs/specs/active/review-evidence/subspec.md
+  - docs/specs/archive/workstreams/review-evidence/subspec.md
   owners:
   - apatch_lib/review_evidence_api.py
   test_files:
@@ -157,7 +157,7 @@ features:
   stages:
   - RE-05
   spec_paths:
-  - docs/specs/active/review-evidence/subspec.md
+  - docs/specs/archive/workstreams/review-evidence/subspec.md
   owners:
   - apatch_lib/review_retention.py
   - apatch_lib/review_artifacts.py

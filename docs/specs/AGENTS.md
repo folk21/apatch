@@ -151,13 +151,15 @@ Run `python3 tools/specs/validate_docs.py` with `python3 tools/specs/validate_st
    code and tests, cross-stage compatibility, recovery, and remaining risks.
 5. `STATE.json` is a Git-tracked **processing checkpoint**, not the
    target-local `.apatch/apply_patch.state.json`. Validate it with
-   `python3 tools/specs/validate_state.py`. `mode: SINGLE` has exactly one
-   selected workstream in `active/<scope>/`, and may contain a
-   `selectedTaskId` matching the corresponding task section in `subspec.md`
-   and a safe existing advisory plan. A task pointer is not approval, a progress inference, or permission to mutate.
+   `python3 tools/specs/validate_state.py`. `mode: SINGLE` requires a
+   selected workstream in `active/<scope>/` and may contain a matching
+   `selectedTaskId`. `mode: IDLE` requires `selectedWorkstreamId: null`,
+   `workstreams: []`, and no `selectedTaskId`; it is used only after explicit
+   developer-directed archival when no successor has been selected. A task
+   pointer is not approval, a progress inference, or permission to mutate.
    Planned workstreams must not occur in the active checkpoint. The
    active stage ID remains stable across file moves.
-6. Allowed phases are `DESIGN`, `READY_FOR_IMPLEMENTATION`,
+6. Allowed phases for selected workstreams are `DESIGN`, `READY_FOR_IMPLEMENTATION`,
    `READY_FOR_REVIEW`, `AWAITING_DEVELOPER_DECISION`, `BLOCKED`, `PAUSED`,
    and `ON_HOLD`. There is no `DONE` or `ACCEPTED` phase. Update the checkpoint
    **only at a developer-directed stage boundary**, never as a runtime side
@@ -187,7 +189,9 @@ current instructions into the owning guide and repair links before removal.
    flat workstream directory, including `subspec.md` and every task plan, under
    `archive/workstreams/<scope>/`. Legacy accepted work remains in
    `archive/subspecs/`. Never treat moving a draft into `planned` as
-   acceptance. Change `STATE.json` only after explicit successor selection.
+   acceptance. If no successor is selected, change the checkpoint to `IDLE`
+   in the same atomic repository change. Otherwise select the successor only
+   after explicit developer direction.
 4. If a plan is shared across sub-specifications, first split each owner's
    stages into one canonical companion, retaining future unaccepted proposals
    with their active owner. Never archive a shared plan while it still owns

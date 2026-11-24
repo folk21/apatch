@@ -56,13 +56,18 @@ def validate_state(source: Path = STATE_PATH, repo_root: Path = ROOT) -> dict:
         raise ValueError("Invalid STATE.json fields")
     if type(document["schemaVersion"]) is not int or document["schemaVersion"] != 1:
         raise ValueError("Unsupported schemaVersion")
+    if document["mode"] == "IDLE":
+        if (document["selectedWorkstreamId"] is not None or
+                document["workstreams"] != [] or "selectedTaskId" in document):
+            raise ValueError("IDLE requires null selection, empty workstreams and no task")
+        return document
     if document["mode"] != "SINGLE":
-        raise ValueError("Only SINGLE mode is supported")
+        raise ValueError("Only SINGLE or IDLE mode is supported")
     selected = _matching(document["selectedWorkstreamId"],
                          properties["selectedWorkstreamId"]["pattern"], "selectedWorkstreamId")
     records = document["workstreams"]
     if (not isinstance(records, list) or
-            not records_contract["minItems"] <= len(records) <= records_contract["maxItems"]):
+            not 1 <= len(records) <= records_contract["maxItems"]):
         raise ValueError("Invalid workstreams length")
 
     identifiers: set[str] = set()
@@ -164,7 +169,8 @@ def main() -> int:
     except (ValueError, OSError, KeyError) as error:
         print(f"SDD STATE INVALID: {error}", file=sys.stderr)
         return 2
-    print(f"SDD STATE VALID: {state['selectedWorkstreamId']}")
+    print(f"SDD STATE VALID: {state['mode']}" if state["mode"] == "IDLE"
+          else f"SDD STATE VALID: {state['selectedWorkstreamId']}")
     return 0
 
 

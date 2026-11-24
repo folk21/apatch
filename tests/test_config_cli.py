@@ -464,6 +464,7 @@ class ConfigCliTests(LocalGitFixture):
 
     def test_direct_action_auto_approval_never_overrides_non_fast_forward_safety(self):
         self.assertEqual(self.invoke_cli("op=3", "skipApproves=true").returncode, 0)
+        self.assertEqual(self.invoke_cli("op=4", "skipApproves=true").returncode, 0)
         self.assertEqual(self.invoke_cli("op=5", "skipApproves=true").returncode, 0)
         other = self.base / "another_checkout"
         command("git", "clone", "-b", "main", str(self.remote), str(other), cwd=self.base)

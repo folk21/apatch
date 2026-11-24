@@ -5,9 +5,9 @@ description: Normative review-evidence pipeline tasks RE-01 through RE-07 and ac
 ---
 # APATCH-SUB-006 — Review Evidence Pipeline
 
-**Status:** DRAFT. RE-01–RE-05 are candidate implementations pending independent developer acceptance; only the selected task RE-05 is at `READY_FOR_REVIEW`. The older 2026-11-05 RE-05 baseline remains historical evidence, not the current repository revision.
+**Status:** ACCEPTED on 2026-11-24 for the scoped requirements RE-01–RE-07 by developer direction following local canonical checks. Acceptance is limited to this review-evidence workstream; the user checkout HEAD, GitHub review/CI, merge, deployment, and macOS behavior are not independently verified.
 
-**Parent:** [APATCH-SPEC-001](../../umbrella_spec_apatch.md). **Related:** [SUB-003](../../planned/subspec-03-feature-session-planning.md), [SUB-004](../../planned/subspec-04-operational-workflows.md).
+**Parent:** [APATCH-SPEC-001](../../../umbrella_spec_apatch.md). **Related:** [SUB-003](../../../planned/subspec-03-feature-session-planning.md), [SUB-004](../../../planned/subspec-04-operational-workflows.md).
 
 ## 1. Objective and boundary
 
@@ -23,19 +23,19 @@ The existing strict output parser limits LLM findings and the full diff input. T
 
 ## 3. Features and task execution boundaries
 
-Feature IDs are stable documentation identifiers, not persisted workflow or ZIP fields. The [feature catalog](../../../FEATURES.md) is the human-facing registry; [feature cross-reference](../../feature-cross-ref.yaml) links requirements, source owners and tests. A feature may span tasks or areas, but every individual task has exactly one `area`.
+Feature IDs are stable documentation identifiers, not persisted workflow or ZIP fields. The [feature catalog](../../../../FEATURES.md) is the human-facing registry; [feature cross-reference](../../../feature-cross-ref.yaml) links requirements, source owners and tests. A feature may span tasks or areas, but every individual task has exactly one `area`.
 
 | Task | Type | Area | Run type | Feature IDs | Advisory plan | Status |
 | --- | --- | --- | --- | --- | --- | --- |
-| [`RE-01`](#re-01) | `GEN_CODE` | `CODE` | `DEVELOP` | REVIEW.RAW_CAPTURE | [Plan](task_impl_plan_01_raw_evidence_capture.md) | Candidate; not accepted |
-| [`RE-02`](#re-02) | `GEN_CODE` | `CODE` | `DEVELOP` | REVIEW.NORMALIZATION | [Plan](task_impl_plan_02_structured_normalization.md) | Candidate; not accepted |
-| [`RE-03`](#re-03) | `GEN_CODE` | `CODE` | `DEVELOP` | REVIEW.LLM_CONTEXT | [Plan](task_impl_plan_03_bounded_llm_context.md) | Candidate; not accepted |
-| [`RE-04`](#re-04) | `GEN_CODE` | `CODE` | `DEVELOP` | REVIEW.RETRIEVAL | [Plan](task_impl_plan_04_selective_evidence_retrieval.md) | Candidate; not accepted |
-| [`RE-05`](#re-05) | `GEN_CODE` | `CODE` | `DEVELOP` | REVIEW.RETENTION_EXPORT | [Plan](task_impl_plan_05_retention_export_recovery.md) | Selected / READY_FOR_REVIEW |
-| [`RE-06`](#re-06) | `UPD_DOCS` | `DOCS` | `DEVELOP` | REVIEW.RAW_CAPTURE, REVIEW.NORMALIZATION, REVIEW.LLM_CONTEXT, REVIEW.RETRIEVAL, REVIEW.RETENTION_EXPORT | [Plan](task_impl_plan_06_documentation_sync.md) | Draft; not started |
-| [`RE-07`](#re-07) | `GEN_TESTS` | `E2E_TESTS` | `ACCEPT` | REVIEW.RAW_CAPTURE, REVIEW.NORMALIZATION, REVIEW.LLM_CONTEXT, REVIEW.RETRIEVAL, REVIEW.RETENTION_EXPORT | [Plan](task_impl_plan_07_review_acceptance_tests.md) | Draft; not started |
+| [`RE-01`](#re-01) | `GEN_CODE` | `CODE` | `DEVELOP` | REVIEW.RAW_CAPTURE | [Plan](task_impl_plan_01_raw_evidence_capture.md) | Accepted 2026-11-24 |
+| [`RE-02`](#re-02) | `GEN_CODE` | `CODE` | `DEVELOP` | REVIEW.NORMALIZATION | [Plan](task_impl_plan_02_structured_normalization.md) | Accepted 2026-11-24 |
+| [`RE-03`](#re-03) | `GEN_CODE` | `CODE` | `DEVELOP` | REVIEW.LLM_CONTEXT | [Plan](task_impl_plan_03_bounded_llm_context.md) | Accepted 2026-11-24 |
+| [`RE-04`](#re-04) | `GEN_CODE` | `CODE` | `DEVELOP` | REVIEW.RETRIEVAL | [Plan](task_impl_plan_04_selective_evidence_retrieval.md) | Accepted 2026-11-24 |
+| [`RE-05`](#re-05) | `GEN_CODE` | `CODE` | `DEVELOP` | REVIEW.RETENTION_EXPORT | [Plan](task_impl_plan_05_retention_export_recovery.md) | Accepted 2026-11-24 |
+| [`RE-06`](#re-06) | `UPD_DOCS` | `DOCS` | `DEVELOP` | REVIEW.RAW_CAPTURE, REVIEW.NORMALIZATION, REVIEW.LLM_CONTEXT, REVIEW.RETRIEVAL, REVIEW.RETENTION_EXPORT | [Plan](task_impl_plan_06_documentation_sync.md) | Accepted 2026-11-24 |
+| [`RE-07`](#re-07) | `GEN_TESTS` | `E2E_TESTS` | `ACCEPT` | REVIEW.RAW_CAPTURE, REVIEW.NORMALIZATION, REVIEW.LLM_CONTEXT, REVIEW.RETRIEVAL, REVIEW.RETENTION_EXPORT | [Plan](task_impl_plan_07_review_acceptance_tests.md) | Accepted 2026-11-24 |
 
-**Execution:** `RE-01 → RE-02 → RE-03 → RE-04 → RE-05 → RE-06 → RE-07`. The selected RE-05 checkpoint remains pending independent review; RE-06 and RE-07 have not started. Proposed run types are `DEVELOP` for ordinary tasks and `ACCEPT` only for RE-07; `rtype` has no runtime effect until separately implemented.
+**Execution:** `RE-01 → RE-02 → RE-03 → RE-04 → RE-05 → RE-06 → RE-07`. This sequence is accepted for the scoped review-evidence implementation; historical task requirements and their advisory plans are preserved in the archive. Proposed run types are `DEVELOP` for ordinary tasks and `ACCEPT` only for RE-07; `rtype` has no runtime effect until separately implemented.
 
 **Area ownership:** `CODE` owns all Python CLI, adapters, module contracts and focused unit/regression tests; no separate backend/frontend source areas exist; `DOCS` owns non-contract developer/user guides; `E2E_TESTS` owns integration, cross-module and acceptance test harnesses plus final verification. Read other areas only through relevant public contracts and stable documented interfaces. If a future client introduces a separate code area, define and sequence its ownership in a new approved sub-spec; do not mix areas in one task. If final verification finds an implementation defect, reopen the owning CODE task instead of changing product code under E2E_TESTS.
 
@@ -52,7 +52,7 @@ Feature IDs are stable documentation identifiers, not persisted workflow or ZIP 
 - **rtype:** `DEVELOP`.
 - **feature_ids:** `REVIEW.RAW_CAPTURE`.
 - **Implementation plan:** [RE-01 plan](task_impl_plan_01_raw_evidence_capture.md).
-- **Status:** Draft; acceptance not inferred.
+- **Status:** Accepted for the scoped SUB-006 workstream on 2026-11-24.
 
 #### Normative requirements and acceptance oracles
 
@@ -80,7 +80,7 @@ The acceptance test cases below are requirements. RE-07 owns the final suite rec
 - **rtype:** `DEVELOP`.
 - **feature_ids:** `REVIEW.NORMALIZATION`.
 - **Implementation plan:** [RE-02 plan](task_impl_plan_02_structured_normalization.md).
-- **Status:** Draft; acceptance not inferred.
+- **Status:** Accepted for the scoped SUB-006 workstream on 2026-11-24.
 
 #### Normative requirements and acceptance oracles
 
@@ -134,7 +134,7 @@ Raw logs and normalized findings SHALL NOT be sent to models by this stage.
 - **rtype:** `DEVELOP`.
 - **feature_ids:** `REVIEW.LLM_CONTEXT`.
 - **Implementation plan:** [RE-03 plan](task_impl_plan_03_bounded_llm_context.md).
-- **Status:** Draft; acceptance not inferred.
+- **Status:** Accepted for the scoped SUB-006 workstream on 2026-11-24.
 
 #### Normative requirements and acceptance oracles
 
@@ -194,7 +194,7 @@ LLM CLI is nominally local. No HTTP call is added by `apatch` itself.
 - **rtype:** `DEVELOP`.
 - **feature_ids:** `REVIEW.RETRIEVAL`.
 - **Implementation plan:** [RE-04 plan](task_impl_plan_04_selective_evidence_retrieval.md).
-- **Status:** Draft; acceptance not inferred.
+- **Status:** Accepted for the scoped SUB-006 workstream on 2026-11-24.
 
 #### Normative requirements and acceptance oracles
 
@@ -220,7 +220,7 @@ The acceptance test cases below are requirements. RE-07 owns the final suite rec
 - **rtype:** `DEVELOP`.
 - **feature_ids:** `REVIEW.RETENTION_EXPORT`.
 - **Implementation plan:** [RE-05 plan](task_impl_plan_05_retention_export_recovery.md).
-- **Status:** Selected for review; developer acceptance pending.
+- **Status:** Accepted for the scoped SUB-006 workstream on 2026-11-24.
 
 #### Normative requirements and acceptance oracles
 
@@ -296,7 +296,7 @@ all verification environment limitations. Developer acceptance is separate.
 - **rtype:** `DEVELOP`.
 - **feature_ids:** `REVIEW.RAW_CAPTURE`, `REVIEW.NORMALIZATION`, `REVIEW.LLM_CONTEXT`, `REVIEW.RETRIEVAL`, `REVIEW.RETENTION_EXPORT`.
 - **Implementation plan:** [RE-06 plan](task_impl_plan_06_documentation_sync.md).
-- **Status:** Draft; acceptance not inferred.
+- **Status:** Accepted for the scoped SUB-006 workstream on 2026-11-24.
 
 #### Required outcome
 
@@ -331,7 +331,7 @@ A scoped documentation diff, link/path check and explicit list of any unresolved
 - **rtype:** `ACCEPT`.
 - **feature_ids:** `REVIEW.RAW_CAPTURE`, `REVIEW.NORMALIZATION`, `REVIEW.LLM_CONTEXT`, `REVIEW.RETRIEVAL`, `REVIEW.RETENTION_EXPORT`.
 - **Implementation plan:** [RE-07 plan](task_impl_plan_07_review_acceptance_tests.md).
-- **Status:** Draft; acceptance not inferred.
+- **Status:** Accepted for the scoped SUB-006 workstream on 2026-11-24.
 
 #### Required outcome
 
@@ -359,3 +359,20 @@ A reviewed requirement-to-test matrix, passing canonical check on the final revi
 ## 5. Compatibility and acceptance boundary
 
 RE-01 is additive to the configured REV flow and does not migrate recorded reviews, operation IDs, handoff state or Git history. Each task is scoped to a single area; cross-area dependencies consume declared contracts. RE-07 provides final checks, not retroactive developer acceptance. No task permits implicit external model invocation, forced publication or automatic acceptance. SUB-003 and SUB-004 remain planned and unaccepted.
+## 6. Acceptance record (2026-11-24)
+
+The developer directed closure of SUB-006 after reporting passing canonical checks
+on the local checkout. The RE-01–RE-05 focused tests, RE-06 documentation
+synchronization and RE-07 end-to-end acceptance tests were prepared and
+exercised in the prior incremental patch cycle. The reconstructed Linux
+checkout previously completed the extended regression suite (902/902);
+that run preceded the final fast-check runner patch and is not evidence of a
+complete rare-check run on the developer's present HEAD. The developer reported
+that the configured canonical checks passed after the fast runner change.
+
+The actual local Git HEAD, a corresponding fresh complete rare-check run,
+macOS validation, external reviewer/provider interoperability, live GitHub
+review/CI and deployment remain separately verifiable release evidence.
+Archival does not assert that any push, PR, merge or deployment occurred.
+The independent repository-wide review is a separate follow-on activity,
+not acceptance of the unselected SUB-003 or SUB-004 workstreams.

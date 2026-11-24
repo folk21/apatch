@@ -7,6 +7,8 @@ runType: DEVELOP
 ---
 # RE-06 Implementation Plan — Documentation Synchronization (Advisory)
 
+**Archive note (2026-11-24):** The scoped SUB-006 task was accepted by developer direction. This original advisory plan is retained as historical implementation guidance; it does not authorize new changes or establish GitHub publication.
+
 **Task:** [RE-06](subspec.md#re-06) · **type:** `UPD_DOCS` · **area:** `DOCS` · **Prerequisite:** RE-01–RE-05 behavior inspected in the current checkout.
 
 ## Source inspection and per-file changes

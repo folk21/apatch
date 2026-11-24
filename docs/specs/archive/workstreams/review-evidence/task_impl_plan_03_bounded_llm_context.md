@@ -7,6 +7,8 @@ runType: DEVELOP
 ---
 # RE-03 — Compact Context for LLM: Task Implementation Plan (Draft)
 
+**Archive note (2026-11-24):** The scoped SUB-006 task was accepted by developer direction. This original advisory plan is retained as historical implementation guidance; it does not authorize new changes or establish GitHub publication.
+
 - **Status:** ADVISORY / DRAFT; **area:** `CODE`; no implementation authorization is implied.
 - **Normative task:** [subspec.md#re-03](subspec.md#re-03).
 - **Sub-spec:** [subspec.md](subspec.md).

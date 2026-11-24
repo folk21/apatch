@@ -46,7 +46,7 @@
             "uniqueItems": true,
             "items": {
               "type": "string",
-              "pattern": "^docs/specs/(?:umbrella_spec_apatch|active/[a-z0-9-]+/subspec|planned/subspec-[0-9]{2}-[a-z0-9-]+|archive/subspecs/subspec-[0-9]{2}-[a-z0-9-]+)\\.md$"
+              "pattern": "^docs/specs/(?:umbrella_spec_apatch|active/[a-z0-9-]+/subspec|planned/subspec-[0-9]{2}-[a-z0-9-]+|archive/subspecs/subspec-[0-9]{2}-[a-z0-9-]+|archive/workstreams/[a-z0-9-]+/subspec)\\.md$"
             }
           },
           "owners": {

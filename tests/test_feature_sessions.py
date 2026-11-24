@@ -235,6 +235,8 @@ class SessionWorkflowTests(LocalGitFixture):
             self.assertEqual(len(w.attach_session(session.session_id).patch_workflow_keys), 2)
             self.assertEqual(len(w.attach_session(session.session_id).patch_workflow_keys), 2)
         self.assertEqual(len(self.history_path.read_text().split("Date: ")) - 1, 2)
+        checked = self.invoke_zip("op=CHK", "skipApproves=true")
+        self.assertEqual(checked.returncode, 0, checked.stdout + checked.stderr)
         committed = self.invoke_zip("op=CMT", "skipApproves=true")
         self.assertEqual(committed.returncode, 0, committed.stdout + committed.stderr)
         sha = command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip()
@@ -246,7 +248,7 @@ class SessionWorkflowTests(LocalGitFixture):
         self.assertEqual({updated["workflows"][key]["commit_sha"]
                           for key in item.patch_workflow_keys}, {sha})
         self.assertEqual(updated["feature_sessions"][session.session_id]["status"], "active")
-        self.assertEqual(len(updated["operation_runs"]), runs_before + 2)
+        self.assertEqual(len(updated["operation_runs"]), runs_before + 3)
         self.assertNotEqual(self.history_path.read_bytes(), history_before)
 
     def test_regular_cli_does_not_auto_create_a_feature_session(self):
