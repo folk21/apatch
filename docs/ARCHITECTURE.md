@@ -13,7 +13,7 @@ description: Architecture boundaries, Git/ZIP safety, evidence pipeline, recover
 2. `handoff_selection.py` and `mo_handoff/api.py` select a ZIP, explicit legacy JSON or verified cache. Archive metadata and extraction are validated by the handoff domain before source files change.
 3. `workflow.py`, `sequence.py` and `action_executor.py` coordinate operations. `branch_patch.py` prepares branches and extracts patches; LOOSE, STRICT and FORCE have separate, explicit gates.
 4. `mo_git/api.py`, `gitutil.py` and `github.py` own Git/GitHub effects. Review and publication check current branch, HEAD, remote and exact PR revision before acting.
-5. `state.py`, `mo_handoff_history/` and `operation_events.py` record workflow state, applied ZIPs and attempts. `progress.py` maintains separate bounded installed-tool-wide summaries. Local recorded history cannot replace live GitHub evidence.
+5. `mo_storage/state.py`, `mo_handoff_history/` and `mo_storage/operation_events.py` record workflow state, applied ZIPs and attempts. `mo_storage/progress.py` maintains separate bounded installed-tool-wide summaries. Local recorded history cannot replace live GitHub evidence.
 
 ## Ownership map
 
@@ -23,13 +23,13 @@ description: Architecture boundaries, Git/ZIP safety, evidence pipeline, recover
 | ZIP schema, safe archive extraction, cache | `mo_handoff/` (internal `cache/` and `resume/`), `handoff_selection.py`, compatibility `patch.py` / `params_cache.py` |
 | Archive generation | `mo_handoff_producer/`, compatibility `artifact_packaging.py` and `artifact_preflight.py` |
 | Workflow phases, actions, modes, goals | `workflow.py`, `mo_workflows/`, `loose.py`, `force.py`, `planner.py`, `macros.py` |
-| Feature sessions, scope verification | `session.py`, `session_continuation.py`, `commit_scope.py`, `context.py` |
+| Feature sessions, scope verification | `mo_feature_sessions/` (identity, continuation, context and guarded scope) |
 | Configuration and validation | `mo_configuration/api.py`, `mo_configuration/loaders.py`, `mo_configuration/validators.py` |
 | Git and GitHub publication | `mo_git/`, `gitutil.py`, `mo_publication/github.py`, `mo_publication/branch_guard.py` |
 | Review and evidence | `mo_review/` (execution, normalization, capture, context, retrieval, retention) |
-| Audit, checkpoint, logs, progress | `mo_audit/`, `state.py`, `operation_events.py`, `logging_setup.py`, `progress.py` |
+| Audit, checkpoint, logs, progress | `mo_audit/`, `mo_storage/` (checkpoint, journal, progress, migration and runtime files) |
 
-Canonical module owners live directly under `apatch_lib/` and use the `mo_` prefix. The `cache/` and `resume/` subpackages are internal implementation details of `mo_handoff`, with their public protocols defined in `mo_handoff/api.py`. Only `mo_handoff_history` and `mo_handoff_producer` remain separate handoff-related module owners. Deprecated import paths remain compatibility aliases, not additional owners. `mo_cli` owns CLI syntax/help/inspection dispatch; `mo_presentation` owns terminal rendering, while root `status.py` retains read-only workflow evidence and identity. `mo_audit` owns read-only audit collection/rules/reconciliation; `mo_publication` owns GitHub mutation guards; and `mo_review` owns the review evidence pipeline.
+Canonical module owners live directly under `apatch_lib/` and use the `mo_` prefix. The `cache/` and `resume/` subpackages are internal implementation details of `mo_handoff`, with their public protocols defined in `mo_handoff/api.py`. Only `mo_handoff_history` and `mo_handoff_producer` remain separate handoff-related module owners. Deprecated import paths remain compatibility aliases, not additional owners. `mo_cli` owns CLI syntax/help/inspection dispatch; `mo_presentation` owns terminal rendering, while root `status.py` retains read-only workflow evidence and identity. `mo_audit` owns read-only audit collection/rules/reconciliation; `mo_publication` owns GitHub mutation guards; and `mo_review` owns the review evidence pipeline. `mo_feature_sessions` owns session, continuation and commit-scope decisions; `mo_storage` owns their durable state, journals, progress and runtime files. Compatibility imports remain object-identical.
 
 Use stable `api.py` and `contract.md` boundaries for cross-domain calls; compatibility adapters preserve old imports. Avoid deep peer-to-peer imports, hidden mutable global state, duplicate validation and dependency cycles. Keep module contracts next to code, not in general documentation.
 

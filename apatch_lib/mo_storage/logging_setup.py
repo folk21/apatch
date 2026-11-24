@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 
-from .model import Abort
+from ..model import Abort
 
 
 LOG_FILENAME = "apatch.log"

@@ -44,8 +44,8 @@ features:
   spec_paths:
   - docs/specs/planned/subspec-03-feature-session-planning.md
   owners:
-  - apatch_lib/session.py
-  - apatch_lib/session_continuation.py
+  - apatch_lib/mo_feature_sessions/session.py
+  - apatch_lib/mo_feature_sessions/session_continuation.py
   test_files:
   - tests/test_feature_sessions.py
   - tests/test_session_continuation.py
@@ -91,8 +91,8 @@ features:
   spec_paths:
   - docs/specs/archive/subspecs/subspec-02-state-history-audit.md
   owners:
-  - apatch_lib/operation_events.py
-  - apatch_lib/state.py
+  - apatch_lib/mo_storage/operation_events.py
+  - apatch_lib/mo_storage/state.py
   test_files:
   - tests/test_operation_journal.py
   - tests/test_history.py

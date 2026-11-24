@@ -12,6 +12,16 @@ from types import ModuleType
 # Legacy names map to the canonical prefixed packages without duplicate classes.
 _LEGACY_PACKAGES = {
     "configuration": "mo_configuration",
+    "session": "mo_feature_sessions.session",
+    "session_continuation": "mo_feature_sessions.session_continuation",
+    "commit_scope": "mo_feature_sessions.commit_scope",
+    "context": "mo_feature_sessions.context",
+    "state": "mo_storage.state",
+    "operation_events": "mo_storage.operation_events",
+    "progress": "mo_storage.progress",
+    "migration": "mo_storage.migration",
+    "local_ignore": "mo_storage.local_ignore",
+    "logging_setup": "mo_storage.logging_setup",
     "cli_request": "mo_cli.cli_request",
     "cli_inspection": "mo_cli.cli_inspection",
     "help_reference": "mo_cli.help_reference",

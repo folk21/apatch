@@ -7,9 +7,9 @@ from pathlib import Path
 import re
 import uuid
 
-from .mo_workflows.api import ACTION_CODES
-from .mo_workflows.api import OperationOutcome
-from .model import Abort, BASENAME_PATTERN
+from ..mo_workflows.api import ACTION_CODES
+from ..mo_workflows.api import OperationOutcome
+from ..model import Abort, BASENAME_PATTERN
 
 
 RUN_ID = re.compile(r"^[a-f0-9]{32}$")
