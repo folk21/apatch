@@ -45,7 +45,7 @@ class RunnerScriptsTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(args[:4], ["-B", "-m", "tests.timeout_runner", "-v"])
                 self.assertNotIn("discover", args)
-                self.assertEqual(len(args), 50)
+                self.assertEqual(len(args), 51)
                 self.assertEqual(len(args[4:]), len(set(args[4:])))
                 for required in (
                     "tests.test_spec_state",
@@ -74,6 +74,7 @@ class RunnerScriptsTests(unittest.TestCase):
                     "tests.test_artifact_packaging.ArtifactPackagingTests."
                     "test_failed_check_never_produces_zip",
                     "tests.test_runner_scripts",
+                    "tests.test_module_prefixes",
                 ):
                     self.assertIn(required, args)
                 for deferred in (

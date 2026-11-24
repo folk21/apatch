@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from apatch_lib.model import Abort, RemoteOutcomeUnknown, load_project_config
 from apatch_lib.operation_events import OperationRun, RunOutcome, unresolved_runs
-from apatch_lib.presentation.execution import OperationPresentation
+from apatch_lib.mo_presentation.execution import OperationPresentation
 from apatch_lib.progress import ProgressStore
 from apatch_lib.state import finish_run, locked_state, read_state_snapshot, start_run
 from apatch_lib.workflow import Workflow

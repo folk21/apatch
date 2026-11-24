@@ -8,8 +8,8 @@ features:
   spec_paths:
   - docs/specs/archive/subspecs/subspec-01-workflow-control.md
   owners:
-  - apatch_lib/handoff/api.py
-  - apatch_lib/handoff/extraction.py
+  - apatch_lib/mo_handoff/api.py
+  - apatch_lib/mo_handoff/extraction.py
   test_files:
   - tests/test_handoffs.py
   - tests/test_safety.py
@@ -20,8 +20,8 @@ features:
   spec_paths:
   - docs/specs/archive/subspecs/subspec-01-workflow-control.md
   owners:
-  - apatch_lib/handoff/producer/packaging.py
-  - apatch_lib/handoff/producer/preflight.py
+  - apatch_lib/mo_handoff_producer/packaging.py
+  - apatch_lib/mo_handoff_producer/preflight.py
   test_files:
   - tests/test_artifact_packaging.py
   - tests/test_artifact_preflight.py
@@ -33,7 +33,7 @@ features:
   - docs/specs/archive/subspecs/subspec-01-workflow-control.md
   owners:
   - apatch_lib/sequence.py
-  - apatch_lib/workflows/api.py
+  - apatch_lib/mo_workflows/api.py
   test_files:
   - tests/test_sequences.py
   - tests/test_modes.py
@@ -57,7 +57,7 @@ features:
   - docs/specs/planned/subspec-04-operational-workflows.md
   owners:
   - apatch_lib/building.py
-  - apatch_lib/configuration/loaders.py
+  - apatch_lib/mo_configuration/loaders.py
   test_files:
   - tests/test_building.py
 - feature_id: PUBLICATION.PR_GUARDS
@@ -68,7 +68,7 @@ features:
   - docs/specs/archive/subspecs/subspec-01-workflow-control.md
   owners:
   - apatch_lib/github.py
-  - apatch_lib/publication/api.py
+  - apatch_lib/mo_publication/api.py
   test_files:
   - tests/test_github.py
   - tests/test_publication_goals.py

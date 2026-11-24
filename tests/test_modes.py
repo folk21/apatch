@@ -184,8 +184,8 @@ class ModesTests(LocalGitFixture):
 
     def test_synced_checkpoint_returns_positive_evidence_for_matching_merged_pr(self):
         from apatch_lib import github
-        from apatch_lib.core.contracts import ActionResult
-        from apatch_lib.core.enums import OperationOutcome
+        from apatch_lib.mo_core.contracts import ActionResult
+        from apatch_lib.mo_core.enums import OperationOutcome
         from apatch_lib.workflow import Workflow
 
         config = load_project_config(self.root, load_config(self.bin))

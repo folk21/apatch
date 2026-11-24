@@ -9,10 +9,10 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from apatch_lib.core.api import Abort
-from apatch_lib.handoff.api import HandoffCacheOperations, ProjectHandoffCache
-from apatch_lib.handoff.models import Handoff
-from apatch_lib.handoff.cache.service import RecoverableCacheError
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_handoff.api import HandoffCacheOperations, ProjectHandoffCache
+from apatch_lib.mo_handoff.models import Handoff
+from apatch_lib.mo_handoff.cache.service import RecoverableCacheError
 from apatch_lib import params_cache
 from apatch_lib.handoff_selection import HandoffSelection, SelectionKind, resolve_selected_handoff
 from apatch_lib.cli_request import parse_request
@@ -37,11 +37,11 @@ class HandoffCacheBoundaryTests(unittest.TestCase):
         script_root = Path(__file__).resolve().parents[1]
         commands = (
             "from apatch_lib.params_cache import load_cached_handoff; "
-            "from apatch_lib.handoff.api import HandoffCacheOperations, ProjectHandoffCache",
-            "from apatch_lib.handoff.api import ProjectHandoffCache; "
+            "from apatch_lib.mo_handoff.api import HandoffCacheOperations, ProjectHandoffCache",
+            "from apatch_lib.mo_handoff.api import ProjectHandoffCache; "
             "from apatch_lib.handoff_selection import resolve_selected_handoff; "
             "from apatch_lib.params_cache import save_cached_handoff",
-            "from apatch_lib.handoff.cache.service import save_cached_handoff; "
+            "from apatch_lib.mo_handoff.cache.service import save_cached_handoff; "
             "from apatch_lib.model import Handoff",
         )
         for command in commands:
@@ -50,7 +50,7 @@ class HandoffCacheBoundaryTests(unittest.TestCase):
                                         cwd=script_root, text=True, capture_output=True,
                                         timeout=15, check=False)
                 self.assertEqual(result.returncode, 0, result.stderr)
-        from apatch_lib.handoff.cache import service
+        from apatch_lib.mo_handoff.cache import service
         self.assertIs(params_cache.load_cached_handoff, service.load_cached_handoff)
         self.assertIs(params_cache.save_cached_handoff, service.save_cached_handoff)
         self.assertIs(params_cache.RecoverableCacheError, service.RecoverableCacheError)

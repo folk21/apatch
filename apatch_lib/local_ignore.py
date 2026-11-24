@@ -3,7 +3,7 @@
 import logging
 from pathlib import Path
 
-from .core.paths import runtime_ignore_patterns
+from .mo_core.paths import runtime_ignore_patterns
 from .gitutil import output, run
 from .model import Abort
 

@@ -10,7 +10,7 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from apatch_lib.branch_patch import BranchPatchActions
-from apatch_lib.core.api import Abort
+from apatch_lib.mo_core.api import Abort
 from apatch_lib.created_patches import (
     MAX_REGISTRY_BYTES as LEGACY_MAX_REGISTRY_BYTES,
     assert_patch_order as legacy_assert_order,
@@ -21,11 +21,11 @@ from apatch_lib.patch_history import (
     HistoryEntry as LegacyHistoryEntry,
     locked_history as legacy_locked_history,
 )
-from apatch_lib.handoff.api import PatchLedgerOperations, ProjectPatchLedger
-from apatch_lib.handoff.history.api import AppliedHistory
-from apatch_lib.handoff.history.journal import AppliedPatchHistory, locked_history, parse_history
-from apatch_lib.handoff.history.models import HistoryEntry
-from apatch_lib.handoff.history.registry import (
+from apatch_lib.mo_handoff.api import PatchLedgerOperations, ProjectPatchLedger
+from apatch_lib.mo_handoff_history.api import AppliedHistory
+from apatch_lib.mo_handoff_history.journal import AppliedPatchHistory, locked_history, parse_history
+from apatch_lib.mo_handoff_history.models import HistoryEntry
+from apatch_lib.mo_handoff_history.registry import (
     MAX_REGISTRY_BYTES, assert_patch_order, parse_registry, persist_registry,
     read_registry, registry_path,
 )
@@ -48,11 +48,11 @@ class HandoffHistoryBoundaryTests(unittest.TestCase):
         source_root = Path(__file__).resolve().parents[1]
         import_orders = (
             "from apatch_lib.patch_history import locked_history; "
-            "from apatch_lib.handoff.api import ProjectPatchLedger",
+            "from apatch_lib.mo_handoff.api import ProjectPatchLedger",
             "from apatch_lib.created_patches import persist_registry; "
-            "from apatch_lib.handoff.history.journal import locked_history",
-            "from apatch_lib.storage.locking import Abort; "
-            "from apatch_lib.core.errors import Abort as CoreAbort; "
+            "from apatch_lib.mo_handoff_history.journal import locked_history",
+            "from apatch_lib.mo_storage.locking import Abort; "
+            "from apatch_lib.mo_core.errors import Abort as CoreAbort; "
             "assert Abort is CoreAbort",
         )
         for source in import_orders:

@@ -12,11 +12,11 @@ import apatch_pack
 import apatch_preflight
 from apatch_lib import artifact_packaging as legacy_packaging
 from apatch_lib import artifact_preflight as legacy_preflight
-from apatch_lib.core.api import Abort
-from apatch_lib.handoff.api import (PackagingResult, PreflightResult,
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_handoff.api import (PackagingResult, PreflightResult,
                                    ProducerOperations, SourceCandidates,
                                    VerifiedSourceProducer)
-from apatch_lib.handoff.producer import models, packaging, preflight
+from apatch_lib.mo_handoff_producer import models, packaging, preflight
 from tests._support import LocalGitFixture
 
 

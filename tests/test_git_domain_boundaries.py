@@ -6,8 +6,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from apatch_lib import gitutil
-from apatch_lib.core.api import Abort
-from apatch_lib.git import api as git_api
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_git import api as git_api
 from tests._support import LocalGitFixture, command
 
 

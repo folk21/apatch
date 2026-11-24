@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 from typing import cast
 
-from .core.contracts import GitHubPr
+from .mo_core.contracts import GitHubPr
 from .gitutil import confirm, head, output, remote_head, require_clean, run
 from .model import Abort, Config, RemoteOutcomeUnknown
 

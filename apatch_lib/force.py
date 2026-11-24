@@ -8,12 +8,12 @@ from datetime import datetime, timezone
 from . import github
 from .branch_guard import assert_no_unfinished_feature_branches
 from .created_patches import persist_registry
-from .core.contracts import ActionResult
+from .mo_core.contracts import ActionResult
 from .gitutil import (branch_exists, confirm, current_branch, head, output, remote_head,
                       require_clean, run, worktree_fingerprint)
 from .model import Abort
-from .core.paths import PARAMS_MEMBER, REGISTRY_MEMBER
-from .handoff.api import apply, inspect, patch_file
+from .mo_core.paths import PARAMS_MEMBER, REGISTRY_MEMBER
+from .mo_handoff.api import apply, inspect, patch_file
 from .patch_history import locked_history
 
 

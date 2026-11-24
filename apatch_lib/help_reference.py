@@ -2,7 +2,7 @@
 
 from textwrap import dedent
 
-from .core.actions import ACTION_CODES
+from .mo_core.actions import ACTION_CODES
 
 
 HELP_EPILOG = dedent("""

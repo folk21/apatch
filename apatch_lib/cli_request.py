@@ -5,7 +5,7 @@ import sys
 from dataclasses import dataclass
 from typing import Sequence
 
-from .core.actions import action_number
+from .mo_core.actions import action_number
 from .help_reference import HELP_EPILOG
 from .model import Abort, BASENAME_PATTERN, BRANCH_PATTERN
 from .sequence import OperationSequence

@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import Callable
 
 from . import github
-from .core.contracts import GitHubPr, StateDocument
-from .handoff.history.registry import MAX_REGISTRY_BYTES, registry_path
+from .mo_core.contracts import GitHubPr, StateDocument
+from .mo_handoff_history.registry import MAX_REGISTRY_BYTES, registry_path
 from .model import Abort, BASENAME_PATTERN, Config
-from .handoff.history.journal import MAX_HISTORY_BYTES
+from .mo_handoff_history.journal import MAX_HISTORY_BYTES
 from .state import read_state_snapshot
 from .status import _branch_present, _commit_present, local_branch, local_repository
 

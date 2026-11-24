@@ -35,7 +35,7 @@ class DocumentFrontmatterTests(unittest.TestCase):
             clone = Path(directory)
             self._copy_documents(clone)
             for runtime in (
-                ".apatch/backups/overlap-sample/apatch_lib/handoff/contract.md",
+                ".apatch/backups/overlap-sample/apatch_lib/mo_handoff/contract.md",
                 ".venv/lib/python/site-packages/example/README.md",
                 "build/temporary/README.md",
                 "logs/old/README.md",

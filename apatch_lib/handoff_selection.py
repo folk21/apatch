@@ -10,7 +10,7 @@ from .cli_request import CliRequest
 from .model import (Abort, BASENAME_PATTERN, Config, Handoff,
                     load_handoff)
 from .params_cache import load_cached_handoff
-from .handoff.api import HandoffCacheOperations, handoff_from_zip
+from .mo_handoff.api import HandoffCacheOperations, handoff_from_zip
 from .sequence import parse_handoff_sequence, validate_multi_handoff_actions
 
 

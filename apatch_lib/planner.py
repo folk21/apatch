@@ -15,8 +15,8 @@ from .handoff_selection import HandoffSelection, SelectionKind
 from .local_ignore import ensure_runtime_ignored
 from .logging_setup import LOG_FILENAME, configure
 from .model import Abort, Config
-from .handoff.api import HandoffCacheOperations, ProjectHandoffCache
-from .handoff.api import inspect
+from .mo_handoff.api import HandoffCacheOperations, ProjectHandoffCache
+from .mo_handoff.api import inspect
 from .progress import ProgressRecorder
 from .session import (close_feature_session, record_session_pr,
                       remote_identity)
@@ -24,7 +24,7 @@ from .session_continuation import require_session_continuation
 from .state import locked_state, read_state_snapshot
 from .status import workflow_key
 from .workflow import Workflow
-from .handoff.api import verify_applied_zip
+from .mo_handoff.api import verify_applied_zip
 
 
 LOCAL_GOALS = frozenset({"APPLIED", "CHECKED", "COMMITTED"})

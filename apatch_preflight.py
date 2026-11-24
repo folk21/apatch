@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import sys
 
-from apatch_lib.handoff.api import ProducerOperations, VerifiedSourceProducer
+from apatch_lib.mo_handoff.api import ProducerOperations, VerifiedSourceProducer
 from apatch_lib.help_reference import PREFLIGHT_HELP_EPILOG
 from apatch_lib.model import Abort
 

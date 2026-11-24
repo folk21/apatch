@@ -12,8 +12,8 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from apatch_lib import gitutil
-from apatch_lib.core.api import Abort
-from apatch_lib.git import commands
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_git import commands
 
 
 class GitCommandBoundariesTests(unittest.TestCase):
@@ -106,7 +106,7 @@ class GitCommandBoundariesTests(unittest.TestCase):
                          stream_output=True, input_text='unexpected')
 
     def test_runner_still_is_not_authorization(self):
-        self.assertFalse(hasattr(__import__('apatch_lib.git.api', fromlist=['api']), 'run'))
+        self.assertFalse(hasattr(__import__('apatch_lib.mo_git.api', fromlist=['api']), 'run'))
         token = gitutil.set_skip_approvals(True)
         try:
             self.assertTrue(gitutil.skip_approvals_enabled())

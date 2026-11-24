@@ -6,10 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, cast
 
-from .core.contracts import GitHubPr, StateDocument, WorkflowRecord
+from .mo_core.contracts import GitHubPr, StateDocument, WorkflowRecord
 from .model import Abort, BASENAME_PATTERN
-from .handoff.history.models import HistoryEntry
-from .handoff.history.journal import parse_history
+from .mo_handoff_history.models import HistoryEntry
+from .mo_handoff_history.journal import parse_history
 
 
 SEVERITY_ORDER = {"ERROR": 0, "WARNING": 1, "INFO": 2}

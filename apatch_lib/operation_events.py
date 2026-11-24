@@ -7,8 +7,8 @@ from pathlib import Path
 import re
 import uuid
 
-from .workflows.api import ACTION_CODES
-from .workflows.api import OperationOutcome
+from .mo_workflows.api import ACTION_CODES
+from .mo_workflows.api import OperationOutcome
 from .model import Abort, BASENAME_PATTERN
 
 
