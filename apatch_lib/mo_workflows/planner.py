@@ -5,26 +5,26 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
-from . import github
-from .commit_scope import WaitingForUser
-from .context import (Scenario, inspect_context,
+from .. import github
+from ..commit_scope import WaitingForUser
+from ..context import (Scenario, inspect_context,
                       inspect_guarded_commit_readiness)
-from .gitutil import (current_branch, head, output, remote_head,
+from ..gitutil import (current_branch, head, output, remote_head,
                       reset_skip_approvals, set_skip_approvals, status_paths)
-from .handoff_selection import HandoffSelection, SelectionKind
-from .local_ignore import ensure_runtime_ignored
-from .logging_setup import LOG_FILENAME, configure
-from .model import Abort, Config
-from .mo_handoff.api import HandoffCacheOperations, ProjectHandoffCache
-from .mo_handoff.api import inspect
-from .progress import ProgressRecorder
-from .session import (close_feature_session, record_session_pr,
+from ..handoff_selection import HandoffSelection, SelectionKind
+from ..local_ignore import ensure_runtime_ignored
+from ..logging_setup import LOG_FILENAME, configure
+from ..model import Abort, Config
+from ..mo_handoff.api import HandoffCacheOperations, ProjectHandoffCache
+from ..mo_handoff.api import inspect
+from ..progress import ProgressRecorder
+from ..session import (close_feature_session, record_session_pr,
                       remote_identity)
-from .session_continuation import require_session_continuation
-from .state import locked_state, read_state_snapshot
-from .status import workflow_key
+from ..session_continuation import require_session_continuation
+from ..state import locked_state, read_state_snapshot
+from ..status import workflow_key
 from .workflow import Workflow
-from .mo_handoff.api import verify_applied_zip
+from ..mo_handoff.api import verify_applied_zip
 
 
 LOCAL_GOALS = frozenset({"APPLIED", "CHECKED", "COMMITTED"})
@@ -223,7 +223,7 @@ def _build_local_plan(root: Path, config: Config, selection: HandoffSelection,
     else:
         blockers.append(f"CONTEXT_UNVERIFIED: {context.scenario.value}")
     if config.review_required and "CMT" in steps:
-        from .code_review import review_matches
+        from ..code_review import review_matches
         workflow = Workflow(root, config, handoff, state, loose=True,
                             skip_previous_cycles=True)
         if "CHK" in steps or not review_matches(workflow):

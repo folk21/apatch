@@ -32,7 +32,7 @@ features:
   spec_paths:
   - docs/specs/archive/subspecs/subspec-01-workflow-control.md
   owners:
-  - apatch_lib/sequence.py
+  - apatch_lib/mo_workflows/sequence.py
   - apatch_lib/mo_workflows/api.py
   test_files:
   - tests/test_sequences.py
@@ -80,7 +80,7 @@ features:
   - docs/specs/planned/subspec-04-operational-workflows.md
   owners:
   - apatch_lib/mo_publication/github.py
-  - apatch_lib/macros.py
+  - apatch_lib/mo_workflows/macros.py
   test_files:
   - tests/test_remote_macros.py
   - tests/test_github.py

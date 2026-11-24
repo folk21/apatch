@@ -6,24 +6,24 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from .mo_core.enums import WorkflowPhase
-from .mo_core.contracts import ActionResult
-from .branch_guard import assert_no_unfinished_feature_branches
-from .created_patches import persist_registry
-from .commit_scope import (NeedsVerification, WaitingForUser, assert_scope_unchanged,
+from ..mo_core.enums import WorkflowPhase
+from ..mo_core.contracts import ActionResult
+from ..branch_guard import assert_no_unfinished_feature_branches
+from ..created_patches import persist_registry
+from ..commit_scope import (NeedsVerification, WaitingForUser, assert_scope_unchanged,
                            changed_contents_fingerprint, inspect_commit_scope,
                            policy_fingerprint)
-from .mo_presentation.console import check_result_label
-from .gitutil import (branch_exists, confirm, current_branch, head, output,
+from ..mo_presentation.console import check_result_label
+from ..gitutil import (branch_exists, confirm, current_branch, head, output,
                       remote_head, run, status_paths, worktree_fingerprint,
                       worktree_inventory, worktree_change_details)
-from .model import Abort, CheckWorktreeChanged
-from .mo_handoff.api import apply, inspect
-from .patch_history import locked_history
-from .session_continuation import (require_committed_loose_followup,
+from ..model import Abort, CheckWorktreeChanged
+from ..mo_handoff.api import apply, inspect
+from ..patch_history import locked_history
+from ..session_continuation import (require_committed_loose_followup,
                                    require_session_continuation)
-from .session import record_session_commit
-from .state import save
+from ..session import record_session_commit
+from ..state import save
 
 
 LOGGER = logging.getLogger("apatch.loose")
@@ -436,7 +436,7 @@ class LooseActions:
 
     def guarded_commit(self, session_id: str):
         """Commit the exact verified index; never stage additional files at CMT."""
-        from .code_review import require_fresh_review
+        from ..code_review import require_fresh_review
         require_fresh_review(self.w)
         w = self.w
         evidence = w.record.get("guarded_verification")
@@ -495,8 +495,8 @@ class LooseActions:
         return True
 
     def commit(self):
-        from .code_review import require_fresh_review
-        from .check_gates import record_commit, require_boundary, _verified_dirty
+        from ..code_review import require_fresh_review
+        from ..mo_verification.check_gates import record_commit, require_boundary, _verified_dirty
         require_fresh_review(self.w)
         require_boundary(self.w, "CMT")
         w = self.w
@@ -590,7 +590,7 @@ class LooseActions:
         return True
 
     def push(self):
-        from .check_gates import require_boundary
+        from ..mo_verification.check_gates import require_boundary
         require_boundary(self.w, "PSH")
         w = self.w
         branch = self.branch()

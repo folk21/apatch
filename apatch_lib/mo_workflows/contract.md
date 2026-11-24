@@ -1,55 +1,54 @@
 ---
 type: Module Contract
-title: Workflows module contract (R2.3 value boundaries)
-description: Workflow phase, action result, and orchestration contracts.
+title: Workflows module contract
+description: Workflow orchestration, phase/value APIs, action execution, and mode-specific safety boundaries.
 ---
-# Workflows module contract (R2.3 value boundaries)
+# Workflows module contract
 
-## Ownership and public API
+## Ownership and public interfaces
 
-`apatch_lib.mo_workflows.api` is the stable public import surface for workflow
-state shapes, phase/action identifiers, action-result outcomes and workflow
-verification errors. The plural `workflows` package is intentional:
-`apatch_lib/workflow.py` is the existing engine module and must not be shadowed
-by a same-named package before the separately tested engine migration.
+`apatch_lib.mo_workflows.api` remains the import-safe public **value** API: action
+identifiers, persisted-state type views, result classification, phase values and
+workflow-specific exceptions. Importing that API does not initialize the engine,
+filesystem, Git, or checkpoint storage.
 
-- `WorkflowRecord` and `StateDocument` are persisted-state `TypedDict` views
-  declared in `models.py`. They do **not** validate or write stored JSON.
-- `WorkflowPhase`, `OperationOutcome`, `PHASE_VALUES` are declared in `enums.py`.
-- `ACTION_CODES`, `action_number` are declared in `actions.py`; existing numeric
-  positions and mnemonics stay unchanged.
-- `ActionResult` lives in `results.py` because its completion factories and
-  outcome mapping are workflow behavior, not passive model declarations.
-- `CheckWorktreeChanged` lives in `errors.py` and inherits `core.api.Abort`.
+`apatch_lib.mo_workflows.workflow.Workflow` owns the runtime engine and explicit
+phase transitions. `loose.py`, `force.py`, `branch_patch.py`, and
+`branch_reassignment.py` implement mode-specific and branch lifecycle rules;
+`action_executor.py` and `action_applicability.py` implement step dispatch and
+availability; `sequence.py`, `planner.py` and `macros.py` coordinate explicit
+sequences and guarded higher-level goals. The application layer composes the
+engine with handoff, Git, publication, feature-session and storage adapters.
 
-## Dependencies, effects and errors
+The public value API intentionally does **not** re-export `Workflow`, `LooseActions`
+or `ForceActions`: importing values must remain free of runtime initialization.
+Existing callers may import execution classes from their canonical implementation
+modules. Deprecated `apatch_lib.workflow`, `apatch_lib.loose`, etc. paths remain
+identity-preserving aliases, including module-scoped mock/patch targets.
 
-The public value contract imports only its owning pure modules,
-`core.api.Abort`, and `publication.api.RemoteOutcomeUnknown`. The result
-classifier treats unknown remote effects as indeterminate even when an earlier
-prompt was declined. An unsupported action return raises `TypeError`.
+## Safety and effects
 
-Importing `workflows.api` has no Git, filesystem, network, configuration-load,
-workflow-engine initialization, lock, or checkpoint side effects. All state
-writes, optimistic guards, phases, branch checks and publication remain in the
-existing engine/adapters until R5. No new persisted schema or CLI operation
-is introduced by this extraction.
+LOOSE is the default and allows manual edits, multiple ZIPs per commit and
+deferred publication. STRICT keeps phase gates; FORCE is recovery and must never
+force-push. Numeric operation IDs, mnemonic operations, `opSeq`, explicit
+follow-ups, checkpoint updates, review/CI requirements and remote uncertainty
+semantics are unchanged by the module relocation.
 
-## Transitional compatibility and recovery
+Only an authorized lifecycle operation may mutate Git, state or remote resources.
+The engine delegates ZIP inspection/extraction to `mo_handoff`, verification to
+`mo_verification`, Git inspection to `mo_git`, remote publication to
+`mo_publication`, and durable state to `mo_storage`. No new persisted JSON schema
+or CLI argument is introduced by R5. `skipApproves=true` removes prompts, not
+eligibility, drift, branch, ZIP or publication safety checks.
 
-Historical imports from `core.actions`, `core.enums`, `core.contracts` and
-`model.CheckWorktreeChanged` are identity-preserving aliases. The `core`
-facades are a *documented temporary exception* to the intended no-domain-
-dependency rule; retire them only after consumer migration and reviewed public
-compatibility policy. They do not contain duplicate policy.
+## Compatibility and verification
 
-Preserve unknown state extensions during storage validation and retain existing
-migration, locking, failure, no-op and recovery semantics. `skipApproves=true`
-removes prompts but never changes action eligibility.
+Legacy `mo_core` value aliases and legacy root engine-module names remain shared
+objects; no second class definitions or copied mutable state are created.
+Maintain the same patchable module globals for existing integrations and tests.
 
-## Verification
-
-`tests/test_workflow_domain_boundaries.py`,
-`tests/test_explicit_action_results.py`, `tests/test_operation_journal.py`,
-`tests/test_modes.py`, `tests/test_sequences.py`, and opt-in characterization
-workflow/recovery tests. Full engine relocation is deferred to R5.
+Relevant tests include `tests/test_r5_workflow_ownership.py`,
+`tests/test_workflow_domain_boundaries.py`, `tests/test_modes.py`,
+`tests/test_sequences.py`, `tests/test_planner.py`, `tests/test_macros.py`,
+`tests/test_guarded_commit.py`, `tests/test_check_gate.py` and the opt-in
+characterization workflow/recovery suite.

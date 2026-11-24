@@ -12,6 +12,16 @@ from types import ModuleType
 # Legacy names map to the canonical prefixed packages without duplicate classes.
 _LEGACY_PACKAGES = {
     "configuration": "mo_configuration",
+    "workflow": "mo_workflows.workflow",
+    "loose": "mo_workflows.loose",
+    "force": "mo_workflows.force",
+    "planner": "mo_workflows.planner",
+    "sequence": "mo_workflows.sequence",
+    "macros": "mo_workflows.macros",
+    "branch_patch": "mo_workflows.branch_patch",
+    "branch_reassignment": "mo_workflows.branch_reassignment",
+    "action_executor": "mo_workflows.action_executor",
+    "action_applicability": "mo_workflows.action_applicability",
     "building": "mo_verification.building",
     "formatting": "mo_verification.formatting",
     "check_gates": "mo_verification.check_gates",

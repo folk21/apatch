@@ -3,8 +3,8 @@
 from dataclasses import dataclass
 import uuid
 
-from .model import Abort, CheckWorktreeChanged, RemoteOutcomeUnknown
-from .mo_workflows.api import ACTION_CODES, action_number
+from ..model import Abort, CheckWorktreeChanged, RemoteOutcomeUnknown
+from .api import ACTION_CODES, action_number
 
 
 MAX_SEQUENCE_STEPS = 20
@@ -87,7 +87,7 @@ def execute_sequence(workflow, sequence: OperationSequence, *, on_completed=None
                                      for action in sequence.actions[1:]))
     if (getattr(workflow, "phase", None) == "synced"
             and (verified_full_replay or redundant_publication)):
-        from .gitutil import current_branch, is_clean
+        from ..gitutil import current_branch, is_clean
         if (current_branch(workflow.root) == workflow.config.base
                 and is_clean(workflow.root)):
             print("==> SEQUENCE ALREADY COMPLETED: The selected ZIP is merged and "

@@ -2,13 +2,13 @@
 
 from pathlib import Path
 
-from .branch_guard import assert_no_unfinished_feature_branches
-from .gitutil import (branch_exists, current_branch, head, output, remote_head,
+from ..branch_guard import assert_no_unfinished_feature_branches
+from ..gitutil import (branch_exists, current_branch, head, output, remote_head,
                       worktree_fingerprint)
-from .model import Abort, Config, Handoff
-from .state import save
-from .status import workflow_key
-from .mo_handoff.api import verify_applied_zip
+from ..model import Abort, Config, Handoff
+from ..state import save
+from ..status import workflow_key
+from ..mo_handoff.api import verify_applied_zip
 
 
 def reassign_pending_branch(root: Path, config: Config, handoff: Handoff,

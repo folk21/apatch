@@ -5,16 +5,16 @@ import zipfile
 from dataclasses import replace
 from datetime import datetime, timezone
 
-from . import github
-from .branch_guard import assert_no_unfinished_feature_branches
-from .created_patches import persist_registry
-from .mo_core.contracts import ActionResult
-from .gitutil import (branch_exists, confirm, current_branch, head, output, remote_head,
+from .. import github
+from ..branch_guard import assert_no_unfinished_feature_branches
+from ..created_patches import persist_registry
+from ..mo_core.contracts import ActionResult
+from ..gitutil import (branch_exists, confirm, current_branch, head, output, remote_head,
                       require_clean, run, worktree_fingerprint)
-from .model import Abort
-from .mo_core.paths import PARAMS_MEMBER, REGISTRY_MEMBER
-from .mo_handoff.api import apply, inspect, patch_file
-from .patch_history import locked_history
+from ..model import Abort
+from ..mo_core.paths import PARAMS_MEMBER, REGISTRY_MEMBER
+from ..mo_handoff.api import apply, inspect, patch_file
+from ..patch_history import locked_history
 
 
 LOGGER = logging.getLogger("apatch.force")
@@ -298,7 +298,7 @@ class ForceActions:
             if not self._adopt_commit():
                 return
             return self._push_recorded_commit()
-        from .code_review import require_fresh_review
+        from ..code_review import require_fresh_review
         require_fresh_review(w)
         fingerprint, paths = dirty
         branch = self.branch()
@@ -330,7 +330,7 @@ class ForceActions:
         return self._push_recorded_commit()
 
     def _push_recorded_commit(self):
-        from .check_gates import require_boundary
+        from ..mo_verification.check_gates import require_boundary
         require_boundary(self.w, "PSH")
         w = self.w
         require_clean(w.root)
@@ -393,7 +393,7 @@ class ForceActions:
         return handoff
 
     def pr(self):
-        from .check_gates import require_boundary
+        from ..mo_verification.check_gates import require_boundary
         require_boundary(self.w, "PR")
         w = self.w
         handoff = self._ensure_pushed()
@@ -448,7 +448,7 @@ class ForceActions:
         return handoff, pr, repo
 
     def merge(self):
-        from .check_gates import require_boundary
+        from ..mo_verification.check_gates import require_boundary
         require_boundary(self.w, "MRG")
         w = self.w
         handoff, pr, repo = self._recover_pr()

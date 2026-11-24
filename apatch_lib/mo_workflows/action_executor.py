@@ -3,9 +3,9 @@
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from .mo_workflows.api import ActionResult
-from .gitutil import confirmation_was_declined
-from .model import Abort
+from .api import ActionResult
+from ..gitutil import confirmation_was_declined
+from ..model import Abort
 
 if TYPE_CHECKING:
     from .workflow import Workflow

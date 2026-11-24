@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from .mo_workflows.api import WorkflowPhase
+from .api import WorkflowPhase
 
 
 @dataclass(frozen=True)

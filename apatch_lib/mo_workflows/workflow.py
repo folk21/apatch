@@ -6,33 +6,33 @@ from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 
-from . import github
+from .. import github
 from .action_applicability import (ActionFacts, action_unavailable,
                                    DEPRECATED_BAP_REASON)
 from .branch_patch import BranchPatchActions
-from .mo_presentation.console import outcome_label, terminal_style
-from .code_review import run_review, require_fresh_review
-from .mo_workflows.api import ACTION_CODES, action_number
-from .mo_workflows.api import PHASE_VALUES, WorkflowPhase
-from .mo_workflows.api import ActionResult
+from ..mo_presentation.console import outcome_label, terminal_style
+from ..code_review import run_review, require_fresh_review
+from .api import ACTION_CODES, action_number
+from .api import PHASE_VALUES, WorkflowPhase
+from .api import ActionResult
 from .force import ForceActions
-from .mo_verification.formatting import run_formatters
-from .mo_verification.checks import run_checks
+from ..mo_verification.formatting import run_formatters
+from ..mo_verification.checks import run_checks
 from .loose import LooseActions
-from .gitutil import (confirm, current_branch, head, is_clean, output, remote_head,
+from ..gitutil import (confirm, current_branch, head, is_clean, output, remote_head,
                       require_branch, require_clean, run, worktree_fingerprint)
-from .model import Abort, BRANCH_PATTERN
-from .operation_events import OperationRun, RunOutcome, journal_outcome_for_result
-from .mo_handoff.api import inspect
-from .mo_handoff_history.journal import locked_history
-from .mo_presentation.execution import OperationPresentation
-from .progress import utc_now
-from .session import (attach_applied_workflow, create_feature_session,
+from ..model import Abort, BRANCH_PATTERN
+from ..operation_events import OperationRun, RunOutcome, journal_outcome_for_result
+from ..mo_handoff.api import inspect
+from ..mo_handoff_history.journal import locked_history
+from ..mo_presentation.execution import OperationPresentation
+from ..progress import utc_now
+from ..session import (attach_applied_workflow, create_feature_session,
                       remote_identity)
-from .session_continuation import require_session_continuation
-from .state import finish_run, save, start_run
-from .gitutil import clear_confirmation_declined, confirmation_was_declined
-from .mo_handoff.api import handoff_signature, verify_applied_zip
+from ..session_continuation import require_session_continuation
+from ..state import finish_run, save, start_run
+from ..gitutil import clear_confirmation_declined, confirmation_was_declined
+from ..mo_handoff.api import handoff_signature, verify_applied_zip
 
 
 LOGGER = logging.getLogger("apatch.workflow")
@@ -494,7 +494,7 @@ class Workflow(OperationPresentation):
     def merge(self):
         if self.phase != "pr_created":
             raise Abort("Open a PR before merge")
-        from .check_gates import require_boundary
+        from ..mo_verification.check_gates import require_boundary
         require_boundary(self, "MRG")
         require_branch(self.root, self.handoff.branch)
         self.assert_remote_unchanged()
