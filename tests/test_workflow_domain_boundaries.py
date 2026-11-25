@@ -7,14 +7,14 @@ import sys
 import unittest
 from pathlib import Path
 
-from apatch_lib import model
+from apatch_lib.mo_core import api as core_model
 from apatch_lib.mo_core import actions as old_actions
 from apatch_lib.mo_core import contracts as old_contracts
 from apatch_lib.mo_core import enums as old_enums
 from apatch_lib.mo_core.api import Abort
 from apatch_lib.mo_publication.api import RemoteOutcomeUnknown
 from apatch_lib.mo_workflows import api as domain
-from apatch_lib.mo_workflows import actions, enums, models, results
+from apatch_lib.mo_workflows import actions, enums, models, results, errors
 
 
 class WorkflowDomainBoundaryTests(unittest.TestCase):
@@ -28,7 +28,7 @@ class WorkflowDomainBoundaryTests(unittest.TestCase):
             (old_contracts.WorkflowRecord, domain.WorkflowRecord),
             (old_contracts.StateDocument, domain.StateDocument),
             (old_contracts.ActionResult, domain.ActionResult),
-            (model.CheckWorktreeChanged, domain.CheckWorktreeChanged),
+            (errors.CheckWorktreeChanged, domain.CheckWorktreeChanged),
         )
         for legacy, public in pairs:
             with self.subTest(value=public):
@@ -97,7 +97,7 @@ class WorkflowDomainBoundaryTests(unittest.TestCase):
 
     def test_verification_error_has_stable_identity_and_base(self) -> None:
         self.assertTrue(issubclass(domain.CheckWorktreeChanged, Abort))
-        with self.assertRaises(model.Abort):
+        with self.assertRaises(core_model.Abort):
             raise domain.CheckWorktreeChanged("modified by check")
 
     def test_public_domain_import_does_not_import_workflow_engine(self) -> None:

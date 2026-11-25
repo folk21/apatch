@@ -10,8 +10,6 @@ import zipfile
 
 import apatch_pack
 import apatch_preflight
-from apatch_lib import artifact_packaging as legacy_packaging
-from apatch_lib import artifact_preflight as legacy_preflight
 from apatch_lib.mo_core.api import Abort
 from apatch_lib.mo_handoff.api import (PackagingResult, PreflightResult,
                                    ProducerOperations, SourceCandidates,
@@ -56,18 +54,18 @@ class HandoffProducerPortTests(LocalGitFixture):
                 message="refactor: producer port", included=("new.txt",))
         self.assertEqual(path.read_bytes(), original)
 
-    def test_legacy_value_classes_and_preflight_are_identity_aliases(self):
-        self.assertIs(legacy_packaging.PackagingResult, models.PackagingResult)
-        self.assertIs(legacy_packaging.SourceCandidates, models.SourceCandidates)
-        self.assertIs(legacy_preflight.PreflightResult, models.PreflightResult)
-        self.assertIs(legacy_preflight.preflight, preflight.preflight)
-        self.assertIs(legacy_packaging.discover_source_paths, packaging.discover_source_paths)
+    def test_canonical_producer_values_and_preflight_share_identity(self):
+        self.assertIs(packaging.PackagingResult, models.PackagingResult)
+        self.assertIs(packaging.SourceCandidates, models.SourceCandidates)
+        self.assertIs(preflight.PreflightResult, models.PreflightResult)
+        self.assertIs(preflight.preflight, preflight.preflight)
+        self.assertIs(packaging.discover_source_paths, packaging.discover_source_paths)
 
-    def test_legacy_packaging_mock_seam_preserves_failing_preflight(self):
+    def test_canonical_packaging_mock_seam_preserves_failing_preflight(self):
         destination = self.base / "downloads" / "result.zip"
-        with patch.object(legacy_packaging, "preflight", side_effect=Abort("injected")):
+        with patch.object(packaging, "preflight", side_effect=Abort("injected")):
             with self.assertRaisesRegex(Abort, "injected"):
-                legacy_packaging.pack_source(
+                packaging.pack_source(
                     self.root, self.bin, destination, branch="feature/producer-port",
                     message="refactor: producer port", included=("new.txt",))
         self.assertFalse(destination.exists())

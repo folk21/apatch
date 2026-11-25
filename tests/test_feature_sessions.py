@@ -9,8 +9,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from apatch_lib.model import Abort, load_config, load_project_config
-from apatch_lib.params_cache import load_cached_handoff
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_configuration.api import load_config, load_project_config
+from apatch_lib.mo_handoff.cache.service import load_cached_handoff
 from apatch_lib.session import (
     close_feature_session, create_feature_session,
     record_session_commit, record_session_head, record_session_pr, remote_identity,

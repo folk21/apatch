@@ -22,7 +22,8 @@ class GithubGuardTest(unittest.TestCase):
         self.root = Path(self.temp.name)
         self.branch = "feature/a"
         self.sha = "a" * 40
-        from apatch_lib.model import Config, Handoff
+        from apatch_lib.mo_configuration.api import Config
+        from apatch_lib.mo_handoff.api import Handoff
         self.config = Config(self.root, self.root / "state.json", self.root / "logs", self.root / "history.txt", "origin", "main",
                              (("./run_checks.sh",),), True, True, "merge", 10000)
         self.handoff = Handoff("example_service", self.branch, "patch.zip", "test: message\n", None, None, ())
@@ -732,13 +733,13 @@ class GithubGuardTest(unittest.TestCase):
         self.assertEqual(self.record["phase"], "synced")
 
     def test_timeout_raises_abort_without_waiting_indefinitely(self):
-        from apatch_lib.gitutil import run
+        from apatch_lib.mo_git.commands import run
         with self.assertRaisesRegex(Abort, "timed out after 0.1s"):
             run([sys.executable, "-c", "import time; time.sleep(20)"],
                 self.root, timeout=0.1)
 
     def test_network_timeout_kills_descendants_holding_output_pipes(self):
-        from apatch_lib.gitutil import run
+        from apatch_lib.mo_git.commands import run
         started = time.monotonic()
         child = "import subprocess, sys, time; " \
                 "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)']); " \
@@ -748,7 +749,7 @@ class GithubGuardTest(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 3)
 
     def test_network_timeout_when_parent_exits_but_child_holds_pipe(self):
-        from apatch_lib.gitutil import run
+        from apatch_lib.mo_git.commands import run
 
         script = "import subprocess, sys; " \
                  "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)'])"
@@ -758,11 +759,11 @@ class GithubGuardTest(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 3)
 
     def test_remote_git_head_uses_configured_timeout(self):
-        from apatch_lib import gitutil
+        from apatch_lib.mo_git import repository, commands
         from unittest.mock import Mock
 
-        with patch.object(gitutil, "run", return_value=Mock(stdout="")) as read:
-            self.assertIsNone(gitutil.remote_head(self.root, self.config, "feature/a"))
+        with patch.object(commands, "run", return_value=Mock(stdout="")) as read:
+            self.assertIsNone(repository.remote_head(self.root, self.config, "feature/a"))
         self.assertEqual(read.call_args.kwargs["timeout"], 30)
 
     def test_global_github_timeout_is_validated(self):

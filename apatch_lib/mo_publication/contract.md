@@ -1,38 +1,36 @@
 ---
 type: Module Contract
-title: Publication module contract (R2.2 value and error boundary)
-description: Safe push, pull-request, merge, and remote publication boundaries.
+title: Publication module contract
+description: GitHub PR identity, guarded remote publication, and uncertain-effect recovery boundaries.
 ---
-# Publication module contract (R2.2 value and error boundary)
+# Publication module contract
 
 ## Ownership
 
-`publication` owns the `RemoteOutcomeUnknown` safety exception and typed
-GitHub PR wire-response representations. GitHub CLI calls and the PR lifecycle
-remain in the legacy `github.py` adapter until R4.
+`mo_publication` owns the `RemoteOutcomeUnknown` safety exception, typed
+GitHub PR response representations, guarded GitHub CLI/PR/merge operations,
+remote branch checks, and local base synchronization after verified merge.
 
-## Public API
-
-`publication.api` exports `RemoteOutcomeUnknown`, `GitHubPrIdentity`, and
-`GitHubPr`. `model.RemoteOutcomeUnknown` and `core.contracts.GitHubPr`/
-`GitHubPrIdentity` remain exact identity aliases until their old consumers
-migrate. The wire-field spelling is intentionally unchanged.
+`mo_publication.api` is the effect-free value/error interface. The explicit
+`mo_publication.github` and `mo_publication.branch_guard` implementation
+modules own executable publication boundaries. Their invocation remains
+under the existing workflow's approval, revision, CI/review, and Git gates.
 
 ## Invariants and failure semantics
 
-- `RemoteOutcomeUnknown` is still a subclass of `core.api.Abort`.
-- A publication command with an uncertain result must remain `UNKNOWN_REMOTE_RESULT`
-  rather than being treated as a generic failed local action or automatically retried.
-- The owner models are typed structural views, not executable PR adapters;
-  no network, file, or Git operations occur when they are imported.
-- GitHub repository identity, SHA, state and CI/review requirements remain
-  enforced by the existing GitHub adapter, not by these DTO definitions.
+- `RemoteOutcomeUnknown` inherits the common `Abort` contract; unknown remote
+  effects must not be replayed as if a local action definitely failed.
+- Pushes remain non-forced; PR operations require matching branch/base/source
+  SHA and fresh live evidence before a merge or local sync.
+- `GitHubPr` and `GitHubPrIdentity` preserve their wire-field structure.
+- Legacy `apatch_lib.github` and `apatch_lib.branch_guard` imports resolve to
+  the same modules as their canonical implementation paths, including mocks.
+- No independent remote action is authorized by importing this module.
 
-## Dependencies and tests
+## Dependencies and verification
 
-`publication.models` depends only on `typing`; `publication.errors` depends
-only on `core.api`. The transitional `core.contracts` import alias is an
-explicit R2 compatibility exception and is removed in the workflow-model
-migration. Tests: `tests.test_domain_model_boundaries`,
-`tests.test_explicit_action_results`, `tests.test_github`, and
-`tests.test_operation_journal`.
+`publication.models` uses only `typing`, and `publication.errors` uses the
+common exception. Publication operations use the existing Git adapter and
+configuration contracts. Test with `tests.test_github`, `tests.test_branches`,
+`tests.test_publication_goals`, the module ownership tests and the canonical
+`run_tests.sh` gate. Real GitHub execution is not tested by local fixtures.

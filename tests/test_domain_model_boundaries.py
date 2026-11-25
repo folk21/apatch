@@ -7,7 +7,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from apatch_lib import model
 from apatch_lib.mo_core.api import Abort
 from apatch_lib.mo_core.contracts import (ActionResult, GitHubPr, GitHubPrIdentity)
 from apatch_lib.mo_handoff import api as handoff
@@ -17,30 +16,30 @@ from apatch_lib.mo_publication import errors as publication_errors, models as pu
 
 
 class DomainModelBoundaryTests(unittest.TestCase):
-    def test_historical_handoff_identifiers_are_identity_aliases(self):
+    def test_public_handoff_identifiers_match_owning_implementation(self):
         historical = (
-            (model.Handoff, handoff.Handoff),
-            (model.load_handoff, handoff.load_handoff),
-            (model.parse_handoff_payload, handoff.parse_handoff_payload),
-            (model.safe_relative, handoff.safe_relative),
-            (model.BASENAME_PATTERN, handoff.BASENAME_PATTERN),
-            (model.BRANCH_PATTERN, handoff.BRANCH_PATTERN),
-            (model.SHA_PATTERN, handoff.SHA_PATTERN),
-            (model.DIGEST_PATTERN, handoff.DIGEST_PATTERN),
+            (handoff_models.Handoff, handoff.Handoff),
+            (parsing.load_handoff, handoff.load_handoff),
+            (parsing.parse_handoff_payload, handoff.parse_handoff_payload),
+            (parsing.safe_relative, handoff.safe_relative),
+            (constants.BASENAME_PATTERN, handoff.BASENAME_PATTERN),
+            (constants.BRANCH_PATTERN, handoff.BRANCH_PATTERN),
+            (constants.SHA_PATTERN, handoff.SHA_PATTERN),
+            (constants.DIGEST_PATTERN, handoff.DIGEST_PATTERN),
         )
         for old, new in historical:
             with self.subTest(name=getattr(old, '__name__', repr(old))):
                 self.assertIs(old, new)
 
     def test_publication_errors_and_pr_views_keep_exact_old_type_identity(self):
-        self.assertIs(model.RemoteOutcomeUnknown, publication.RemoteOutcomeUnknown)
+        self.assertIs(publication_errors.RemoteOutcomeUnknown, publication.RemoteOutcomeUnknown)
         self.assertIs(publication_errors.RemoteOutcomeUnknown, publication.RemoteOutcomeUnknown)
         self.assertIs(GitHubPr, publication.GitHubPr)
         self.assertIs(GitHubPrIdentity, publication.GitHubPrIdentity)
         self.assertEqual(publication.GitHubPr.__module__, "apatch_lib.mo_publication.models")
         self.assertEqual(publication.GitHubPrIdentity.__module__, "apatch_lib.mo_publication.models")
-        self.assertTrue(issubclass(model.RemoteOutcomeUnknown, Abort))
-        self.assertTrue(issubclass(model.RemoteOutcomeUnknown, RuntimeError))
+        self.assertTrue(issubclass(publication_errors.RemoteOutcomeUnknown, Abort))
+        self.assertTrue(issubclass(publication_errors.RemoteOutcomeUnknown, RuntimeError))
         self.assertEqual(ActionResult.failed(
             publication.RemoteOutcomeUnknown("HTTP timeout"), declined=True
         ).outcome.value, "UNKNOWN_REMOTE_RESULT")

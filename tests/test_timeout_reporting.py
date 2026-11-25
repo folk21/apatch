@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from apatch_lib.gitutil import _check_failure_summary
+from apatch_lib.mo_git.commands import _check_failure_summary
 from tests._support import configured_fixture_timeout, run_bounded
 from tests.timeout_runner import (IsolatedResult, TimeoutSummaryRunner, classify_test_process_result,
                                   configured_workers,

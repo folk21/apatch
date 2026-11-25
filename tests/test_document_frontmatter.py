@@ -22,7 +22,7 @@ class DocumentFrontmatterTests(unittest.TestCase):
         documents = validate_documents()
         actual = {path.relative_to(ROOT).as_posix() for path in repository_markdown(ROOT)}
         self.assertEqual(set(documents), actual)
-        self.assertEqual(len(documents), 35)
+        self.assertEqual(len(documents), 41)
         plans = {name: info for name, info in documents.items()
                  if Path(name).name.startswith("task_impl_plan_")}
         self.assertEqual(len(plans), 7)
@@ -44,7 +44,7 @@ class DocumentFrontmatterTests(unittest.TestCase):
                 backup.parent.mkdir(parents=True, exist_ok=True)
                 backup.write_text("# Historical copy without OKF metadata\n", encoding="utf-8")
             documents = validate_documents(clone)
-            self.assertEqual(len(documents), 35)
+            self.assertEqual(len(documents), 41)
             self.assertTrue(all(not name.startswith((".apatch/", ".venv/", "build/", "logs/"))
                                 for name in documents))
 
@@ -106,7 +106,7 @@ class DocumentFrontmatterTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, pattern):
                         validate_documents(clone)
             target.write_text(original, encoding="utf-8")
-            self.assertEqual(len(validate_documents(clone)), 35)
+            self.assertEqual(len(validate_documents(clone)), 41)
 
     def test_normative_task_type_area_rtype_and_features_are_authoritative(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -130,7 +130,7 @@ class DocumentFrontmatterTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, pattern):
                         validate_documents(clone)
             target.write_text(original, encoding="utf-8")
-            self.assertEqual(len(validate_documents(clone)), 35)
+            self.assertEqual(len(validate_documents(clone)), 41)
 
 
 if __name__ == "__main__":

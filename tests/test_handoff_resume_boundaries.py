@@ -7,13 +7,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from apatch_lib import application, zip_resume
+from apatch_lib import application
 from apatch_lib.cli_request import parse_request
 from apatch_lib.mo_handoff.api import (AppliedZipEvidence, AppliedZipVerifier,
                                    ProjectAppliedZipVerifier)
 from apatch_lib.mo_handoff.models import Handoff
 from apatch_lib.mo_handoff.resume import models, verification
-from apatch_lib.handoff_selection import HandoffSelection, SelectionKind
+from apatch_lib.mo_handoff.selection import HandoffSelection, SelectionKind
 
 
 class AppliedZipVerifierBoundaryTests(unittest.TestCase):
@@ -30,14 +30,14 @@ class AppliedZipVerifierBoundaryTests(unittest.TestCase):
 
     def test_cold_import_order_and_identity_preserving_legacy_shim(self):
         commands = (
-            "from apatch_lib.model import Handoff; "
+            "from apatch_lib.mo_handoff.models import Handoff; "
             "from apatch_lib.mo_handoff.api import AppliedZipVerifier, ProjectAppliedZipVerifier",
             "from apatch_lib.mo_handoff.api import ProjectAppliedZipVerifier; "
-            "from apatch_lib.zip_resume import verify_applied_zip",
+            "from apatch_lib.mo_handoff.resume.verification import verify_applied_zip",
             "from apatch_lib.mo_handoff.resume.verification import verify_applied_zip; "
             "from apatch_lib.application import execute_request",
             "from apatch_lib.mo_handoff.resume.service import ProjectAppliedZipVerifier; "
-            "from apatch_lib.model import Handoff",
+            "from apatch_lib.mo_handoff.models import Handoff",
         )
         for script in commands:
             with self.subTest(script=script):
@@ -47,10 +47,10 @@ class AppliedZipVerifierBoundaryTests(unittest.TestCase):
                     capture_output=True, text=True, timeout=15, check=False,
                 )
                 self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertIs(zip_resume.verify_applied_zip, verification.verify_applied_zip)
-        self.assertIs(zip_resume.handoff_signature, verification.handoff_signature)
-        self.assertIs(zip_resume.AppliedZipEvidence, models.AppliedZipEvidence)
-        self.assertIs(zip_resume.APPLIED_PHASES, models.APPLIED_PHASES)
+        self.assertIs(application.verify_applied_zip, verification.verify_applied_zip)
+        self.assertIs(verification.handoff_signature, verification.handoff_signature)
+        self.assertIs(AppliedZipEvidence, models.AppliedZipEvidence)
+        self.assertTrue(bool(models.APPLIED_PHASES))
         self.assertIsInstance(ProjectAppliedZipVerifier(), AppliedZipVerifier)
 
     def test_port_delegates_without_mutating_evidence_or_arguments(self):

@@ -6,7 +6,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from apatch_lib import model
 from apatch_lib.mo_configuration import api as config_api
 from apatch_lib.mo_configuration import loaders, models, validators
 from apatch_lib.mo_core.errors import Abort
@@ -14,17 +13,17 @@ from apatch_lib.mo_review import api as review_api
 
 
 class ConfigurationArchitectureTests(unittest.TestCase):
-    def test_historical_public_identifiers_are_identity_aliases(self) -> None:
+    def test_public_api_identifiers_reference_canonical_implementations(self) -> None:
         for historical, canonical in (
-            (model.Abort, Abort),
-            (model.Config, config_api.Config),
-            (model.ReviewProvider, review_api.ReviewProvider),
-            (model.ScannerPolicy, review_api.ScannerPolicy),
-            (model.load_config, config_api.load_config),
-            (model.load_project_config, config_api.load_project_config),
-            (model.validate_base_branch, config_api.validate_base_branch),
-            (model.validate_log_subdirectory, config_api.validate_log_subdirectory),
-            (model.validate_runtime_filename, config_api.validate_runtime_filename),
+            (Abort, Abort),
+            (models.Config, config_api.Config),
+            (review_api.ReviewProvider, review_api.ReviewProvider),
+            (review_api.ScannerPolicy, review_api.ScannerPolicy),
+            (loaders.load_config, config_api.load_config),
+            (loaders.load_project_config, config_api.load_project_config),
+            (validators.validate_base_branch, config_api.validate_base_branch),
+            (validators.validate_log_subdirectory, config_api.validate_log_subdirectory),
+            (validators.validate_runtime_filename, config_api.validate_runtime_filename),
         ):
             with self.subTest(historical=historical):
                 self.assertIs(historical, canonical)
@@ -38,7 +37,7 @@ class ConfigurationArchitectureTests(unittest.TestCase):
             self.assertTrue(cls.__dataclass_params__.frozen)
 
     def test_model_source_only_contains_models_and_handoff_parsing(self) -> None:
-        tree = ast.parse(Path(model.__file__).read_text(encoding="utf-8"))
+        tree = ast.parse(Path(config_api.__file__).read_text(encoding="utf-8"))
         names = {node.name for node in tree.body
                  if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
         self.assertFalse({"Config", "load_config", "load_project_config",
@@ -63,7 +62,7 @@ class ConfigurationArchitectureTests(unittest.TestCase):
                 'base_branch: develop\nreview_retention_max_runs: 7\n', encoding="utf-8")
             global_config = config_api.load_config(installation)
             actual = loaders.load_project_config(project, global_config)
-            self.assertEqual(actual, model.load_project_config(project, global_config))
+            self.assertEqual(actual, loaders.load_project_config(project, global_config))
             self.assertIs(type(actual), models.Config)
             self.assertEqual(actual.base, "develop")
             self.assertEqual(actual.base_branch_source, "project")

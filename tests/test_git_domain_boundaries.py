@@ -5,7 +5,8 @@ from dataclasses import FrozenInstanceError
 from pathlib import Path
 from unittest.mock import patch
 
-from apatch_lib import gitutil
+from apatch_lib.mo_git import repository as gitutil
+from apatch_lib.mo_git import inspection as worktree_ops
 from apatch_lib.mo_core.api import Abort
 from apatch_lib.mo_git import api as git_api
 from tests._support import LocalGitFixture, command
@@ -13,9 +14,9 @@ from tests._support import LocalGitFixture, command
 
 class GitDomainBoundaryTests(LocalGitFixture):
     def test_historical_imports_are_identity_preserving(self):
-        self.assertIs(git_api.WorktreeEntry, gitutil.WorktreeEntry)
-        self.assertIs(git_api.worktree_inventory, gitutil.worktree_inventory)
-        self.assertIs(git_api.worktree_change_details, gitutil.worktree_change_details)
+        self.assertIs(git_api.WorktreeEntry, worktree_ops.WorktreeEntry)
+        self.assertIs(git_api.worktree_inventory, worktree_ops.worktree_inventory)
+        self.assertIs(git_api.worktree_change_details, worktree_ops.worktree_change_details)
 
     def test_models_are_frozen_and_contain_no_runtime_io(self):
         model_file = Path(git_api.WorktreeEntry.__module__.replace('.', '/'))

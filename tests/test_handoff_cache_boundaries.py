@@ -13,8 +13,12 @@ from apatch_lib.mo_core.api import Abort
 from apatch_lib.mo_handoff.api import HandoffCacheOperations, ProjectHandoffCache
 from apatch_lib.mo_handoff.models import Handoff
 from apatch_lib.mo_handoff.cache.service import RecoverableCacheError
-from apatch_lib import params_cache
-from apatch_lib.handoff_selection import HandoffSelection, SelectionKind, resolve_selected_handoff
+from apatch_lib.mo_handoff.cache import service as params_cache
+from apatch_lib.mo_handoff.selection import (
+    HandoffSelection,
+    SelectionKind,
+    resolve_selected_handoff,
+)
 from apatch_lib.cli_request import parse_request
 from apatch_lib.application import ProjectContext, execute_request
 from tests._support import LocalGitFixture, command
@@ -36,13 +40,13 @@ class HandoffCacheBoundaryTests(unittest.TestCase):
     def test_cold_imports_and_legacy_function_identity(self):
         script_root = Path(__file__).resolve().parents[1]
         commands = (
-            "from apatch_lib.params_cache import load_cached_handoff; "
+            "from apatch_lib.mo_handoff.cache.service import load_cached_handoff; "
             "from apatch_lib.mo_handoff.api import HandoffCacheOperations, ProjectHandoffCache",
             "from apatch_lib.mo_handoff.api import ProjectHandoffCache; "
-            "from apatch_lib.handoff_selection import resolve_selected_handoff; "
-            "from apatch_lib.params_cache import save_cached_handoff",
+            "from apatch_lib.mo_handoff.selection import resolve_selected_handoff; "
+            "from apatch_lib.mo_handoff.cache.service import save_cached_handoff",
             "from apatch_lib.mo_handoff.cache.service import save_cached_handoff; "
-            "from apatch_lib.model import Handoff",
+            "from apatch_lib.mo_handoff.models import Handoff",
         )
         for command in commands:
             with self.subTest(command=command):
@@ -102,7 +106,7 @@ class HandoffCacheBoundaryTests(unittest.TestCase):
         fake.load.assert_called_once_with(self.root)
         fake.preflight_write.assert_not_called()
         fake.save.assert_not_called()
-        with patch("apatch_lib.handoff_selection.load_cached_handoff", side_effect=AssertionError):
+        with patch("apatch_lib.mo_handoff.selection.load_cached_handoff", side_effect=AssertionError):
             selection = resolve_selected_handoff(None, SimpleNamespace(), self.root,
                                                  cache_ops=fake)
             self.assertEqual(selection.handoff, self.handoff)

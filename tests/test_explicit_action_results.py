@@ -8,7 +8,8 @@ from unittest.mock import Mock, patch
 
 from apatch_lib.mo_core.contracts import ActionResult
 from apatch_lib.mo_core.enums import OperationOutcome
-from apatch_lib.model import Abort, RemoteOutcomeUnknown
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_publication.api import RemoteOutcomeUnknown
 from apatch_lib.operation_events import RunOutcome, journal_outcome_for_result
 from apatch_lib.mo_presentation.execution import OperationPresentation
 

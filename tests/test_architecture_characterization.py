@@ -12,9 +12,10 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from apatch_lib import github
-from apatch_lib.model import Abort, RemoteOutcomeUnknown
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_publication.api import RemoteOutcomeUnknown
 from apatch_lib.state import locked_state, read_state_snapshot, save
-from apatch_lib.status import recommend_next_action
+from apatch_lib.mo_workflows.status import recommend_next_action
 from tests._support import LocalGitFixture, command
 
 

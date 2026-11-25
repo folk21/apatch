@@ -6,8 +6,9 @@ from unittest.mock import patch
 
 from apatch_lib import macros
 from apatch_lib.cli_request import parse_request
-from apatch_lib.model import Abort, load_config, load_project_config
-from apatch_lib.patch_history import AppliedPatchHistory
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_configuration.api import load_config, load_project_config
+from apatch_lib.mo_handoff_history.journal import AppliedPatchHistory
 from apatch_lib.state import read_state_snapshot
 from tests._support import LocalGitFixture, command
 
@@ -167,7 +168,8 @@ class LocalMacroTests(LocalGitFixture):
         self.assertEqual((self.root / "existing.txt").readlink().as_posix(), "new.txt")
 
     def test_symlink_target_change_has_path_specific_diagnostic(self):
-        from apatch_lib.gitutil import WorktreeEntry, worktree_change_details
+        from apatch_lib.mo_git.models import WorktreeEntry
+        from apatch_lib.mo_git.inspection import worktree_change_details
 
         before = {"existing.txt": WorktreeEntry(" M", (), "symlink",
                                                 symlink_target="first.txt")}

@@ -465,14 +465,14 @@ The producer works in the **source repository**, and writes its output
 First inspect what Git reports, including untracked files and deletions:
 
 ```bash
-python3 /path/to/apatch/apatch_pack.py --project . --discover
-python3 /path/to/apatch/apatch_preflight.py --project .
+python3 /path/to/apatch/scripts/apatch_pack.py --project . --discover
+python3 /path/to/apatch/scripts/apatch_preflight.py --project .
 ```
 
 After reviewing the path set and secrets, produce an explicit overlay:
 
 ```bash
-python3 /path/to/apatch/apatch_pack.py \
+python3 /path/to/apatch/scripts/apatch_pack.py \
   --project . \
   --output /path/outside/project-PATCH-example.zip \
   --branch feature/example \
@@ -488,7 +488,7 @@ files tracked in the destination baseline that are actually being removed.
 producer's preflight runs read-only checks. The producer verifies the exact
 source bytes and modes; it will not silently overwrite an existing output.
 Optional `--base-commit` must be a verified **destination** Git commit, not a
-guess from the source checkout. Run `apatch_pack.py --help` for all producer
+guess from the source checkout. Run `scripts/apatch_pack.py --help` for all producer
 options and provenance requirements. A successfully packaged ZIP is **not**
 evidence that it was applied, tested, committed or merged in the destination.
 

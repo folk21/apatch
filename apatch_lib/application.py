@@ -4,30 +4,30 @@ import logging
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from .cli_inspection import (select_without_handoff, show_audit_with_activity,
+from .mo_cli.api import (select_without_handoff, show_audit_with_activity,
                              show_status_with_progress, show_unresolved_operations)
-from .cli_request import (CliRequest, validate_progress_request,
+from .mo_cli.api import (CliRequest, validate_progress_request,
                           validate_repository_request)
 from .branch_reassignment import reassign_pending_branch
 from .mo_core.actions import ACTION_CODES, action_number
-from .gitutil import (output, repository_root, reset_skip_approvals,
-                      set_skip_approvals)
-from .handoff_selection import (HandoffSelection, resolve_handoffs,
-                                SelectionKind)
+from apatch_lib.mo_git.repository import output, repository_root
+from apatch_lib.mo_presentation.confirmation import reset_skip_approvals, set_skip_approvals
+from apatch_lib.mo_handoff.selection import HandoffSelection, resolve_handoffs, SelectionKind
 from .local_ignore import ensure_runtime_ignored
 from .logging_setup import LOG_FILENAME, configure, set_context
 from .macros import MACRO_NAMES, execute_macro
 from .migration import migrate_legacy_artifacts
-from .model import Abort, Config, load_config, load_project_config
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_configuration.api import Config, load_config, load_project_config
 from .mo_handoff.api import (AppliedZipVerifier, ProjectAppliedZipVerifier,
                           HandoffCacheOperations, ProjectHandoffCache)
 from .planner import execute_goal
 from .progress import ProgressRecorder, ProgressStore, render_progress
 from .sequence import execute_sequence
 from .state import locked_state, read_state_snapshot
-from .status import workflow_key
+from apatch_lib.mo_workflows.status import workflow_key
 from .workflow import Workflow
-from .zip_resume import verify_applied_zip
+from apatch_lib.mo_handoff.resume.verification import verify_applied_zip
 
 
 @dataclass(frozen=True)

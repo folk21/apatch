@@ -2,8 +2,9 @@
 
 from unittest.mock import patch
 
-from apatch_lib.model import Abort, load_config, load_project_config
-from apatch_lib.patch import handoff_from_zip
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_configuration.api import load_config, load_project_config
+from apatch_lib.mo_handoff.api import handoff_from_zip
 from apatch_lib.audit_collectors import local_git
 from apatch_lib.session_continuation import require_session_continuation
 from apatch_lib.state import locked_state, read_state_snapshot, save

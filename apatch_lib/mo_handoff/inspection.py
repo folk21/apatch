@@ -12,7 +12,7 @@ from ..mo_configuration.models import Config
 from ..mo_core.api import Abort
 from ..mo_core.paths import (PARAMS_MEMBER, REGISTRY_MEMBER, RUNTIME_METADATA_MEMBERS,
                           is_protected_runtime_path)
-from ..gitutil import run
+from apatch_lib.mo_git.commands import run
 from .constants import BASENAME_PATTERN
 from .models import Archive, Handoff
 from .parsing import parse_handoff_payload, safe_relative

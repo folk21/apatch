@@ -73,7 +73,7 @@ class HistoryTests(LocalGitFixture):
         self.assertIsNone(entries[0].date)
 
     def test_structured_history_tracks_distinct_patches_and_dates(self):
-        from apatch_lib.patch_history import locked_history
+        from apatch_lib.mo_handoff_history.journal import locked_history
         with locked_history(self.history_path) as history:
             self.assertTrue(history.append(self.zip.name, "feature/planned", "main"))
             self.assertTrue(history.append("another-change.zip", "feature/other", "release/one"))
@@ -200,7 +200,7 @@ class HistoryTests(LocalGitFixture):
         self.assert_history(real_branch=self.payload["feature_branch"])
 
     def test_force_applies_registry_patch_after_structured_predecessor(self):
-        from apatch_lib.patch_history import locked_history
+        from apatch_lib.mo_handoff_history.journal import locked_history
         self.write_created_registry("earlier-patch.zip", self.zip.name)
         with locked_history(self.history_path) as history:
             history.append("earlier-patch.zip", "feature/prior", "main")
@@ -359,7 +359,7 @@ class HistoryTests(LocalGitFixture):
         self.assertFalse((self.root / "new.txt").exists())
 
     def test_registry_persistence_is_idempotent(self):
-        from apatch_lib.created_patches import persist_registry
+        from apatch_lib.mo_handoff_history.registry import persist_registry
         self.write_created_registry(self.zip.name)
         registry = self.root / ".apatch" / "created_patches.txt"
         original = registry.stat()
@@ -380,7 +380,7 @@ class HistoryTests(LocalGitFixture):
         self.assertFalse((self.root / "new.txt").exists())
 
     def test_registry_persist_failure_after_extraction_is_recoverable(self):
-        from apatch_lib.gitutil import set_skip_approvals, reset_skip_approvals
+        from apatch_lib.mo_presentation.confirmation import set_skip_approvals, reset_skip_approvals
         from apatch_lib.workflow import Workflow
         self.add_registry_member(self.zip.name + "\n")
         config = load_project_config(self.root, load_config(self.bin))
@@ -486,7 +486,7 @@ class HistoryTests(LocalGitFixture):
         self.assertEqual(next(iter(state["workflows"].values()))["phase"], "committed")
 
     def test_history_lock_rejects_concurrent_use(self):
-        from apatch_lib.patch_history import locked_history
+        from apatch_lib.mo_handoff_history.journal import locked_history
         path = self.history_path
         with locked_history(path) as history:
             self.assertFalse(history.contains(self.zip.name))

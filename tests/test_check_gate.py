@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 from tests._support import LocalGitFixture, command, json, load_config, load_project_config, unittest
 from apatch_lib.check_gates import require_boundary
-from apatch_lib.model import Abort, load_handoff
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_handoff.api import load_handoff
 from apatch_lib.state import read_state_snapshot
 from apatch_lib.workflow import Workflow
 
@@ -90,7 +91,7 @@ class CheckBoundaryTests(LocalGitFixture):
                          command("git", "rev-parse", "HEAD", cwd=self.root).stdout.strip())
 
     def test_unfolded_status_detects_staged_rename_scope(self):
-        from apatch_lib.gitutil import status_paths
+        from apatch_lib.mo_git.repository import status_paths
 
         command("git", "mv", "existing.txt", "renamed.txt", cwd=self.root)
         default = status_paths(self.root)
@@ -100,7 +101,7 @@ class CheckBoundaryTests(LocalGitFixture):
 
     def test_commit_still_blocks_worktree_race_during_staging(self):
         from apatch_lib import loose
-        from apatch_lib.gitutil import reset_skip_approvals, set_skip_approvals
+        from apatch_lib.mo_presentation.confirmation import reset_skip_approvals, set_skip_approvals
 
         self.configure_boundary()
         self.ready()
@@ -127,7 +128,7 @@ class CheckBoundaryTests(LocalGitFixture):
 
     def test_commit_still_blocks_index_race_during_staging(self):
         from apatch_lib import loose
-        from apatch_lib.gitutil import reset_skip_approvals, set_skip_approvals
+        from apatch_lib.mo_presentation.confirmation import reset_skip_approvals, set_skip_approvals
 
         self.configure_boundary()
         self.ready()

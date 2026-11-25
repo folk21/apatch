@@ -27,33 +27,29 @@ description: Git adapter responsibilities, command execution, and safe repositor
 
 ## Dependencies and side effects
 
-The R3.1 snapshot functions still use the historical `gitutil` call-time seams
-for `status_paths` and Git commands. In R3.2, `git.commands` owns the existing
-argv-only process transport, with captured-command deadlines, streamed checks,
-bounded failure summaries, and redacted logging. `gitutil.run`,
-`display_command`, and the legacy helper symbols are identity-preserving
-imports of this implementation; `gitutil.output` continues to dispatch
-through its patchable `gitutil.run` global. Existing Git/CLI operations
-remain the only mutation authorities: `git.commands.run` is an internal
-transport, NOT a newly authorized mutation entry point. The public
-`git.api` adds no command execution or mutation endpoint in R3.2.
+`mo_git.commands` owns the argv-only subprocess transport, command deadlines,
+streamed check output, bounded failure summaries and redacted logging.
+`mo_git.repository` owns branch, HEAD and worktree queries, dispatching calls
+through its patchable `commands.run` dependency. `mo_git.inspection` captures
+worktree snapshots using `repository` and `commands` APIs. There is no root
+`gitutil.py` facade. Command execution is an internal transport, not a new
+mutation authorization; `mo_git.api` exposes read-only operations only.
 
 The read-only inspection APIs perform no Git writes, external network,
 confirmation prompts, or lifecycle checkpoint updates.
 The Git domain may depend on the neutral `core` exception and standard
 library, never on `handoff`, `publication`, `review`, or `workflows`.
 
-The approval context and user prompts remain in `gitutil` until the runtime
-confirmation boundary is designed. Moving the subprocess transport does not
-change command admission, user consent, retry decisions, or workflow safety.
-The transport cannot be treated as an authorization or policy interface.
+Approval context and prompts belong to `mo_presentation.confirmation`.
+Removing the Git compatibility facade changes no command admission, consent,
+retry or workflow safety policy. The transport remains separate from authorization.
 
 ## Compatibility and tests
 
-Historical imports `gitutil.WorktreeEntry`, `gitutil.worktree_inventory`,
-and `gitutil.worktree_change_details` remain the identical objects from this
-package. Existing producer consumers are moved to `git.api` in R3.1; other
-consumers migrate gradually. No stored state or ZIP member changes.
+Consumers import `WorktreeEntry`, `worktree_inventory` and
+`worktree_change_details` from `mo_git.api` or their owning modules.
+The removed root `gitutil.py` import is intentionally unsupported; no stored
+state or ZIP metadata changed.
 
 Contract tests: `tests/test_git_domain_boundaries.py`,
 `tests/test_artifact_preflight.py`, `tests/test_artifact_packaging.py`,

@@ -9,27 +9,29 @@ description: Architecture boundaries, Git/ZIP safety, evidence pipeline, recover
 
 ## Component flow
 
-1. `apatch.py` parses `CliRequest` and calls `apatch_lib/application.py`. Read-only status, audit and progress do not initialize writable workflow state.
-2. `handoff_selection.py` and `mo_handoff/api.py` select a ZIP, explicit legacy JSON or verified cache. Archive metadata and extraction are validated by the handoff domain before source files change.
-3. `workflow.py`, `sequence.py` and `action_executor.py` coordinate operations. `branch_patch.py` prepares branches and extracts patches; LOOSE, STRICT and FORCE have separate, explicit gates.
-4. `mo_git/api.py`, `gitutil.py` and `github.py` own Git/GitHub effects. Review and publication check current branch, HEAD, remote and exact PR revision before acting.
-5. `state.py`, `mo_handoff_history/` and `operation_events.py` record workflow state, applied ZIPs and attempts. `progress.py` maintains separate bounded installed-tool-wide summaries. Local recorded history cannot replace live GitHub evidence.
+1. `apatch.py` parses `mo_cli.api.CliRequest` and calls `apatch_lib/application.py`. Read-only status, audit and progress do not initialize writable workflow state.
+2. `mo_handoff/selection.py` and `mo_handoff/api.py` select a ZIP, explicit legacy JSON or verified cache. Archive metadata and extraction are validated by the handoff domain before source files change.
+3. `mo_workflows/workflow.py`, `mo_workflows/sequence.py` and `mo_workflows/action_executor.py` coordinate operations. `mo_workflows/branch_patch.py` prepares branches and extracts patches; LOOSE, STRICT and FORCE have separate, explicit gates.
+4. `mo_git/api.py`, `mo_git/commands.py` and `mo_publication/github.py` own Git/GitHub effects. Review and publication check current branch, HEAD, remote and exact PR revision before acting.
+5. `mo_storage/state.py`, `mo_handoff_history/` and `mo_storage/operation_events.py` record workflow state, applied ZIPs and attempts. `mo_storage/progress.py` maintains separate bounded installed-tool-wide summaries. Local recorded history cannot replace live GitHub evidence.
 
 ## Ownership map
 
 | Concern | Owner / boundary |
 | --- | --- |
-| CLI grammar, navigation | `apatch.py`, `cli_request.py`, `application.py`, `cli_inspection.py` |
-| ZIP schema, safe archive extraction, cache | `mo_handoff/` (internal `cache/` and `resume/`), `handoff_selection.py`, compatibility `patch.py` / `params_cache.py` |
-| Archive generation | `mo_handoff_producer/`, compatibility `artifact_packaging.py` and `artifact_preflight.py` |
-| Workflow phases, actions, modes, goals | `workflow.py`, `mo_workflows/`, `loose.py`, `force.py`, `planner.py`, `macros.py` |
-| Feature sessions, scope verification | `session.py`, `session_continuation.py`, `commit_scope.py`, `context.py` |
+| User confirmation and terminal output | `mo_presentation/confirmation.py`, `mo_presentation/console.py` |
+| CLI grammar, navigation | `apatch.py`, `mo_cli/`, `application.py` |
+| ZIP schema, safe archive extraction, cache | `mo_handoff/` (including `selection.py`, internal `cache/` and `resume/`) |
+| Archive generation | `mo_handoff_producer/` |
+| Workflow phases, actions, modes, goals | `mo_workflows/` (`workflow.py`, `loose.py`, `force.py`, `sequence.py`, `planner.py`, `macros.py`, branch and action policies) |
+| Canonical checks, formatting, builds and check policy | `mo_verification/` (`checks.py`, `formatting.py`, `building.py`, `check_gates.py`) |
+| Feature sessions, scope verification | `mo_feature_sessions/` (identity, continuation, context and guarded scope) |
 | Configuration and validation | `mo_configuration/api.py`, `mo_configuration/loaders.py`, `mo_configuration/validators.py` |
-| Git and GitHub publication | `mo_git/`, `gitutil.py`, `github.py`, `mo_publication/` |
-| Review and evidence | `mo_review/`, `code_review.py`, `review_artifacts.py`, `review_normalizer.py`, `review_context.py`, `review_evidence_api.py`, `review_retention.py` |
-| Audit, checkpoint, logs, progress | `audit_collectors.py`, `audit_rules.py`, `reconciliation.py`, `state.py`, `operation_events.py`, `logging_setup.py`, `progress.py` |
+| Git and GitHub publication | `mo_git/` (`repository.py`, `inspection.py`, `commands.py`), `mo_publication/github.py`, `mo_publication/branch_guard.py` |
+| Review and evidence | `mo_review/` (execution, normalization, capture, context, retrieval, retention) |
+| Audit, checkpoint, logs, progress | `mo_audit/`, `mo_storage/` (checkpoint, journal, progress, migration and runtime files) |
 
-Canonical module owners live directly under `apatch_lib/` and use the `mo_` prefix. The `cache/` and `resume/` subpackages are internal implementation details of `mo_handoff`, with their public protocols defined in `mo_handoff/api.py`. Only `mo_handoff_history` and `mo_handoff_producer` remain separate handoff-related module owners. Deprecated import paths remain compatibility aliases, not additional owners.
+Canonical module owners live directly under `apatch_lib/` and use the `mo_` prefix. The `cache/` and `resume/` subpackages are internal implementation details of `mo_handoff`, with their public protocols defined in `mo_handoff/api.py`. Only `mo_handoff_history` and `mo_handoff_producer` remain separate handoff-related module owners. Deprecated import paths remain compatibility aliases, not additional owners. The `mo_workflows.api` value surface remains import-safe; the engine is in `mo_workflows.workflow`, not in the value API. `mo_cli` owns CLI syntax/help/inspection dispatch; `mo_presentation` owns terminal rendering; `mo_workflows/status.py` owns read-only workflow evidence and identity. `mo_audit` owns read-only audit collection/rules/reconciliation; `mo_publication` owns GitHub mutation guards; and `mo_review` owns the review evidence pipeline. `mo_feature_sessions` owns session, continuation and commit-scope decisions; `mo_storage` owns their durable state, journals, progress and runtime files. The root `apatch_lib/` holds only `application.py` and `__init__.py`; deleted compatibility facades are no longer public Python import paths.
 
 Use stable `api.py` and `contract.md` boundaries for cross-domain calls; compatibility adapters preserve old imports. Avoid deep peer-to-peer imports, hidden mutable global state, duplicate validation and dependency cycles. Keep module contracts next to code, not in general documentation.
 
@@ -123,7 +125,7 @@ module-level interfaces remain owned by source and `contract.md` files.
 
 | Boundary | Enforced condition | Failure or residual risk |
 | --- | --- | --- |
-| ZIP files | Root confinement, safe member types/paths/deletions, size limits, digest and collision checks | Content may still be unsafe; multi-file extraction is not crash-atomic |
+| ZIP files | Root confinement, safe member types/paths/deletions, size limits, digest checks and descriptor-anchored extraction/deletion | Content may still be unsafe; multi-file extraction is not crash-atomic; filesystem case collisions need separate validation |
 | Runtime and Git | No-follow/regular file validation, locks, history integrity, worktree preservation, branch and HEAD rechecks | Crash or external edits may leave a partial state requiring inspection |
 | Checks and review | Explicit configured argv, total/idle timeouts, bounded output and consent gates | Executed scripts have full user permissions; stored artifacts may contain secrets |
 | GitHub operations | Non-force push, unique exact PR identity, review/CI/mergeability checks and read-only reconciliation | Remote mutation can succeed with a lost response; never blindly retry |
@@ -136,14 +138,14 @@ Use Python 3.10+, Git and the dependencies from `requirements.txt`. The standalo
 
 ```bash
 sh ./run_tests.sh
-sh ./run_rare_checks.sh
+sh ./scripts/run_rare_checks.sh
 python3 tools/specs/validate_state.py
 python3 tools/specs/validate_features.py
 sh -n apatch.sh
 sh -n run_tests.sh
-sh -n run_rare_checks.sh
+sh -n scripts/run_rare_checks.sh
 ```
 
-`run_tests.sh` is the regular bounded suite; `run_rare_checks.sh` is the extended regression suite. They use isolated temporary Git repositories, mocked GitHub interactions and bounded subprocess workers/timeouts with limited retries. Optional non-mutating quality checks are `sh ./run_quality.sh lint|types|all` after installing `requirements-quality.txt`; missing tools report `NOT_RUN`, not PASS. Use focused `python3 -B -m unittest` invocations before full suites. `tools/specs/validate_state.py` verifies the tracked SDD processing checkpoint, not runtime state. Tests on Linux do not establish macOS behavior. Report exact checks, failures, timeouts and untested environments; do not weaken assertions or safety gates to make a run green.
+`run_tests.sh` delegates to `scripts/run_tests.sh` to preserve existing canonical check configurations. `scripts/run_rare_checks.sh` is the extended regression suite. Producer tools and optional quality/characterization/archive helpers live under `scripts/`. They use isolated temporary Git repositories, mocked GitHub interactions and bounded subprocess workers/timeouts with limited retries. Optional non-mutating quality checks are `sh ./scripts/run_quality.sh lint|types|all` after installing `requirements-quality.txt`; missing tools report `NOT_RUN`, not PASS. Use focused `python3 -B -m unittest` invocations before full suites. `tools/specs/validate_state.py` verifies the tracked SDD processing checkpoint, not runtime state. Tests on Linux do not establish macOS behavior. Report exact checks, failures, timeouts and untested environments; do not weaken assertions or safety gates to make a run green.
 
 Specifications are indexed in [docs/specs/README.md](specs/README.md); agent-facing SDD lifecycle rules live in [docs/specs/AGENTS.md](specs/AGENTS.md). The newest verified source and actual tests outrank historical stage prose. Do not present an unaccepted draft or a generated ZIP as proof of merge or product deployment.

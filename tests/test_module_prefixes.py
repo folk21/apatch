@@ -12,8 +12,8 @@ from tempfile import TemporaryDirectory
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = (
-    "configuration", "core", "git", "handoff", "presentation",
-    "publication", "review", "storage", "workflows",
+    "cli", "configuration", "core", "feature_sessions", "git", "handoff", "presentation",
+    "publication", "review", "storage", "workflows", "audit", "verification",
 )
 HANDOFF_PEERS = ("history", "producer")
 HANDOFF_INTERNAL = ("cache", "resume")

@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from apatch_lib.model import Abort
+from apatch_lib.mo_core.api import Abort
 from apatch_lib.review_artifacts import ReviewArtifacts
 from apatch_lib.review_context import build_review_context
 

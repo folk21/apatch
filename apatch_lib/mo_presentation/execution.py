@@ -4,15 +4,20 @@ import logging
 import time
 
 from ..action_executor import execute_workflow_action
-from ..console import next_action_label, outcome_label
+from .console import next_action_label, outcome_label
 from ..mo_core.actions import ACTION_CODES, action_number
 from ..mo_core.contracts import ActionResult
 from ..mo_core.enums import OperationOutcome
-from ..gitutil import (clear_confirmation_declined, confirmation_was_declined,
-                       current_branch, head, status_paths)
-from ..model import Abort, CheckWorktreeChanged
+from apatch_lib.mo_presentation.confirmation import (
+    clear_confirmation_declined,
+    confirmation_was_declined,
+)
+from apatch_lib.mo_git.repository import current_branch, head, status_paths
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_workflows.api import CheckWorktreeChanged
 from ..progress import ProgressEvent, utc_now
-from ..status import display_recommendation, inspect_patch
+from apatch_lib.mo_presentation.status import display_recommendation
+from apatch_lib.mo_workflows.status import inspect_patch
 
 
 LOGGER = logging.getLogger("apatch.workflow")
@@ -112,7 +117,7 @@ class OperationPresentation:
             print("Exit selected. No action was run.")
             return "NO_OP"
         if number == 10:
-            from ..status import display_status
+            from apatch_lib.mo_presentation.status import display_status
             started_at = utc_now()
             started = time.monotonic()
             previous_phase = self.phase
@@ -244,4 +249,3 @@ class OperationPresentation:
         self._record_progress(number, started_at, elapsed, action_result.progress_outcome,
                               before_phase, before_branch, after_branch)
         return result
-

@@ -7,17 +7,21 @@ from pathlib import Path
 from typing import Sequence
 
 from apatch_lib.application import execute_request
-from apatch_lib.cli_inspection import (select_without_handoff,
+from apatch_lib.mo_cli.api import (select_without_handoff,
                                        show_audit_with_activity,
                                        show_status_with_progress,
                                        show_unresolved_operations)
-from apatch_lib.cli_request import (normalize_arguments, parse_boolean,
+from apatch_lib.mo_cli.api import (normalize_arguments, parse_boolean,
                                     parse_operation, parse_operation_sequence,
                                     parse_request)
-from apatch_lib.handoff_selection import (resolve_handoff_path,
-                                          resolve_selected_handoff as _resolve_selected_handoff,
-                                          resolve_sequence_zip_names)
-from apatch_lib.model import Abort, Config, Handoff
+from apatch_lib.mo_handoff.selection import (
+    resolve_handoff_path,
+    resolve_selected_handoff as _resolve_selected_handoff,
+    resolve_sequence_zip_names,
+)
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_configuration.api import Config
+from apatch_lib.mo_handoff.api import Handoff
 
 
 __all__ = (

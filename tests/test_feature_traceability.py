@@ -61,7 +61,7 @@ class FeatureTraceabilityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "feature-cross-ref.yaml"
             for text, expected in (
-                (source.replace("apatch_lib/review_retention.py", "apatch_lib/missing.py", 1),
+                (source.replace("apatch_lib/mo_review/review_retention.py", "apatch_lib/missing.py", 1),
                  "Missing or unsafe feature path"),
                 (source.replace("- RE-05", "- RE-99", 1),
                  "Stage is absent"),

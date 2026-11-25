@@ -1,0 +1,301 @@
+"""Feature branch creation and patch extraction actions."""
+
+import logging
+
+from ..branch_guard import assert_no_unfinished_feature_branches
+from apatch_lib.mo_git.repository import (
+    branch_exists,
+    current_branch,
+    head,
+    remote_head,
+    require_branch,
+    require_clean,
+    worktree_fingerprint,
+)
+from apatch_lib.mo_presentation.confirmation import confirm, skip_approvals_enabled
+from apatch_lib.mo_git.commands import run
+from ..mo_core.enums import WorkflowPhase
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_handoff.api import safe_relative
+from ..mo_handoff_history.registry import assert_patch_order, persist_registry
+from ..mo_handoff_history.journal import locked_history
+from ..mo_handoff.api import (ArchiveOperations, PatchLedgerOperations,
+                          ProjectPatchLedger, ZipArchiveOperations)
+
+
+LOGGER = logging.getLogger("apatch.branch_patch")
+
+
+class BranchPatchActions:
+    """Bounded branch and patch operations sharing the Workflow checkpoint owner."""
+
+    def __init__(self, workflow, archive_ops: ArchiveOperations | None = None,
+                 ledger_ops: PatchLedgerOperations | None = None):
+        self.workflow = workflow
+        self.archive_ops: ArchiveOperations = (archive_ops if archive_ops is not None
+                                               else ZipArchiveOperations())
+        self.ledger_ops: PatchLedgerOperations = (ledger_ops if ledger_ops is not None
+                                                  else ProjectPatchLedger(
+                                                      lock=lambda path: locked_history(path),
+                                                      order=lambda *args: assert_patch_order(*args),
+                                                      persist=lambda *args: persist_registry(*args)))
+
+    def assert_history_well_formed(self):
+        """Validate the journal before any feature-branch switch or creation."""
+        with self.ledger_ops.locked(self.workflow.config.applied_patches_path):
+            pass
+
+    def assert_patch_order(self, history=None, archive=None):
+        """Guard application using the authoritative applied-patch journal."""
+        w = self.workflow
+        if history is None:
+            with self.ledger_ops.locked(w.config.applied_patches_path) as locked:
+                return self.assert_patch_order(locked, archive)
+        archive = archive or self.archive_ops.inspect(w.config, w.source_handoff, w.root, before_apply=False)
+        return self.ledger_ops.assert_order(
+            w.root, w.handoff.patch, history, archive.created_registry)
+
+    def assert_new_branch_available(self):
+        """Reject existing local and remote refs, including non-checked-out branches."""
+        w = self.workflow
+        if branch_exists(w.root, w.handoff.branch):
+            raise Abort(f"Feature branch already exists locally: {w.handoff.branch}")
+        if remote_head(w.root, w.config, w.handoff.branch):
+            raise Abort(f"Feature branch already exists on {w.config.remote}: {w.handoff.branch}")
+
+    def new_branch(self, with_patch=False):
+        w = self.workflow
+        if with_patch:
+            self.assert_patch_order()
+        self.assert_history_well_formed()
+        if w.phase != "new":
+            raise Abort("Feature branch has already been prepared for this patch")
+        require_clean(w.root)
+        if current_branch(w.root) != w.config.base:
+            raise Abort(f"Create a feature branch only from {w.config.base}")
+        self.assert_new_branch_available()
+        w.assert_base()
+        remote_url = w.assert_remote_unchanged()
+        if remote_head(w.root, w.config, w.config.base) != head(w.root):
+            raise Abort("Local base HEAD differs from the configured remote base branch")
+        archive = w.assert_patch_identity() if with_patch else None
+        if with_patch:
+            with self.ledger_ops.locked(w.config.applied_patches_path) as history:
+                self.assert_patch_order(history, archive)
+                if not self.warn_if_previously_applied(history):
+                    return
+                if not confirm(f"Create branch {w.handoff.branch} from current HEAD?"):
+                    return
+                self.assert_new_branch_available()
+                assert_no_unfinished_feature_branches(w.root, w.config, w.handoff.branch)
+                require_clean(w.root)
+                w.assert_base()
+                if remote_head(w.root, w.config, w.config.base) != head(w.root):
+                    raise Abort("Remote base branch changed before branch creation")
+                run(["git", "switch", "-c", w.handoff.branch], w.root)
+                require_branch(w.root, w.handoff.branch)
+                w.record.update(phase="branch_created", branch_base=head(w.root),
+                                remote_url=remote_url, branch_origin="CREATED")
+                w.persist()
+                return self.unpack(archive, history=history, history_confirmed=True)
+        else:
+            if not confirm(f"Create branch {w.handoff.branch} from current HEAD?"):
+                return
+            self.assert_new_branch_available()
+            assert_no_unfinished_feature_branches(
+                w.root, w.config, w.handoff.branch,
+                ignore_branch=w.source_handoff.branch if w.record.get("reassigned_branch") else None)
+            require_clean(w.root)
+            w.assert_base()
+            if remote_head(w.root, w.config, w.config.base) != head(w.root):
+                raise Abort("Remote base branch changed before branch creation")
+            run(["git", "switch", "-c", w.handoff.branch], w.root)
+            require_branch(w.root, w.handoff.branch)
+            w.record.update(phase="branch_created", branch_base=head(w.root),
+                            remote_url=remote_url, branch_origin="CREATED")
+            w.persist()
+            return True
+
+    def _pending_branch_snapshot(self):
+        """Allow only untracked, newly ignored non-patch paths to leave a LOOSE scope."""
+        w = self.workflow
+        if not w.loose:
+            fingerprint, paths = w.assert_expected_paths()
+            return fingerprint, paths, ()
+        fingerprint, paths = worktree_fingerprint(w.root)
+        expected = w.record.get("changed_paths", [])
+        if not isinstance(expected, list) or any(type(item) is not str for item in expected):
+            raise Abort("Invalid recorded changed paths; recovery refused")
+        expected_set = set(expected)
+        actual_set = set(paths)
+        if expected_set == actual_set:
+            return fingerprint, paths, ()
+        missing = expected_set - actual_set
+        footprint = w.record.get("patch_footprint")
+        staged_before = w.record.get("preexisting_staged_paths", [])
+        if (not paths or not missing or actual_set - expected_set
+                or not isinstance(footprint, list) or not footprint
+                or any(type(item) is not str for item in footprint)
+                or not isinstance(staged_before, list)
+                or any(type(item) is not str for item in staged_before)
+                or not set(footprint) <= actual_set
+                or missing & set(staged_before)):
+            raise Abort(f"Unexpected changed files. Expected {sorted(expected_set)}, "
+                        f"got {sorted(actual_set)}")
+        for name in sorted(missing):
+            safe_relative(name)
+            path = w.root / name
+            if (not path.is_file() or path.is_symlink()
+                    or any(parent.is_symlink() for parent in path.parents
+                           if parent != w.root and w.root in parent.parents)
+                    or run(["git", "ls-files", "--stage", "-z", "--", name],
+                           w.root, text=False).stdout
+                    or run(["git", "check-ignore", "--no-index", "--quiet", "--", name],
+                           w.root, check=False).returncode != 0):
+                raise Abort("Changed-path recovery refused: missing path is not an "
+                            f"ignored untracked regular file: {name}")
+        print(f"Verified ignore-rule drift: {len(missing)} untracked non-ZIP "
+              "path(s) are now ignored; they will not be committed.")
+        return fingerprint, paths, tuple(sorted(missing))
+
+    def prepare_branch_after_apply(self):
+        """Move verified uncommitted patch bytes from base to the planned feature branch."""
+        w = self.workflow
+        if (not w.record.get("zip_first") or w.phase != "patch_applied"
+                or w.record.get("applied_branch") != w.config.base):
+            raise Abort("Apply a self-contained ZIP on the base branch before BRN")
+        self.assert_history_well_formed()
+        expected_head = w.record.get("before_patch_head")
+        if not expected_head or head(w.root) != expected_head:
+            raise Abort("Base HEAD drifted after patch extraction; cannot move pending changes")
+        if w.record.get("archive_sha256") != w.handoff.patch_sha256:
+            raise Abort("Cached patch digest differs from the applied ZIP")
+        w.assert_remote_unchanged()
+        before_fingerprint, paths, ignored = self._pending_branch_snapshot()
+        if not paths:
+            raise Abort("No recorded patch changes to carry into the feature branch")
+        branch = current_branch(w.root)
+        if branch == w.handoff.branch:
+            origin = "CREATED"
+            print("Recovering a previously switched feature branch from live Git state.")
+        else:
+            if branch != w.config.base:
+                raise Abort(f"BRN requires current branch {w.config.base} or {w.handoff.branch}")
+            if remote_head(w.root, w.config, w.config.base) != expected_head:
+                raise Abort("Remote base HEAD changed since patch extraction")
+            self.assert_new_branch_available()
+            if not confirm(f"Move uncommitted patch changes from {branch} to {w.handoff.branch}?"):
+                return
+            self.assert_new_branch_available()
+            assert_no_unfinished_feature_branches(
+                w.root, w.config, w.handoff.branch,
+                ignore_branch=w.source_handoff.branch if w.record.get("reassigned_branch") else None)
+            if head(w.root) != expected_head or worktree_fingerprint(w.root)[0] != before_fingerprint:
+                raise Abort("Base HEAD or pending files changed before branch creation")
+            if remote_head(w.root, w.config, w.config.base) != expected_head:
+                raise Abort("Remote base moved during branch preflight")
+            run(["git", "switch", "-c", w.handoff.branch], w.root)
+            origin = "CREATED"
+        require_branch(w.root, w.handoff.branch)
+        if head(w.root) != expected_head or worktree_fingerprint(w.root)[0] != before_fingerprint:
+            raise Abort("Pending patch bytes changed during branch transition; inspect before retry")
+        if ignored:
+            w.record["ignore_drift_recovery"] = {
+                "original_changed_paths": sorted(w.record["changed_paths"]),
+                "ignored_untracked_paths": list(ignored),
+            }
+            w.record["changed_paths"] = sorted(paths)
+        w.record.update(applied_branch=w.handoff.branch, branch_origin=origin,
+                        branch_base=expected_head, extracted_on_branch=w.config.base)
+        w.persist()
+        with self.ledger_ops.locked(w.config.applied_patches_path) as history:
+            history.record_commit_branch(w.handoff.patch, w.source_handoff.branch,
+                                         w.handoff.branch)
+        print(f"Patch changes now reside on {w.handoff.branch}; run CHK next.")
+        return True
+
+    def warn_if_previously_applied(self, history):
+        w = self.workflow
+        if not history.contains(w.handoff.patch):
+            return True
+        LOGGER.warning("previously applied patch selected for reapplication name=%s", w.handoff.patch)
+        print(f"WARNING: Patch {w.handoff.patch} is already in the applied-patch history.")
+        if skip_approvals_enabled():
+            raise Abort("Patch already applied; do not replay APL with skipApproves=true. "
+                        "Resume the cached workflow with opSeq=CHK,STS without the ZIP "
+                        "or followup=true. To intentionally reapply, run APL interactively "
+                        "with skipApproves=false and confirm the duplicate.")
+        try:
+            response = input("Apply this patch again? [yes/no]: ").strip().lower()
+        except EOFError as exc:
+            raise Abort("Duplicate ZIP replay requires interactive confirmation; "
+                        "skipApproves=true cannot authorize it") from exc
+        if response not in {"yes", "no"}:
+            raise Abort("Expected yes or no; patch was not applied")
+        if response == "no":
+            LOGGER.info("previously applied patch reapplication declined")
+            return False
+        LOGGER.warning("developer approved previously applied patch reapplication")
+        return True
+
+    def block_unattended_duplicate(self):
+        """Reject replay before previous-cycle updates or overlap confirmation."""
+        if not skip_approvals_enabled():
+            return
+        with self.ledger_ops.locked(self.workflow.config.applied_patches_path) as history:
+            self.warn_if_previously_applied(history)
+
+    def unpack(self, archive=None, *, history=None, history_confirmed=False):
+        w = self.workflow
+        if history is None:
+            with self.ledger_ops.locked(w.config.applied_patches_path) as locked:
+                return self.unpack(archive, history=locked)
+        self.assert_patch_order(history, archive)
+        if w.phase not in {WorkflowPhase.NEW, WorkflowPhase.BRANCH_CREATED}:
+            raise Abort("Patch has already been applied or advanced")
+        patch_branch = current_branch(w.root)
+        if not patch_branch or patch_branch == "HEAD":
+            raise Abort("Check out a named branch before applying a patch")
+        archive = archive or w.assert_patch_identity()
+        zip_first = archive.embedded_handoff is not None and patch_branch == w.config.base
+        if w.config.require_patch_feature_branch and not zip_first:
+            require_branch(w.root, w.handoff.branch)
+        require_clean(w.root)
+        remote_url = w.assert_remote_unchanged()
+        if w.phase == "new":
+            w.assert_base()
+        elif patch_branch == w.handoff.branch:
+            if head(w.root) != w.record.get("branch_base"):
+                raise Abort("Feature branch HEAD drifted since branch creation")
+        else:
+            w.assert_base()
+        remote_before_patch = remote_head(w.root, w.config, patch_branch)
+        if w.phase == "branch_created" and patch_branch == w.handoff.branch and remote_before_patch is not None:
+            raise Abort("Feature branch unexpectedly appeared on remote after local creation")
+        if remote_before_patch is not None and remote_before_patch != head(w.root):
+            raise Abort(f"Remote branch {patch_branch} differs from local HEAD")
+        if not history_confirmed and not self.warn_if_previously_applied(history):
+            return
+        if not confirm(f"Apply {w.handoff.patch} to {patch_branch}?"):
+            return
+        if w.phase == "new":
+            w.record["remote_url"] = remote_url
+            w.record.setdefault("branch_origin", "REUSED")
+        w.record.update(
+            phase="applying",
+            archive_sha256=archive.sha256,
+            zip_first=zip_first,
+            remote_before_patch_head=remote_before_patch,
+            applied_branch=patch_branch,
+            changed_paths=sorted(set(archive.changed) | set(w.handoff.delete_paths)),
+            before_patch_head=head(w.root),
+        )
+        w.persist()
+        self.archive_ops.apply(w.config, w.source_handoff, w.root, archive)
+        w.assert_expected_paths()
+        self.ledger_ops.persist_registry(w.root, archive.created_registry)
+        history.append(w.handoff.patch, w.source_handoff.branch, patch_branch)
+        w.record["phase"] = "patch_applied"
+        w.persist()
+        print("Patch applied. Run verification before committing.")
+        return True

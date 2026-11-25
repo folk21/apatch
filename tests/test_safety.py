@@ -17,7 +17,7 @@ from tests._support import (
 
 class SafetyTests(LocalGitFixture):
     def test_streaming_idle_timeout_kills_child_after_parent_exits(self):
-        from apatch_lib.gitutil import run
+        from apatch_lib.mo_git.commands import run
 
         child = "import subprocess, sys; " \
                 "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(20)'])"
@@ -28,7 +28,7 @@ class SafetyTests(LocalGitFixture):
         self.assertLess(time.monotonic() - started, 3)
 
     def test_streaming_check_with_periodic_output_survives_idle_deadline(self):
-        from apatch_lib.gitutil import run
+        from apatch_lib.mo_git.commands import run
 
         script = "import time; [(print('tick', flush=True), time.sleep(0.2)) for _ in range(7)]"
         result = run([sys.executable, "-c", script], self.root, stream_output=True,
@@ -330,7 +330,7 @@ class SafetyTests(LocalGitFixture):
         self.assertFalse(self.state_path.exists())
 
     def test_git_fingerprint_includes_executable_bit_and_index_state(self):
-        from apatch_lib.gitutil import worktree_fingerprint
+        from apatch_lib.mo_git.repository import worktree_fingerprint
         (self.root / "new.txt").write_text("new\n")
         first, _ = worktree_fingerprint(self.root)
         (self.root / "new.txt").chmod(0o755)

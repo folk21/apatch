@@ -368,7 +368,8 @@ class SequencesTests(LocalGitFixture):
             self.assertEqual(outcome_label("SUCCESS"), "SUCCESS")
 
     def test_next_suggested_is_highlighted_only_for_tty(self):
-        from apatch_lib.status import PatchStatus, display_recommendation
+        from apatch_lib.mo_workflows.status import PatchStatus
+        from apatch_lib.mo_presentation.status import display_recommendation
 
         status = PatchStatus("example.zip", "feature/example", "verified", "main", {},
                              5, 3, "Review commit scope before proceeding.")

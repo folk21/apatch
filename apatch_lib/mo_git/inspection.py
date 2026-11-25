@@ -10,12 +10,12 @@ from .models import RepositorySnapshot, WorktreeEntry, WorktreeSnapshot
 
 def worktree_inventory(root: Path) -> dict[str, WorktreeEntry]:
     """Inventory changed and untracked paths without reading ignored private files."""
-    from .. import gitutil
+    from . import commands, repository
 
-    statuses = gitutil.status_paths(root)
+    statuses = repository.status_paths(root)
     if not statuses:
         return {}
-    raw_index = gitutil.run(["git", "--literal-pathspecs", "ls-files", "--stage", "-z",
+    raw_index = commands.run(["git", "--literal-pathspecs", "ls-files", "--stage", "-z",
                      "--", *sorted(statuses)], root, text=False).stdout
     index: dict[str, list[tuple[str, str, str]]] = {}
     for item in raw_index.split(b"\x00"):
@@ -87,30 +87,30 @@ def worktree_change_details(before: dict[str, WorktreeEntry],
 
 def inspect_repository(root: Path) -> RepositorySnapshot:
     """Observe an exact root, checked-out branch, HEAD and dirty flag."""
-    from .. import gitutil
+    from . import commands, repository
 
     root = Path(root).resolve()
-    observed = Path(gitutil.output(["git", "rev-parse", "--show-toplevel"], root)).resolve()
+    observed = Path(repository.output(["git", "rev-parse", "--show-toplevel"], root)).resolve()
     if observed != root:
         raise Abort(f"Git inspection requires repository root: {observed}")
-    branch = gitutil.current_branch(root)
+    branch = repository.current_branch(root)
     if not branch:
         raise Abort("Git inspection requires a checked-out named branch")
-    return RepositorySnapshot(root, branch, gitutil.head(root), bool(gitutil.status_paths(root)))
+    return RepositorySnapshot(root, branch, repository.head(root), bool(repository.status_paths(root)))
 
 
 def inspect_worktree(root: Path) -> WorktreeSnapshot:
     """Reject changed fingerprints or inventories observed during read-only capture."""
-    from .. import gitutil
+    from . import commands, repository
 
     root = Path(root).resolve()
-    before_branch = gitutil.current_branch(root)
-    before_head = gitutil.head(root)
-    before_fingerprint, before_paths = gitutil.worktree_fingerprint(root)
+    before_branch = repository.current_branch(root)
+    before_head = repository.head(root)
+    before_fingerprint, before_paths = repository.worktree_fingerprint(root)
     inventory = worktree_inventory(root)
-    after_fingerprint, after_paths = gitutil.worktree_fingerprint(root)
-    if (gitutil.current_branch(root) != before_branch
-            or gitutil.head(root) != before_head
+    after_fingerprint, after_paths = repository.worktree_fingerprint(root)
+    if (repository.current_branch(root) != before_branch
+            or repository.head(root) != before_head
             or before_fingerprint != after_fingerprint
             or before_paths != after_paths
             or set(inventory) != set(after_paths)):
@@ -121,7 +121,7 @@ def inspect_worktree(root: Path) -> WorktreeSnapshot:
 
 def index_entries(root):
     """Inspect the whole Git index, including paths entering the changed set."""
-    from ..gitutil import run
+    from .commands import run
 
     raw = run(["git", "ls-files", "--stage", "-z"], root, text=False).stdout
     entries = {}

@@ -208,7 +208,7 @@ class CodeReviewTests(LocalGitFixture):
         self.project_config.write_text(self.project_config.read_text() +
                                        "review_context_external_consent: true\n"
                                        "review_context_include_messages: true\n")
-        from apatch_lib.model import load_config, load_project_config
+        from apatch_lib.mo_configuration.api import load_config, load_project_config
         parsed = load_project_config(self.root, load_config(self.bin))
         self.assertEqual(parsed.reviewers[0].input_mode, "structured-summary")
         self.project_config.write_text(self.project_config.read_text() +

@@ -1,1 +1,1 @@
-"""Secure storage and reusable interprocess locking primitives."""
+"""Project-local state, progress and runtime persistence."""

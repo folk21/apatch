@@ -14,7 +14,8 @@ from .preflight import preflight
 from ..mo_core.paths import PARAMS_MEMBER, is_protected_runtime_path
 from ..mo_git.api import (current_branch, head, worktree_fingerprint,
                         worktree_inventory)
-from ..gitutil import output, run
+from apatch_lib.mo_git.repository import output
+from apatch_lib.mo_git.commands import run
 from ..mo_core.api import Abort
 from ..mo_configuration.api import load_config, load_project_config
 from ..mo_handoff.constants import BASENAME_PATTERN

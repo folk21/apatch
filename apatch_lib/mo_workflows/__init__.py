@@ -1,1 +1,1 @@
-"""Workflow domain contracts; the legacy workflow.py remains the engine."""
+"""Workflow value contracts and runtime engine, with legacy import aliases."""

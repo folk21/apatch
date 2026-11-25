@@ -22,10 +22,13 @@ from unittest.mock import patch
 from tests._process_termination import terminate_test_process
 
 TOOL = Path(__file__).resolve().parents[1]
-from apatch_lib.model import Abort, RemoteOutcomeUnknown, load_handoff, load_project_config, safe_relative
-from apatch_lib.patch import inspect
-from apatch_lib.model import load_config
-from apatch_lib.patch_history import AppliedPatchHistory
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_publication.api import RemoteOutcomeUnknown
+from apatch_lib.mo_handoff.api import load_handoff, safe_relative
+from apatch_lib.mo_configuration.api import load_project_config
+from apatch_lib.mo_handoff.api import inspect
+from apatch_lib.mo_configuration.api import load_config
+from apatch_lib.mo_handoff_history.journal import AppliedPatchHistory
 from apatch_lib.workflow import ACTION_CODES, action_number
 from apatch_lib.sequence import OperationSequence, execute_sequence
 from apatch_lib.workflow import outcome_label

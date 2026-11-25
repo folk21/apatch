@@ -7,8 +7,9 @@ from unittest.mock import patch
 from apatch_lib.commit_scope import (NeedsVerification, WaitingForUser,
                                      inspect_commit_scope)
 from apatch_lib.context import inspect_guarded_commit_readiness
-from apatch_lib.model import Abort, load_config, load_project_config
-from apatch_lib.patch import handoff_from_zip
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_configuration.api import load_config, load_project_config
+from apatch_lib.mo_handoff.api import handoff_from_zip
 from apatch_lib.state import locked_state, read_state_snapshot
 from apatch_lib.workflow import Workflow
 from tests._support import LocalGitFixture, command

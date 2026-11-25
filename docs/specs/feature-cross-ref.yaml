@@ -32,7 +32,7 @@ features:
   spec_paths:
   - docs/specs/archive/subspecs/subspec-01-workflow-control.md
   owners:
-  - apatch_lib/sequence.py
+  - apatch_lib/mo_workflows/sequence.py
   - apatch_lib/mo_workflows/api.py
   test_files:
   - tests/test_sequences.py
@@ -44,8 +44,8 @@ features:
   spec_paths:
   - docs/specs/planned/subspec-03-feature-session-planning.md
   owners:
-  - apatch_lib/session.py
-  - apatch_lib/session_continuation.py
+  - apatch_lib/mo_feature_sessions/session.py
+  - apatch_lib/mo_feature_sessions/session_continuation.py
   test_files:
   - tests/test_feature_sessions.py
   - tests/test_session_continuation.py
@@ -56,7 +56,7 @@ features:
   spec_paths:
   - docs/specs/planned/subspec-04-operational-workflows.md
   owners:
-  - apatch_lib/building.py
+  - apatch_lib/mo_verification/building.py
   - apatch_lib/mo_configuration/loaders.py
   test_files:
   - tests/test_building.py
@@ -67,7 +67,7 @@ features:
   spec_paths:
   - docs/specs/archive/subspecs/subspec-01-workflow-control.md
   owners:
-  - apatch_lib/github.py
+  - apatch_lib/mo_publication/github.py
   - apatch_lib/mo_publication/api.py
   test_files:
   - tests/test_github.py
@@ -79,8 +79,8 @@ features:
   spec_paths:
   - docs/specs/planned/subspec-04-operational-workflows.md
   owners:
-  - apatch_lib/github.py
-  - apatch_lib/macros.py
+  - apatch_lib/mo_publication/github.py
+  - apatch_lib/mo_workflows/macros.py
   test_files:
   - tests/test_remote_macros.py
   - tests/test_github.py
@@ -91,8 +91,8 @@ features:
   spec_paths:
   - docs/specs/archive/subspecs/subspec-02-state-history-audit.md
   owners:
-  - apatch_lib/operation_events.py
-  - apatch_lib/state.py
+  - apatch_lib/mo_storage/operation_events.py
+  - apatch_lib/mo_storage/state.py
   test_files:
   - tests/test_operation_journal.py
   - tests/test_history.py
@@ -103,8 +103,8 @@ features:
   spec_paths:
   - docs/specs/archive/subspecs/subspec-02-state-history-audit.md
   owners:
-  - apatch_lib/audit_collectors.py
-  - apatch_lib/audit_rules.py
+  - apatch_lib/mo_audit/audit_collectors.py
+  - apatch_lib/mo_audit/audit_rules.py
   test_files:
   - tests/test_audit.py
   - tests/test_audit_rules.py
@@ -115,8 +115,8 @@ features:
   spec_paths:
   - docs/specs/archive/workstreams/review-evidence/subspec.md
   owners:
-  - apatch_lib/review_artifacts.py
-  - apatch_lib/code_review.py
+  - apatch_lib/mo_review/review_artifacts.py
+  - apatch_lib/mo_review/code_review.py
   test_files:
   - tests/test_code_review.py
 - feature_id: REVIEW.NORMALIZATION
@@ -126,8 +126,8 @@ features:
   spec_paths:
   - docs/specs/archive/workstreams/review-evidence/subspec.md
   owners:
-  - apatch_lib/review_normalizer.py
-  - apatch_lib/code_review.py
+  - apatch_lib/mo_review/review_normalizer.py
+  - apatch_lib/mo_review/code_review.py
   test_files:
   - tests/test_review_normalizer.py
   - tests/test_code_review.py
@@ -138,8 +138,8 @@ features:
   spec_paths:
   - docs/specs/archive/workstreams/review-evidence/subspec.md
   owners:
-  - apatch_lib/review_context.py
-  - apatch_lib/code_review.py
+  - apatch_lib/mo_review/review_context.py
+  - apatch_lib/mo_review/code_review.py
   test_files:
   - tests/test_review_context.py
 - feature_id: REVIEW.RETRIEVAL
@@ -149,7 +149,7 @@ features:
   spec_paths:
   - docs/specs/archive/workstreams/review-evidence/subspec.md
   owners:
-  - apatch_lib/review_evidence_api.py
+  - apatch_lib/mo_review/review_evidence_api.py
   test_files:
   - tests/test_review_evidence_api.py
 - feature_id: REVIEW.RETENTION_EXPORT
@@ -159,7 +159,7 @@ features:
   spec_paths:
   - docs/specs/archive/workstreams/review-evidence/subspec.md
   owners:
-  - apatch_lib/review_retention.py
-  - apatch_lib/review_artifacts.py
+  - apatch_lib/mo_review/review_retention.py
+  - apatch_lib/mo_review/review_artifacts.py
   test_files:
   - tests/test_review_retention.py

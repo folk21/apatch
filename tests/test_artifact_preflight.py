@@ -5,8 +5,8 @@ import shutil
 import subprocess
 import sys
 
-from apatch_lib.artifact_preflight import preflight
-from apatch_lib.model import Abort
+from apatch_lib.mo_handoff_producer.preflight import preflight
+from apatch_lib.mo_core.api import Abort
 
 from tests._support import TOOL, LocalGitFixture
 
@@ -106,8 +106,9 @@ class ArtifactPreflightTests(LocalGitFixture):
             self.run_preflight()
 
     def test_json_output_is_machine_readable_on_success_and_failure(self):
-        shutil.copy(TOOL / "apatch_preflight.py", self.bin / "apatch_preflight.py")
-        command = [sys.executable, str(self.bin / "apatch_preflight.py"),
+        (self.bin / "scripts").mkdir(exist_ok=True)
+        shutil.copy(TOOL / "scripts" / "apatch_preflight.py", self.bin / "scripts" / "apatch_preflight.py")
+        command = [sys.executable, str(self.bin / "scripts" / "apatch_preflight.py"),
                    "--project", str(self.root), "--json"]
         good = subprocess.run(command, cwd=self.root, capture_output=True,
                               text=True, timeout=15)

@@ -4,8 +4,8 @@ import json
 from unittest.mock import patch
 
 from apatch_lib.context import Scenario, inspect_context
-from apatch_lib.model import load_config, load_project_config
-from apatch_lib.patch import handoff_from_zip
+from apatch_lib.mo_configuration.api import load_config, load_project_config
+from apatch_lib.mo_handoff.api import handoff_from_zip
 from apatch_lib.session import create_feature_session
 from apatch_lib.state import locked_state, save
 from tests._support import LocalGitFixture, command

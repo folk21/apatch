@@ -5,7 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from apatch_lib.model import Abort, ReviewProvider, ScannerPolicy
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_review.api import ReviewProvider, ScannerPolicy
 from apatch_lib.review_normalizer import normalize_report
 
 
