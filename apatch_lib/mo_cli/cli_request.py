@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from ..mo_core.actions import action_number
-from .help_reference import HELP_EPILOG
+from .help_reference import HELP_EPILOG, render_help
 from apatch_lib.mo_core.api import Abort
 from apatch_lib.mo_handoff.api import BASENAME_PATTERN, BRANCH_PATTERN
 from ..sequence import OperationSequence
@@ -102,7 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=("Apply, verify, review, commit, and publish ZIP patches. "
                      "Run from the target repository root; LOOSE is the default."),
-        epilog=HELP_EPILOG,
+        epilog=render_help(HELP_EPILOG),
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("handoff", nargs="?", metavar="ZIP_STEM|PATH.json",
                         help="ZIP stem/basename for new APL, legacy JSON, or omit to use .apatch/params.json")

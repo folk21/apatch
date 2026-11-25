@@ -17,6 +17,10 @@ PACKAGES = (
 )
 HANDOFF_PEERS = ("history", "producer")
 HANDOFF_INTERNAL = ("cache", "resume")
+EXPECTED_INTERNAL_PACKAGES = {
+    "mo_handoff": list(HANDOFF_INTERNAL),
+    "mo_cli": ["resources"],
+}
 IMPORT_PAIRS = (
     ("configuration.api", "mo_configuration.api"),
     ("core.api", "mo_core.api"),
@@ -84,9 +88,15 @@ class ModulePrefixTests(unittest.TestCase):
                     if child.is_dir() and (child / "__init__.py").exists()
                 )
                 self.assertEqual(
-                    list(HANDOFF_INTERNAL) if package.name == "mo_handoff" else [],
+                    EXPECTED_INTERNAL_PACKAGES.get(package.name, []),
                     nested, f"Unexpected internal packages in {package}",
                 )
+                if package.name == "mo_cli":
+                    resource_sources = sorted(
+                        path.name for path in (package / "resources").iterdir()
+                        if path.suffix in {".py", ".pyi"}
+                    )
+                    self.assertEqual(["__init__.py"], resource_sources)
 
     def test_cache_and_resume_own_no_separate_module_contract(self):
         from apatch_lib.mo_handoff import api

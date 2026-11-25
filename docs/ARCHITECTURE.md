@@ -7,6 +7,17 @@ description: Architecture boundaries, Git/ZIP safety, evidence pipeline, recover
 
 `apatch` is a Python CLI for verified ZIP patch handoffs and guarded Git/GitHub workflows. This document describes ownership, data flow, safety and development checks; [Usage](USAGE.md) documents commands and configuration, while module-level `contract.md` files define their public APIs. It is not an SDD normative specification.
 
+## CLI help resources
+
+The consumer, ZIP producer, and producer-preflight `--help` bodies are
+maintained as UTF-8 files under `apatch_lib/mo_cli/resources/`. The CLI loads
+them with `importlib.resources` rather than embedding long strings in Python.
+`mo_cli.help_reference.render_help()` applies optional terminal colors to
+section headings and action names using `mo_presentation.console.terminal_style()`.
+Redirected help, non-interactive terminals and `NO_COLOR` receive the same
+content without ANSI escapes. Resource files are ordinary tracked source files
+and are present in Git-archive-based standalone deployments.
+
 ## Component flow
 
 1. `apatch.py` parses `mo_cli.api.CliRequest` and calls `apatch_lib/application.py`. Read-only status, audit and progress do not initialize writable workflow state.
