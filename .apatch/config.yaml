@@ -1,8 +1,27 @@
 schema_version: 1
 log_directory: logs
+review_required: true
+review_timeout_seconds: 180
 state_file: apply_patch.state.json
 applied_patches_file: applied_patches.txt
 require_required_checks: false
 require_review_approval: false
 checks:
   - ["./run_tests.sh"]
+reviewers:
+  - id: ruff
+    kind: script
+    command:
+      - .venv/bin/ruff
+      - check
+      - apatch_lib
+      - scripts
+      - tests
+
+  - id: bandit
+    kind: script
+    command:
+      - .venv/bin/bandit
+      - -r
+      - apatch_lib
+      - -q
