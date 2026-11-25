@@ -114,7 +114,7 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                           "require_review_approval", "require_required_checks", "check_timeout_seconds",
                           "check_idle_timeout_seconds", "prepare_checks", "check_worktree_policy",
                           "format_commands", "build_commands", "github_ci_wait_seconds", "reviewers",
-                          "review_required", "review_timeout_seconds", "review_max_bytes",
+                          "review_required", "review_allow_without_chk", "review_timeout_seconds", "review_max_bytes",
                           "review_artifacts_enabled", "review_artifact_max_bytes",
                           "review_context_max_bytes", "review_context_external_consent",
                           "review_context_include_messages", "review_context_include_diff",
@@ -194,6 +194,9 @@ def load_project_config(root: Path, global_config: Config) -> Config:
     review_required = data.get("review_required", False)
     if type(review_required) is not bool:
         raise Abort("Project review_required must be a YAML boolean")
+    review_allow_without_chk = data.get("review_allow_without_chk", False)
+    if type(review_allow_without_chk) is not bool:
+        raise Abort("Project review_allow_without_chk must be a YAML boolean")
     review_timeout = data.get("review_timeout_seconds", 180)
     if type(review_timeout) is not int or not 1 <= review_timeout <= 1800:
         raise Abort("Project review_timeout_seconds must be an integer from 1 to 1800")
@@ -319,6 +322,7 @@ def load_project_config(root: Path, global_config: Config) -> Config:
                    format_commands=tuple(format_commands), build_commands=tuple(build_commands),
                     github_ci_wait_seconds=ci_wait,
                    reviewers=tuple(reviewers), review_required=review_required,
+                   review_allow_without_chk=review_allow_without_chk,
                    review_timeout_seconds=review_timeout, review_max_bytes=review_max_bytes,
                    review_artifacts_enabled=artifacts_enabled,
                    review_artifact_max_bytes=artifact_max_bytes,

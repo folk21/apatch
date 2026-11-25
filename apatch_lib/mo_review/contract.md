@@ -25,9 +25,13 @@ Historical `apatch_lib.code_review` and `apatch_lib.review_*` import paths
 resolve to the canonical `mo_review` modules with exact module identity,
 including existing test and instrumentation patch targets.
 
-Review output is untrusted. Preserved gates require fresh CHK evidence,
+Review output is untrusted. Verified review requires fresh CHK evidence,
 provider status, privacy consent, source/index/branch/policy fingerprints,
-and bounded no-follow access to stored evidence. Missing or corrupt evidence
+and bounded no-follow access to stored evidence. With explicit project
+`review_allow_without_chk: true`, REV can also run in unchecked diagnostic mode
+outside the verified patch phase, including on the base branch. Its result is
+marked `mode: unchecked` and never satisfies `review_required` at commit time.
+The checked mode and drift refusal are unchanged. Missing or corrupt evidence
 fails closed; retention remains opt-in and bounded.
 
 ## Verification

@@ -7,10 +7,11 @@ import stat
 
 class CodeReviewTests(LocalGitFixture):
     def configure_reviewers(self, reviewers, *, required=False, timeout=30, max_bytes=131072,
-                            artifacts=False, artifact_max=8388608):
+                            artifacts=False, artifact_max=8388608, allow_without_chk=False):
         data = ("schema_version: 1\n"
                 "checks:\n  - [\"./run_checks.sh\"]\n"
                 f"review_required: {str(required).lower()}\n"
+                f"review_allow_without_chk: {str(allow_without_chk).lower()}\n"
                 f"review_timeout_seconds: {timeout}\n"
                 f"review_max_bytes: {max_bytes}\n"
                 f"review_artifacts_enabled: {str(artifacts).lower()}\n"
@@ -396,6 +397,60 @@ class CodeReviewTests(LocalGitFixture):
         result = self.invoke_zip("op=REV", "skipApproves=true")
         self.assertEqual(result.returncode, 2)
         self.assertIn("requires reviewers", result.stderr)
+
+    def test_unchecked_review_is_opt_in_and_never_authorizes_commit(self):
+        self.configure_reviewers([self.script()], required=True, allow_without_chk=True)
+        self.ready(checked=False)
+        review = self.invoke_zip("op=REV", "skipApproves=true")
+        self.assertEqual(review.returncode, 0, review.stderr + review.stdout)
+        self.assertIn("UNCHECKED", review.stdout)
+        self.assertIn("CODE REVIEW: PASS", review.stdout)
+        state = json.loads(self.state_path.read_text())
+        record = next(iter(state["workflows"].values()))
+        self.assertEqual(record["code_review"]["mode"], "unchecked")
+        refused = self.invoke_zip("op=CMT", "skipApproves=true")
+        self.assertEqual(refused.returncode, 2, refused.stderr + refused.stdout)
+        self.assertIn("REVIEW_REQUIRED", refused.stderr)
+
+    def test_unchecked_review_can_scan_clean_main_without_patch_or_chk(self):
+        self.configure_reviewers([self.script()], allow_without_chk=True)
+        self.ready(checked=False)
+        command("git", "reset", "--hard", "HEAD", cwd=self.root)
+        command("git", "clean", "-fd", cwd=self.root)
+        command("git", "checkout", "main", cwd=self.root)
+        result = self.invoke_zip("op=REV", "skipApproves=true")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        self.assertIn("UNCHECKED", result.stdout)
+        self.assertIn("No pending changes", result.stdout)
+        self.assertEqual(command("git", "branch", "--show-current", cwd=self.root).stdout.strip(),
+                         "main")
+
+    def test_unchecked_review_rejects_clean_tree_llm_without_diff(self):
+        self.configure_reviewers([self.llm({"verdict": "PASS", "summary": "", "findings": []})],
+                                 allow_without_chk=True)
+        self.ready(checked=False)
+        command("git", "reset", "--hard", "HEAD", cwd=self.root)
+        command("git", "clean", "-fd", cwd=self.root)
+        command("git", "checkout", "main", cwd=self.root)
+        result = self.invoke_zip("op=REV", "skipApproves=true")
+        self.assertEqual(result.returncode, 2, result.stderr + result.stdout)
+        self.assertIn("REVIEW_EMPTY_DIFF", result.stderr)
+
+    def test_unchecked_option_does_not_override_verified_drift_guard(self):
+        self.configure_reviewers([self.script()], allow_without_chk=True)
+        self.ready()
+        (self.root / "existing.txt").write_text("modified after CHK\n")
+        result = self.invoke_zip("op=REV", "skipApproves=true")
+        self.assertEqual(result.returncode, 2, result.stderr + result.stdout)
+        self.assertIn("REVIEW_CHECK_DRIFT", result.stderr)
+
+    def test_unchecked_option_rejects_non_boolean_configuration(self):
+        self.configure_reviewers([self.script()])
+        self.project_config.write_text(self.project_config.read_text().replace(
+            "review_allow_without_chk: false", "review_allow_without_chk: 1"))
+        result = self.invoke_zip("op=STS")
+        self.assertEqual(result.returncode, 2, result.stderr + result.stdout)
+        self.assertIn("review_allow_without_chk", result.stderr)
 
     def test_required_review_blocks_commit_until_passed(self):
         self.configure_reviewers([self.script()], required=True)

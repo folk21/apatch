@@ -243,7 +243,7 @@ ZIP.
 | 10 | `STS` | Inspect recorded local status; no live GitHub query |
 | 11 | `AUD` | Audit repository patch history; optional explicit remote verification |
 | 12 | `FMT` | Run configured **mutating** format commands; invalidates old checks |
-| 13 | `REV` | Run configured independent script/LLM review after valid CHK |
+| 13 | `REV` | Run configured script/LLM review after CHK, or optional unchecked diagnostics |
 | 14 | `BLD` | Run configured build commands only; **not** canonical verification |
 
 Typical deliberately staged publication:
@@ -277,9 +277,16 @@ the `checks` list, so a successful build must never be reported as verified
 tests. In incremental LOOSE development, a deliberate build-only stage can
 precede an unchecked commit only when configured gates permit it.
 
-**`REV` requires checked input.** Optional review providers execute in
-configured order, and a fresh successful review is required for commits when
-`review_required: true`. A script review receives the diff on stdin and/or
+**`REV` requires checked input by default.** Set
+`review_allow_without_chk: true` to permit a standalone, **diagnostic-only**
+`REV` outside the verified patch phase (including on `main`). The result is
+recorded as `mode: unchecked`, never counts as the required review for `CMT`,
+and never substitutes for canonical `CHK`. A verified patch with stale CHK
+evidence still fails closed instead of falling back to unchecked review.
+A clean tree can be scanned by script reviewers that inspect repository files;
+a configured LLM reviewer cannot review an empty diff. Providers execute in
+configured order, and a fresh successful **checked** review is required for
+commits when `review_required: true`. A script review receives the diff on stdin and/or
 a bounded file path; a model review must return a validated verdict:
 `PASS`, `CHANGES_REQUIRED`, or `ESCALATE`. No result may be inferred from
 missing output. Review is **not** a sandbox: configured processes run with the
@@ -289,6 +296,7 @@ Example optional review policy (only use providers you actually trust):
 
 ```yaml
 review_required: true
+review_allow_without_chk: true
 review_timeout_seconds: 180
 review_max_bytes: 131072
 reviewers:

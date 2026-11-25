@@ -35,6 +35,7 @@ class Config:
     github_ci_wait_seconds: int = 300
     reviewers: tuple["ReviewProvider", ...] = ()
     review_required: bool = False
+    review_allow_without_chk: bool = False
     review_timeout_seconds: int = 180
     review_max_bytes: int = 131072
     review_artifacts_enabled: bool = False

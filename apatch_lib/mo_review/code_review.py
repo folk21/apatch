@@ -39,7 +39,7 @@ REVIEW_PROMPT = (
 )
 
 
-def _diff_bundle(workflow):
+def _diff_bundle(workflow, *, allow_empty=False):
     """Include staged/unstaged changes and bounded untracked source, not ignored files."""
     root = workflow.root
     max_bytes = workflow.config.review_max_bytes
@@ -72,7 +72,7 @@ def _diff_bundle(workflow):
         if size > max_bytes:
             raise Abort("REVIEW_TOO_LARGE: Diff exceeds review_max_bytes")
         segments.extend((header, body, b"\n"))
-    if size == 0:
+    if size == 0 and not allow_empty:
         raise Abort("REVIEW_EMPTY_DIFF: There are no changed files to review")
     return b"".join(segments).decode("utf-8", "replace")
 
@@ -204,6 +204,7 @@ def review_matches(workflow):
     """Check persisted PASS evidence against current Git and project policy."""
     report = workflow.record.get("code_review")
     return (isinstance(report, dict) and report.get("verdict") == "PASS"
+            and report.get("mode", "checked") == "checked"
             and report.get("snapshot") == list(_snapshot(workflow)))
 
 
@@ -217,18 +218,29 @@ def require_fresh_review(workflow):
 
 
 def run_review(workflow):
-    """Run configured reviewers against the exact post-CHK snapshot."""
+    """Run verified review or explicitly opted-in diagnostic review."""
     if not workflow.config.reviewers:
         raise Abort("REV requires reviewers in .apatch/config.yaml")
-    if workflow.phase != "verified":
+    checked = workflow.phase == "verified"
+    if not checked and not workflow.config.review_allow_without_chk:
         raise Abort("REV requires a successful CHK on an uncommitted patch")
     before = _snapshot(workflow)
-    if (before[0] != workflow.handoff.branch or before[0] == workflow.config.base
-            or workflow.record.get("verified_fingerprint") != before[2]
-            or (workflow.record.get("verified_head") is not None
-                and workflow.record["verified_head"] != before[1])):
+    if checked and (before[0] != workflow.handoff.branch
+                    or before[0] == workflow.config.base
+                    or workflow.record.get("verified_fingerprint") != before[2]
+                    or (workflow.record.get("verified_head") is not None
+                        and workflow.record["verified_head"] != before[1])):
         raise Abort("REVIEW_CHECK_DRIFT: Branch or checked bytes differ from CHK evidence")
-    bundle = _diff_bundle(workflow)
+    bundle = _diff_bundle(workflow, allow_empty=not checked)
+    if not checked:
+        if not bundle and any(provider.kind != "script" for provider in workflow.config.reviewers):
+            raise Abort("REVIEW_EMPTY_DIFF: Unchecked review of a clean tree requires "
+                        "script-only reviewers that inspect repository files")
+        print("==> REVIEW MODE: UNCHECKED (diagnostic only; cannot satisfy CMT review gate)",
+              flush=True)
+        if not bundle:
+            print("    No pending changes; configured scripts inspect the repository directly",
+                  flush=True)
     if _snapshot(workflow) != before:
         raise Abort("REVIEW_INPUT_DRIFT: Changed bytes changed while preparing the diff")
     workflow.record.pop("code_review", None)
@@ -294,12 +306,16 @@ def run_review(workflow):
                else "CHANGES_REQUIRED" if any(item["verdict"] == "CHANGES_REQUIRED"
                                       for item in results) else "PASS")
     workflow.record["code_review"] = {
-        "verdict": verdict, "snapshot": list(before), "results": results,
+        "verdict": verdict, "mode": "checked" if checked else "unchecked",
+        "snapshot": list(before), "results": results,
         **({"artifact_path": artifacts.relative_path} if artifacts is not None else {}),
     }
     workflow.persist()
-    print(f"==> CODE REVIEW: {verdict} ({len(results)} reviewer(s))")
+    print(f"==> CODE REVIEW: {verdict} ({len(results)} reviewer(s))"
+          + (" [UNCHECKED: diagnostic only]" if not checked else ""))
     if verdict != "PASS":
-        raise Abort(f"REVIEW_{verdict}: Resolve findings, rerun CHK then REV")
+        next_step = ("Resolve findings and rerun REV; CMT still needs CHK and verified REV"
+                     if not checked else "Resolve findings, rerun CHK then REV")
+        raise Abort(f"REVIEW_{verdict}: {next_step}")
     return True
 
