@@ -11,7 +11,8 @@ from io import StringIO
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from apatch_lib import gitutil
+from apatch_lib.mo_git import repository
+from apatch_lib.mo_presentation import confirmation
 from apatch_lib.mo_core.api import Abort
 from apatch_lib.mo_git import commands
 
@@ -23,15 +24,15 @@ class GitCommandBoundariesTests(unittest.TestCase):
         self.cwd = Path(self.directory.name)
 
     def test_legacy_runner_and_diagnostics_share_identity(self):
-        self.assertIs(gitutil.run, commands.run)
-        self.assertIs(gitutil.display_command, commands.display_command)
-        self.assertIs(gitutil.command_description, commands.command_description)
-        self.assertIs(gitutil._check_failure_summary, commands._check_failure_summary)
-        self.assertIs(gitutil._run_captured_with_deadline, commands._run_captured_with_deadline)
+        self.assertIs(commands.run, commands.run)
+        self.assertIs(commands.display_command, commands.display_command)
+        self.assertIs(commands.command_description, commands.command_description)
+        self.assertIs(commands._check_failure_summary, commands._check_failure_summary)
+        self.assertIs(commands._run_captured_with_deadline, commands._run_captured_with_deadline)
 
     def test_legacy_output_uses_patchable_runner(self):
-        with patch.object(gitutil, 'run', return_value=Mock(stdout='  valid-head\n')) as runner:
-            self.assertEqual(gitutil.output(['git', 'rev-parse', 'HEAD'], self.cwd), 'valid-head')
+        with patch.object(commands, 'run', return_value=Mock(stdout='  valid-head\n')) as runner:
+            self.assertEqual(repository.output(['git', 'rev-parse', 'HEAD'], self.cwd), 'valid-head')
             runner.assert_called_once_with(['git', 'rev-parse', 'HEAD'], self.cwd, timeout=None)
 
     def test_argv_runner_preserves_cwd_and_stdin_without_shell(self):
@@ -107,12 +108,12 @@ class GitCommandBoundariesTests(unittest.TestCase):
 
     def test_runner_still_is_not_authorization(self):
         self.assertFalse(hasattr(__import__('apatch_lib.mo_git.api', fromlist=['api']), 'run'))
-        token = gitutil.set_skip_approvals(True)
+        token = confirmation.set_skip_approvals(True)
         try:
-            self.assertTrue(gitutil.skip_approvals_enabled())
+            self.assertTrue(confirmation.skip_approvals_enabled())
         finally:
-            gitutil.reset_skip_approvals(token)
-        self.assertFalse(gitutil.skip_approvals_enabled())
+            confirmation.reset_skip_approvals(token)
+        self.assertFalse(confirmation.skip_approvals_enabled())
 
 
 if __name__ == '__main__':

@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from apatch_lib.model import Abort
+from apatch_lib.mo_core.api import Abort
 from apatch_lib.review_evidence_api import ReviewEvidenceSession
 
 

@@ -11,8 +11,8 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..gitutil import run
-from ..model import Abort
+from apatch_lib.mo_git.commands import run
+from apatch_lib.mo_core.api import Abort
 from .review_retention import review_storage_lock, _retention_locked
 
 

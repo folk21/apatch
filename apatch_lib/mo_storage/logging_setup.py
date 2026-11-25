@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 
-from ..model import Abort
+from apatch_lib.mo_core.api import Abort
 
 
 LOG_FILENAME = "apatch.log"

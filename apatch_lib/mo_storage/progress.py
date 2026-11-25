@@ -13,7 +13,7 @@ import uuid
 from pathlib import Path
 
 from ..mo_core.actions import ACTION_CODES
-from ..model import Abort
+from apatch_lib.mo_core.api import Abort
 from .locking import exclusive_file_lock
 
 

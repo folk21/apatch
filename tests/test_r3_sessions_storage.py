@@ -81,7 +81,7 @@ class R3OwnershipTests(unittest.TestCase):
 
     def test_persisted_unknown_session_reference_still_fails_closed(self):
         from apatch_lib.mo_storage.state import _upgrade_and_validate
-        from apatch_lib.model import Abort
+        from apatch_lib.mo_core.api import Abort
         payload = {"schema_version": 2, "workflows": {}, "operation_runs": [],
                    "feature_sessions": {"invalid-id": {}}}
         with self.assertRaises(Abort):

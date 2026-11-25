@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 from tests._support import LocalGitFixture, TOOL
-from apatch_lib.model import Abort
+from apatch_lib.mo_core.api import Abort
 from apatch_lib.progress import ProgressEvent, ProgressStore, utc_now
 
 

@@ -9,7 +9,8 @@ import uuid
 
 from ..mo_workflows.api import ACTION_CODES
 from ..mo_workflows.api import OperationOutcome
-from ..model import Abort, BASENAME_PATTERN
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_handoff.api import BASENAME_PATTERN
 
 
 RUN_ID = re.compile(r"^[a-f0-9]{32}$")

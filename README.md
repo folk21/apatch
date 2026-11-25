@@ -29,6 +29,8 @@ A self-contained ZIP embeds `<repository>/.apatch/params.json`; a separate JSON 
 
 Use `apatch op=STS` to inspect a patch, `apatch op=AUD` for offline repository-wide audit, or `apatch info=PROGRESS` to inspect recorded tool activity. Optional format, build and independent review commands depend on project configuration; `BLD` does not replace canonical `CHK`. The [review evidence settings and privacy guide](docs/USAGE.md#review-evidence-configuration-and-privacy) covers opt-in capture, scanner normalization, retention and internal retrieval/export boundaries.
 
+Maintenance and producer utilities live in `scripts/`. The repository-root `run_tests.sh` remains a stable launcher for existing project check configuration; only the three `apatch` entrypoints are otherwise retained at the root.
+
 ## Development status
 
 The CLI, ZIP handoff, feature-branch workflow, state/history journaling, verification, review and GitHub safeguards have automated regression coverage. Planned extensions and task-level implementation detail live in the [SDD index](docs/specs/README.md); a draft or completed test is not an acceptance or deployment claim. `SUB-001`, `SUB-002` and `SUB-005` are archived as accepted, while `SUB-003` and `SUB-004` remain unselected drafts.

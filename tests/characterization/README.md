@@ -16,13 +16,13 @@ mutate a developer's checkout or call real GitHub APIs.
 From the repository root:
 
 ```bash
-sh ./run_characterization.sh focused
-sh ./run_characterization.sh full
+sh ./scripts/run_characterization.sh focused
+sh ./scripts/run_characterization.sh full
 ```
 
 `focused` runs the `tests/characterization/char_*.py` modules through the
 isolated, bounded `tests.timeout_runner`; it currently contains **33 cases**.
-`full` runs `sh ./run_rare_checks.sh` first, followed by those 33 cases. A
+`full` runs `sh ./scripts/run_rare_checks.sh` first, followed by those 33 cases. A
 failure in either part fails the gate. The existing `run_tests.sh` and
 `run_rare_checks.sh` do **not** discover the extra tests: the new modules have
 a `char_` prefix rather than `test_`.

@@ -10,7 +10,8 @@ workflow menu output, action-result
 formatting and status display. It does not own Git state, check authorization,
 archive extraction, durable records or remote publication.
 
-`status.py` renders the read-only `PatchStatus` data supplied by the root
-`status.py` evidence inspector. Legacy `apatch_lib.console` continues to
-resolve to `mo_presentation.console`, and the root status rendering functions
-remain callable for compatibility.
+`status.py` renders `PatchStatus` evidence owned by `mo_workflows.status`.
+The canonical presentation API is `mo_presentation.status`; workflow identity
+and Git evidence do not depend on terminal rendering. Deprecated
+`apatch_lib.console` remains an identity-preserving alias of
+`mo_presentation.console`, but the deleted root `status.py` has no facade.

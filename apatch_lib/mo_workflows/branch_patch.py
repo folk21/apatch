@@ -3,11 +3,20 @@
 import logging
 
 from ..branch_guard import assert_no_unfinished_feature_branches
-from ..gitutil import (branch_exists, confirm, current_branch, head, remote_head,
-                      require_branch, require_clean, run, skip_approvals_enabled,
-                      worktree_fingerprint)
+from apatch_lib.mo_git.repository import (
+    branch_exists,
+    current_branch,
+    head,
+    remote_head,
+    require_branch,
+    require_clean,
+    worktree_fingerprint,
+)
+from apatch_lib.mo_presentation.confirmation import confirm, skip_approvals_enabled
+from apatch_lib.mo_git.commands import run
 from ..mo_core.enums import WorkflowPhase
-from ..model import Abort, safe_relative
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_handoff.api import safe_relative
 from ..mo_handoff_history.registry import assert_patch_order, persist_registry
 from ..mo_handoff_history.journal import locked_history
 from ..mo_handoff.api import (ArchiveOperations, PatchLedgerOperations,

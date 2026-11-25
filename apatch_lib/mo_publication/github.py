@@ -7,8 +7,12 @@ from pathlib import Path
 from typing import cast
 
 from ..mo_core.contracts import GitHubPr
-from ..gitutil import confirm, head, output, remote_head, require_clean, run
-from ..model import Abort, Config, RemoteOutcomeUnknown
+from apatch_lib.mo_presentation.confirmation import confirm
+from apatch_lib.mo_git.repository import head, output, remote_head, require_clean
+from apatch_lib.mo_git.commands import run
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_configuration.api import Config
+from apatch_lib.mo_publication.api import RemoteOutcomeUnknown
 
 
 _TRANSIENT_GITHUB_ERROR = re.compile(

@@ -12,7 +12,8 @@ from .audit_rules import (
     reconcile_remote_evidence, reconcile_workflow_records, safe_label as _label,
 )
 from ..mo_core.contracts import GitHubPr, WorkflowRecord
-from ..model import Abort, Config
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_configuration.api import Config
 
 
 MAX_DISPLAY_FINDINGS = 100

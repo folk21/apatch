@@ -9,10 +9,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from apatch_lib import application, cli_request, handoff_selection
+from apatch_lib import application, cli_request
+from apatch_lib.mo_handoff import selection as handoff_selection
 from apatch_lib.cli_request import parse_request
-from apatch_lib.handoff_selection import HandoffSelection, SelectionKind
-from apatch_lib.model import Abort, Handoff
+from apatch_lib.mo_handoff.selection import HandoffSelection, SelectionKind
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_handoff.api import Handoff
 
 
 def sample_handoff(name: str = "example-PATCH-1.zip") -> Handoff:

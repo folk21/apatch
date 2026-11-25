@@ -23,7 +23,8 @@ class ModuleOwnershipR2Tests(unittest.TestCase):
                     self.assertTrue((package / owner / (name + ".py")).is_file())
                     self.assertFalse((package / (name + ".py")).exists())
         self.assertTrue((package / "mo_presentation" / "status.py").is_file())
-        self.assertTrue((package / "status.py").is_file())
+        self.assertFalse((package / "status.py").exists())
+        self.assertTrue((package / "mo_workflows" / "status.py").is_file())
 
     def test_legacy_module_identity_both_import_orders(self):
         pairs = [("apatch_lib." + name, "apatch_lib." + owner + "." + name)
@@ -52,7 +53,8 @@ class ModuleOwnershipR2Tests(unittest.TestCase):
         self.assertIsNone(api.parse_request(["op=STS"]).handoff)
 
     def test_status_rendering_keeps_read_only_evidence_owner(self):
-        from apatch_lib.status import PatchStatus, display_status
+        from apatch_lib.mo_workflows.status import PatchStatus
+        from apatch_lib.mo_presentation.status import display_status
         from apatch_lib.mo_presentation.status import display_recommendation
         status = PatchStatus("patch.zip", "feature/test", "synced",
                              "main", {}, None, None, "Complete")

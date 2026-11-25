@@ -3,7 +3,9 @@
 from dataclasses import dataclass
 import uuid
 
-from ..model import Abort, CheckWorktreeChanged, RemoteOutcomeUnknown
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_workflows.api import CheckWorktreeChanged
+from apatch_lib.mo_publication.api import RemoteOutcomeUnknown
 from .api import ACTION_CODES, action_number
 
 
@@ -44,34 +46,6 @@ class OperationSequence:
         return cls(actions)
 
 
-def parse_handoff_sequence(value: str):
-    """Parse an explicit one-to-one list of ZIP selections for APL actions."""
-    names = tuple(token.strip() for token in value.split(","))
-    if not names or any(not name for name in names):
-        raise ValueError("handoffSeq requires nonempty comma-separated ZIP selections")
-    if len(names) > MAX_SEQUENCE_STEPS:
-        raise ValueError(f"handoffSeq supports at most {MAX_SEQUENCE_STEPS} ZIPs")
-    return names
-
-
-def validate_multi_handoff_actions(sequence: OperationSequence, selections: tuple[str, ...], mode: str):
-    """Reject sequences that could apply multiple ZIPs on the base or publish too early."""
-    actions = sequence.actions
-    apply_indices = [index for index, action in enumerate(actions) if action == 3]
-    if not apply_indices or len(apply_indices) != len(selections):
-        raise ValueError("handoffSeq must select exactly one distinct ZIP for each APL operation")
-    if len(selections) == 1:
-        return
-    if mode != "loose":
-        raise ValueError("Multiple ZIPs in one opSeq require LOOSE mode; STRICT/FORCE cannot accumulate them")
-    if actions[:2] != (3, 1):
-        raise ValueError("Multi-ZIP sequences must begin with APL,BRN before another APL")
-    if 1 in actions[2:]:
-        raise ValueError("Multi-ZIP sequences must transfer to the feature branch exactly once")
-    if any(action in {5, 6, 7, 8, 9} for action in actions[:apply_indices[-1]]):
-        raise ValueError("Apply all ZIPs before commit/push/PR/merge/sync in a multi-ZIP sequence")
-
-
 def execute_sequence(workflow, sequence: OperationSequence, *, on_completed=None,
                      select_workflow=None, on_satisfied=None):
     """Run numbered operations in order, allowing explicit read-only status reports."""
@@ -87,7 +61,7 @@ def execute_sequence(workflow, sequence: OperationSequence, *, on_completed=None
                                      for action in sequence.actions[1:]))
     if (getattr(workflow, "phase", None) == "synced"
             and (verified_full_replay or redundant_publication)):
-        from ..gitutil import current_branch, is_clean
+        from apatch_lib.mo_git.repository import current_branch, is_clean
         if (current_branch(workflow.root) == workflow.config.base
                 and is_clean(workflow.root)):
             print("==> SEQUENCE ALREADY COMPLETED: The selected ZIP is merged and "

@@ -8,7 +8,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from apatch_lib.model import Abort, RemoteOutcomeUnknown, load_project_config
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_publication.api import RemoteOutcomeUnknown
+from apatch_lib.mo_configuration.api import load_project_config
 from apatch_lib.operation_events import OperationRun, RunOutcome, unresolved_runs
 from apatch_lib.mo_presentation.execution import OperationPresentation
 from apatch_lib.progress import ProgressStore
@@ -155,7 +157,8 @@ class OperationJournalCliTests(LocalGitFixture):
         self.assertNotIn("Traceback", json.dumps(runs))
 
     def test_declined_merge_and_uncertain_pr_keep_distinct_outcomes(self):
-        from apatch_lib.model import load_config, load_handoff
+        from apatch_lib.mo_configuration.api import load_config
+        from apatch_lib.mo_handoff.api import load_handoff
         config = load_project_config(self.root, load_config(TOOL))
         handoff = load_handoff(self.params)
         with locked_state(config.state_path) as state:
@@ -173,7 +176,8 @@ class OperationJournalCliTests(LocalGitFixture):
         self.assertNotIn("verified_facts", runs[1])
 
     def test_no_op_and_keyboard_interrupt_do_not_claim_verified_effects(self):
-        from apatch_lib.model import load_config, load_handoff
+        from apatch_lib.mo_configuration.api import load_config
+        from apatch_lib.mo_handoff.api import load_handoff
         config = load_project_config(self.root, load_config(TOOL))
         handoff = load_handoff(self.params)
         with locked_state(config.state_path) as state:

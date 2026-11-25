@@ -5,16 +5,25 @@ import zipfile
 from dataclasses import replace
 from datetime import datetime, timezone
 
-from .. import github
+from ..mo_publication import github
 from ..branch_guard import assert_no_unfinished_feature_branches
-from ..created_patches import persist_registry
+from apatch_lib.mo_handoff_history.registry import persist_registry
 from ..mo_core.contracts import ActionResult
-from ..gitutil import (branch_exists, confirm, current_branch, head, output, remote_head,
-                      require_clean, run, worktree_fingerprint)
-from ..model import Abort
+from apatch_lib.mo_git.repository import (
+    branch_exists,
+    current_branch,
+    head,
+    output,
+    remote_head,
+    require_clean,
+    worktree_fingerprint,
+)
+from apatch_lib.mo_presentation.confirmation import confirm
+from apatch_lib.mo_git.commands import run
+from apatch_lib.mo_core.api import Abort
 from ..mo_core.paths import PARAMS_MEMBER, REGISTRY_MEMBER
 from ..mo_handoff.api import apply, inspect, patch_file
-from ..patch_history import locked_history
+from apatch_lib.mo_handoff_history.journal import locked_history
 
 
 LOGGER = logging.getLogger("apatch.force")

@@ -17,7 +17,8 @@ phase transitions. `loose.py`, `force.py`, `branch_patch.py`, and
 `branch_reassignment.py` implement mode-specific and branch lifecycle rules;
 `action_executor.py` and `action_applicability.py` implement step dispatch and
 availability; `sequence.py`, `planner.py` and `macros.py` coordinate explicit
-sequences and guarded higher-level goals. The application layer composes the
+sequences and guarded higher-level goals. `status.py` owns read-only workflow
+evidence, patch identity and next-action guidance; presentation renders those values. The application layer composes the
 engine with handoff, Git, publication, feature-session and storage adapters.
 
 The public value API intentionally does **not** re-export `Workflow`, `LooseActions`

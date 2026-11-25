@@ -6,7 +6,7 @@ from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 
-from .. import github
+from ..mo_publication import github
 from .action_applicability import (ActionFacts, action_unavailable,
                                    DEPRECATED_BAP_REASON)
 from .branch_patch import BranchPatchActions
@@ -19,9 +19,20 @@ from .force import ForceActions
 from ..mo_verification.formatting import run_formatters
 from ..mo_verification.checks import run_checks
 from .loose import LooseActions
-from ..gitutil import (confirm, current_branch, head, is_clean, output, remote_head,
-                      require_branch, require_clean, run, worktree_fingerprint)
-from ..model import Abort, BRANCH_PATTERN
+from apatch_lib.mo_presentation.confirmation import confirm
+from apatch_lib.mo_git.repository import (
+    current_branch,
+    head,
+    is_clean,
+    output,
+    remote_head,
+    require_branch,
+    require_clean,
+    worktree_fingerprint,
+)
+from apatch_lib.mo_git.commands import run
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_handoff.api import BRANCH_PATTERN
 from ..operation_events import OperationRun, RunOutcome, journal_outcome_for_result
 from ..mo_handoff.api import inspect
 from ..mo_handoff_history.journal import locked_history
@@ -31,7 +42,10 @@ from ..session import (attach_applied_workflow, create_feature_session,
                       remote_identity)
 from ..session_continuation import require_session_continuation
 from ..state import finish_run, save, start_run
-from ..gitutil import clear_confirmation_declined, confirmation_was_declined
+from apatch_lib.mo_presentation.confirmation import (
+    clear_confirmation_declined,
+    confirmation_was_declined,
+)
 from ..mo_handoff.api import handoff_signature, verify_applied_zip
 
 

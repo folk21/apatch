@@ -4,8 +4,9 @@ import logging
 from pathlib import Path
 
 from ..mo_core.paths import runtime_ignore_patterns
-from ..gitutil import output, run
-from ..model import Abort
+from apatch_lib.mo_git.repository import output
+from apatch_lib.mo_git.commands import run
+from apatch_lib.mo_core.api import Abort
 
 
 LOGGER = logging.getLogger("apatch.local_ignore")

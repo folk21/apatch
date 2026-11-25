@@ -50,7 +50,7 @@ and used by `apatch_preflight.py` and `apatch_pack.py`:
 
 `VerifiedSourceProducer` is the default implementation. It never creates
 branches, commits, PRs, or modifies target Git state. The previous
-`artifact_preflight.py` and `artifact_packaging.py` imports still work;
+producer consumers import from `mo_handoff_producer` directly;
 packaging's historical `preflight` and `_read_source_file` monkeypatch seams
 are preserved through explicit callable injection. New consumers should use
 the port, not depend on producer implementation files or legacy shims.
@@ -71,9 +71,17 @@ internal dependencies on it.
 - Bound member count, compressed and uncompressed size; read only declared
   source files. A fresh inspection before writes must agree with the original
   archive digest and source scope.
+- Extraction opens the repository and each destination ancestor through pinned
+  POSIX directory descriptors with `O_NOFOLLOW`; staging, replacement, and
+  tracked deletion use descriptor-relative operations rather than resolving a
+  previously inspected filesystem path again. The parent identity is checked
+  before each replacement. Unsupported hosts refuse unsafe extraction.
 - Extraction stages regular files under their intended parents, fsyncs staged
   bytes and replaces destination files. Explicit tracked deletions follow
   replacements, retaining the existing non-transactional filesystem semantics.
+  Concurrent local directory renames can cause a safe abort and require manual
+  inspection of abandoned staging files; extraction is not a global filesystem
+  transaction and does not defend against arbitrary same-user mutations.
 - The archive service does not set workflow phases, persist applied history,
   override dirty-worktree checks, or authorize publishing. An interrupted
   application remains governed by the existing `applying` checkpoint/recovery.
@@ -103,10 +111,9 @@ atomic replacement algorithms. `PatchLedgerOperations` is defined in
 `AppliedHistory` is a structural protocol for the journal methods and path
 used by those operations. `BranchPatchActions` depends on the injected ledger
 port and archive port; the default ledger uses the same existing functions and
-preserves the historical `branch_patch` monkeypatch locations. Existing
-`created_patches.py` and `patch_history.py` remain identity-preserving import
-adapters for external callers; `loose`/`force` keep their local monkeypatch
-seams until their workflow-level adapters are migrated.
+preserves the historical `branch_patch` monkeypatch locations. The deleted root `created_patches.py` and `patch_history.py` facades are no
+longer import paths. Workflow implementation imports the canonical registry and
+journal functions, preserving its local monkeypatch seams.
 
 There are no migrations of on-disk records, locks or checkpoints. Ledger
 parsing and ordering are not ZIP content verification or proof of a Git commit.
@@ -125,8 +132,8 @@ the same port while retaining its legacy lookup patch seam.
 The stable `params.json.lock`, bounded UTF-8 payload, symlink checks,
 mode-0600 atomic replacement, fsync and hard-linked invalid-cache backups
 are unchanged. Cached data is not applied-history or workflow evidence.
-`apatch_lib.params_cache` remains an import-compatible alias module. There
-is no schema or cache migration.
+Cache consumers import `mo_handoff.cache.service` directly. There is no
+schema or cache migration.
 
 ## Internal applied ZIP verification (R3.7)
 
@@ -144,9 +151,9 @@ or superseded evidence is rejected without extracting ZIP contents or
 rewriting history. The `AppliedZipEvidence` fields and phase constants remain
 unchanged, as do legacy checkpoint semantics and failure messages.
 
-`apatch_lib.zip_resume` remains an identity-preserving compatibility shim;
+Resume consumers import `mo_handoff.resume.verification` directly;
 existing mocks of `application.verify_applied_zip` continue to work on the
-standard dispatcher path. No persisted records or schema require migration.
+dispatcher path. No persisted records or schema require migration.
 
 
 ## Verification

@@ -16,8 +16,10 @@ class RunnerScriptsTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
+        shutil.copy2(SOURCE_ROOT / "run_tests.sh", self.root / "run_tests.sh")
+        (self.root / "scripts").mkdir()
         for filename in ("run_tests.sh", "run_rare_checks.sh", "run_quality.sh"):
-            shutil.copy2(SOURCE_ROOT / filename, self.root / filename)
+            shutil.copy2(SOURCE_ROOT / "scripts" / filename, self.root / "scripts" / filename)
         self.interpreter = self.root / ".venv" / "bin" / "python"
         self.interpreter.parent.mkdir(parents=True)
         self.interpreter.write_text(
@@ -38,6 +40,28 @@ class RunnerScriptsTests(unittest.TestCase):
         args = self.arguments_file.read_text().splitlines() if self.arguments_file.exists() else []
         return result, args
 
+    def test_secondary_scripts_live_below_scripts_directory(self):
+        """Keep the three CLI entrypoints and canonical check launcher at project root."""
+        script_names = (
+            "run_tests.sh", "run_rare_checks.sh", "run_characterization.sh",
+            "run_quality.sh", "archive.sh", "apatch_pack.py", "apatch_preflight.py",
+        )
+        for name in script_names:
+            with self.subTest(script=name):
+                self.assertTrue((SOURCE_ROOT / "scripts" / name).is_file())
+                if name != "run_tests.sh":
+                    self.assertFalse((SOURCE_ROOT / name).exists())
+        self.assertTrue((SOURCE_ROOT / "run_tests.sh").is_file())
+
+    def test_scripts_directory_has_correct_project_root_resolution(self):
+        """Nested scripts must resolve the repository rather than their own folder."""
+        for name in ("run_tests.sh", "run_rare_checks.sh", "run_quality.sh",
+                     "run_characterization.sh"):
+            contents = (SOURCE_ROOT / "scripts" / name).read_text()
+            self.assertIn('"$(dirname -- "$0")/.."', contents)
+        self.assertIn('"$(dirname "$0")/../.."',
+                      (SOURCE_ROOT / "scripts" / "archive.sh").read_text())
+
     def test_default_quick_and_regular_run_curated_checks(self):
         for options in ((), ("regular",), ("quick",)):
             with self.subTest(options=options):
@@ -45,7 +69,7 @@ class RunnerScriptsTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(args[:4], ["-B", "-m", "tests.timeout_runner", "-v"])
                 self.assertNotIn("discover", args)
-                self.assertEqual(len(args), 56)
+                self.assertEqual(len(args), 58)
                 self.assertEqual(len(args[4:]), len(set(args[4:])))
                 for required in (
                     "tests.test_spec_state",
@@ -75,11 +99,13 @@ class RunnerScriptsTests(unittest.TestCase):
                     "test_failed_check_never_produces_zip",
                     "tests.test_runner_scripts",
                     "tests.test_module_prefixes",
+                    "tests.test_root_module_cleanup",
                     "tests.test_r1_module_ownership",
                     "tests.test_r2_cli_presentation",
                     "tests.test_r3_sessions_storage",
                     "tests.test_r4_verification_git",
                     "tests.test_r5_workflow_ownership",
+                    "tests.test_handoff_archive_boundaries",
                 ):
                     self.assertIn(required, args)
                 for deferred in (
@@ -97,7 +123,7 @@ class RunnerScriptsTests(unittest.TestCase):
                     self.assertNotIn(deferred, args)
 
     def test_rare_launcher_and_full_alias_run_all_tests(self):
-        for script, options in (("run_rare_checks.sh", ()), ("run_tests.sh", ("full",))):
+        for script, options in (("scripts/run_rare_checks.sh", ()), ("run_tests.sh", ("full",))):
             with self.subTest(script=script):
                 result, args = self.invoke(script, *options)
                 self.assertEqual(result.returncode, 0, result.stderr)
@@ -141,7 +167,7 @@ class RunnerScriptsTests(unittest.TestCase):
         workflow = (SOURCE_ROOT / ".github" / "workflows" / "tests.yml").read_text()
         self.assertRegex(workflow, r"(?m)^on:\s*\n  workflow_dispatch:\s*$")
         self.assertNotRegex(workflow, r"(?m)^  (push|pull_request):")
-        self.assertIn("sh ./run_rare_checks.sh", workflow)
+        self.assertIn("sh ./scripts/run_rare_checks.sh", workflow)
 
     def prepare_quality_interpreter(self):
         """Capture module commands and optionally simulate missing quality tools."""
@@ -159,7 +185,7 @@ class RunnerScriptsTests(unittest.TestCase):
 
     def test_quality_gate_scopes_checks_without_reformatting(self):
         self.prepare_quality_interpreter()
-        result, arguments = self.invoke("run_quality.sh")
+        result, arguments = self.invoke("scripts/run_quality.sh")
         self.assertEqual(result.returncode, 0, result.stderr)
         commands = "\n".join(arguments).split("COMMAND\n")[1:]
         self.assertEqual(len(commands), 3)
@@ -183,7 +209,7 @@ class RunnerScriptsTests(unittest.TestCase):
                 environment = dict(os.environ, APATCH_TEST_ARGV_FILE=str(self.arguments_file),
                                    APATCH_TEST_MISSING_MODULE=missing)
                 result = subprocess.run(
-                    ["sh", str(self.root / "run_quality.sh"), mode],
+                    ["sh", str(self.root / "scripts" / "run_quality.sh"), mode],
                     capture_output=True, text=True, env=environment, check=False,
                 )
                 self.assertEqual(result.returncode, 2, result.stderr)
@@ -191,7 +217,7 @@ class RunnerScriptsTests(unittest.TestCase):
 
     def test_quality_gate_rejects_unknown_mode_before_launching(self):
         self.prepare_quality_interpreter()
-        result, arguments = self.invoke("run_quality.sh", "unsupported")
+        result, arguments = self.invoke("scripts/run_quality.sh", "unsupported")
         self.assertEqual(result.returncode, 2)
         self.assertIn("Usage:", result.stderr)
         self.assertEqual(arguments, [])

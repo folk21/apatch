@@ -5,7 +5,7 @@ import json
 import re
 from collections import Counter
 
-from ..model import Abort
+from apatch_lib.mo_core.api import Abort
 
 
 SEVERITY = {"critical": 4, "high": 3, "medium": 2, "low": 1, "info": 0}

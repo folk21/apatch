@@ -3,7 +3,7 @@
 import json
 import zipfile
 
-from apatch_lib.patch_history import AppliedPatchHistory
+from apatch_lib.mo_handoff_history.journal import AppliedPatchHistory
 from apatch_lib.state import read_state_snapshot
 from tests._support import LocalGitFixture, command
 

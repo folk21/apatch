@@ -3,8 +3,10 @@
 from ..mo_feature_sessions.commit_scope import policy_fingerprint
 from ..mo_core.enums import WorkflowPhase
 from ..mo_git.api import index_entries
-from ..gitutil import current_branch, head, run, worktree_change_details, worktree_inventory
-from ..model import Abort
+from apatch_lib.mo_git.repository import current_branch, head
+from apatch_lib.mo_git.commands import run
+from apatch_lib.mo_git.inspection import worktree_change_details, worktree_inventory
+from apatch_lib.mo_core.api import Abort
 
 
 def run_build(workflow):

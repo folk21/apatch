@@ -1,17 +1,50 @@
 """Read-only handoff selection, with explicit selection provenance."""
 
+from __future__ import annotations
+
 import re
 from dataclasses import dataclass, replace
 from enum import Enum
 from pathlib import Path
-from typing import Mapping
+from typing import Mapping, TYPE_CHECKING
 
-from .mo_cli.api import CliRequest
-from .model import (Abort, BASENAME_PATTERN, Config, Handoff,
-                    load_handoff)
-from .params_cache import load_cached_handoff
-from .mo_handoff.api import HandoffCacheOperations, handoff_from_zip
-from .sequence import parse_handoff_sequence, validate_multi_handoff_actions
+from ..mo_core.api import Abort
+from ..mo_configuration.api import Config
+from .api import BASENAME_PATTERN, Handoff, load_handoff
+from .cache.service import load_cached_handoff
+from .api import HandoffCacheOperations, handoff_from_zip
+if TYPE_CHECKING:
+    from ..mo_cli.api import CliRequest
+
+
+MAX_HANDOFF_SELECTIONS = 20
+
+
+def parse_handoff_sequence(value: str):
+    """Parse an explicit one-to-one list of ZIP selections for APL actions."""
+    names = tuple(token.strip() for token in value.split(","))
+    if not names or any(not name for name in names):
+        raise ValueError("handoffSeq requires nonempty comma-separated ZIP selections")
+    if len(names) > MAX_HANDOFF_SELECTIONS:
+        raise ValueError(f"handoffSeq supports at most {MAX_HANDOFF_SELECTIONS} ZIPs")
+    return names
+
+
+def validate_multi_handoff_actions(actions: tuple[int, ...], selections: tuple[str, ...], mode: str):
+    """Reject sequences that could apply multiple ZIPs on the base or publish too early."""
+    apply_indices = [index for index, action in enumerate(actions) if action == 3]
+    if not apply_indices or len(apply_indices) != len(selections):
+        raise ValueError("handoffSeq must select exactly one distinct ZIP for each APL operation")
+    if len(selections) == 1:
+        return
+    if mode != "loose":
+        raise ValueError("Multiple ZIPs in one opSeq require LOOSE mode; STRICT/FORCE cannot accumulate them")
+    if actions[:2] != (3, 1):
+        raise ValueError("Multi-ZIP sequences must begin with APL,BRN before another APL")
+    if 1 in actions[2:]:
+        raise ValueError("Multi-ZIP sequences must transfer to the feature branch exactly once")
+    if any(action in {5, 6, 7, 8, 9} for action in actions[:apply_indices[-1]]):
+        raise ValueError("Apply all ZIPs before commit/push/PR/merge/sync in a multi-ZIP sequence")
 
 
 class SelectionKind(str, Enum):
@@ -129,7 +162,7 @@ def resolve_handoffs(
             raise Abort("handoffSeq requires opSeq; it cannot accompany op= or an interactive menu")
         names = resolve_sequence_zip_names(request.handoff_seq, config)
         try:
-            validate_multi_handoff_actions(request.op_seq, names, request.mode)
+            validate_multi_handoff_actions(request.op_seq.actions, names, request.mode)
         except ValueError as exc:
             raise Abort(str(exc)) from exc
         if request.op_seq.actions[0] != 3:

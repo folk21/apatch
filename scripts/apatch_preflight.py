@@ -7,9 +7,11 @@ import json
 from pathlib import Path
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from apatch_lib.mo_handoff.api import ProducerOperations, VerifiedSourceProducer
-from apatch_lib.help_reference import PREFLIGHT_HELP_EPILOG
-from apatch_lib.model import Abort
+from apatch_lib.mo_cli.help_reference import PREFLIGHT_HELP_EPILOG
+from apatch_lib.mo_core.api import Abort
 
 
 def main(argv=None, *, producer: ProducerOperations | None = None) -> int:
@@ -30,7 +32,7 @@ def main(argv=None, *, producer: ProducerOperations | None = None) -> int:
     result = None
     with redirect_stdout(sys.stderr) if args.json else redirect_stdout(sys.stdout):
         try:
-            result = producer.preflight(args.project, Path(__file__).resolve().parent,
+            result = producer.preflight(args.project, Path(__file__).resolve().parent.parent,
                                prepare=args.prepare)
         except Abort as exc:
             print(f"[PREFLIGHT FAILED] {exc}", file=sys.stderr, flush=True)

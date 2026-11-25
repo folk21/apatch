@@ -3,7 +3,7 @@
 import uuid
 from pathlib import Path
 
-from ..model import Abort
+from apatch_lib.mo_core.api import Abort
 from ..mo_storage.operation_events import RunOutcome, utc_now
 from .validation import (SESSION_ID, SHA, REMOTE_ID, MAX_SESSIONS, MAX_ASSOCIATIONS,
                          MAX_STRING, SESSION_STATUSES, PR_STATES, FeatureSession,

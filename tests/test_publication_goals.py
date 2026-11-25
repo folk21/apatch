@@ -5,9 +5,11 @@ from io import StringIO
 from unittest.mock import patch
 
 from apatch_lib import github
-from apatch_lib.gitutil import head
-from apatch_lib.handoff_selection import resolve_selected_handoff
-from apatch_lib.model import Abort, RemoteOutcomeUnknown, load_config, load_project_config
+from apatch_lib.mo_git.repository import head
+from apatch_lib.mo_handoff.selection import resolve_selected_handoff
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_publication.api import RemoteOutcomeUnknown
+from apatch_lib.mo_configuration.api import load_config, load_project_config
 from apatch_lib.planner import build_plan, execute_goal
 from apatch_lib.state import read_state_snapshot
 from tests._support import LocalGitFixture, command

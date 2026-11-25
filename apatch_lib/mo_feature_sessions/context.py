@@ -12,10 +12,12 @@ from enum import Enum
 from pathlib import Path
 
 from ..mo_audit.audit_collectors import local_git, remote_snapshot
-from ..model import Abort, Config, Handoff
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_configuration.api import Config
+from apatch_lib.mo_handoff.api import Handoff
 from .session import remote_identity
 from ..mo_storage.state import read_state_snapshot
-from ..status import workflow_key
+from apatch_lib.mo_workflows.status import workflow_key
 from ..mo_handoff.api import APPLIED_PHASES, verify_applied_zip
 
 

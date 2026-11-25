@@ -7,9 +7,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .action_applicability import ActionFacts, action_unavailable
-from .mo_core.enums import WorkflowPhase
-from .gitutil import worktree_fingerprint
-from .model import Abort, BRANCH_PATTERN
+from ..mo_core.enums import WorkflowPhase
+from ..mo_git.repository import worktree_fingerprint
+from ..mo_core.api import Abort
+from ..mo_handoff.constants import BRANCH_PATTERN
 
 
 PHASE_ORDER = tuple(phase.value for phase in WorkflowPhase)
@@ -278,7 +279,7 @@ def inspect_patch(root: Path, config, record: dict, patch: str,
                     "STALE", "VERIFIED", "current bytes or HEAD differ from the saved CHK evidence")
     missing_review = False
     if config.review_required and phase == WorkflowPhase.VERIFIED and not conflict:
-        from .commit_scope import policy_fingerprint
+        from ..mo_feature_sessions.commit_scope import policy_fingerprint
         if current_fingerprint is None:
             current_fingerprint, current_paths = worktree_fingerprint(root)
         snapshot = [current, current_head, current_fingerprint,
@@ -296,15 +297,3 @@ def inspect_patch(root: Path, config, record: dict, patch: str,
         require_patch_feature_branch=config.require_patch_feature_branch,
         stale_verification=stale_verification, missing_review=missing_review)
     return PatchStatus(patch, planned_branch, phase, current, facts, next_action, alternate, guidance)
-
-
-def display_recommendation(status: PatchStatus) -> None:
-    """Preserve the former status presentation entry point."""
-    from .mo_presentation.status import display_recommendation as render
-    render(status)
-
-
-def display_status(status: PatchStatus) -> None:
-    """Preserve the former status presentation entry point."""
-    from .mo_presentation.status import display_status as render
-    render(status)

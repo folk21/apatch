@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 if [ -x "$SCRIPT_DIR/.venv/bin/python" ]; then
     QUALITY_PYTHON="$SCRIPT_DIR/.venv/bin/python"

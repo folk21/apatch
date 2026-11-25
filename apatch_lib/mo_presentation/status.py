@@ -1,6 +1,6 @@
 """Terminal rendering of read-only workflow evidence."""
 
-from ..status import ACTION_NAMES, PatchStatus
+from apatch_lib.mo_workflows.status import ACTION_NAMES, PatchStatus
 from .console import next_action_label
 
 def display_recommendation(status: PatchStatus):

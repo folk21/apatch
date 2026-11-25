@@ -12,10 +12,10 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from apatch_lib import patch as legacy_patch
 from apatch_lib.branch_patch import BranchPatchActions
 from apatch_lib.mo_core.api import Abort
 from apatch_lib.mo_handoff import api as handoff
+from apatch_lib.mo_handoff import extraction, inspection, models
 
 
 class HandoffArchiveBoundariesTests(unittest.TestCase):
@@ -57,11 +57,11 @@ class HandoffArchiveBoundariesTests(unittest.TestCase):
         path = self.write_zip(*(entries or (("service/new.txt", b"new\n"),)))
         return path, handoff.handoff_from_zip(self.config, self.project, self.filename)
 
-    def test_public_port_is_structural_and_legacy_objects_preserve_identity(self):
-        self.assertIs(legacy_patch.Archive, handoff.Archive)
-        self.assertIs(legacy_patch.inspect, handoff.inspect)
-        self.assertIs(legacy_patch.apply, handoff.apply)
-        self.assertIs(legacy_patch.handoff_from_zip, handoff.handoff_from_zip)
+    def test_public_port_reexports_canonical_archive_operations(self):
+        self.assertIs(handoff.Archive, models.Archive)
+        self.assertIs(handoff.inspect, inspection.inspect)
+        self.assertIs(handoff.apply, extraction.apply)
+        self.assertIs(handoff.handoff_from_zip, inspection.handoff_from_zip)
         self.assertIsInstance(handoff.ZipArchiveOperations(), handoff.ArchiveOperations)
         self.assertNotIsInstance(object(), handoff.ArchiveOperations)
 
@@ -107,6 +107,88 @@ class HandoffArchiveBoundariesTests(unittest.TestCase):
         with self.assertRaisesRegex(Abort, "Unsafe parent directory"):
             handoff.handoff_from_zip(self.config, self.project, self.filename)
         self.assertFalse((external / "file.txt").exists())
+
+    def test_parent_symlink_swap_after_inspection_cannot_write_outside_repository(self):
+        parent = self.project / "incoming"
+        parent.mkdir()
+        external = self.project.parent / "outside"
+        external.mkdir()
+        (external / "file.txt").write_bytes(b"external must survive\n")
+        _, selected = self.load(("service/incoming/file.txt", b"ZIP data\n"))
+        inspected = handoff.inspect(self.config, selected, self.project)
+        original_inspect = extraction.inspect
+
+        def swap_parent(*args, **kwargs):
+            result = original_inspect(*args, **kwargs)
+            parent.rename(self.project / "moved-incoming")
+            parent.symlink_to(external, target_is_directory=True)
+            return result
+
+        with patch.object(extraction, "inspect", side_effect=swap_parent):
+            with self.assertRaises(Abort):
+                handoff.apply(self.config, selected, self.project, inspected)
+        self.assertEqual((external / "file.txt").read_bytes(), b"external must survive\n")
+        self.assertFalse((self.project / "moved-incoming" / "file.txt").exists())
+
+    def test_symlink_swap_before_tracked_deletion_cannot_delete_external_file(self):
+        def git(*args):
+            subprocess.run(["git", *args], cwd=self.project, check=True,
+                           stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        git("init")
+        git("config", "user.email", "test@example.invalid")
+        git("config", "user.name", "Archive Test")
+        parent = self.project / "vault"
+        parent.mkdir()
+        (parent / "obsolete.txt").write_bytes(b"tracked original\n")
+        git("add", "vault/obsolete.txt")
+        git("commit", "-m", "Synthetic base")
+        external = self.project.parent / "outside"
+        external.mkdir()
+        (external / "obsolete.txt").write_bytes(b"external must survive\n")
+        self.payload["delete_paths"] = ["vault/obsolete.txt"]
+        _, selected = self.load(("service/new.txt", b"new\n"))
+        inspected = handoff.inspect(self.config, selected, self.project)
+        original_replace = extraction.os.replace
+        changed = False
+
+        def swap_after_replacement(*args, **kwargs):
+            nonlocal changed
+            result = original_replace(*args, **kwargs)
+            if not changed:
+                changed = True
+                parent.rename(self.project / "moved-vault")
+                parent.symlink_to(external, target_is_directory=True)
+            return result
+
+        with patch.object(extraction.os, "replace", side_effect=swap_after_replacement):
+            with self.assertRaises(Abort):
+                handoff.apply(self.config, selected, self.project, inspected)
+        self.assertTrue(changed)
+        self.assertEqual((external / "obsolete.txt").read_bytes(), b"external must survive\n")
+        self.assertEqual((self.project / "moved-vault" / "obsolete.txt").read_bytes(),
+                         b"tracked original\n")
+
+    def test_nested_extraction_preserves_existing_mode_and_zip_executable_bit(self):
+        destination = self.project / "bin" / "existing.sh"
+        destination.parent.mkdir()
+        destination.write_bytes(b"old\n")
+        destination.chmod(0o600)
+        executable = zipfile.ZipInfo("service/bin/new.sh")
+        executable.create_system = 3
+        executable.external_attr = ((stat.S_IFREG | 0o755) << 16)
+        path = self.config.downloads / self.filename
+        with zipfile.ZipFile(path, "w") as target:
+            target.writestr(*self.member(
+                "service/.apatch/params.json", json.dumps(self.payload).encode()))
+            target.writestr(*self.member("service/bin/existing.sh", b"updated\n"))
+            target.writestr(executable, b"#!/bin/sh\nexit 0\n")
+        selected = handoff.handoff_from_zip(self.config, self.project, self.filename)
+        inspected = handoff.inspect(self.config, selected, self.project)
+        handoff.apply(self.config, selected, self.project, inspected)
+        self.assertEqual(destination.read_bytes(), b"updated\n")
+        self.assertEqual(stat.S_IMODE(destination.stat().st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE((self.project / "bin" / "new.sh").stat().st_mode), 0o755)
 
     def test_duplicate_source_entry_is_rejected(self):
         with warnings.catch_warnings():

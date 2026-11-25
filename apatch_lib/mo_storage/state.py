@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Iterator, cast
 
 from ..mo_workflows.api import StateDocument, WorkflowRecord
-from ..model import Abort
+from apatch_lib.mo_core.api import Abort
 from .operation_events import MAX_RUNS, OperationRun, validate_runs
 from ..mo_feature_sessions.validation import validate_feature_sessions
 from .locking import exclusive_file_lock

@@ -8,48 +8,48 @@ from ..mo_core.api import Abort
 
 
 def output(argv, cwd: Path, *, timeout=None):
-    from .. import gitutil
-    return gitutil.run(argv, cwd, timeout=timeout).stdout.strip()
+    from . import commands
+    return commands.run(argv, cwd, timeout=timeout).stdout.strip()
 
 
 def repository_root(cwd: Path, expected_name: str):
-    from .. import gitutil
-    root = Path(gitutil.output(["git", "rev-parse", "--show-toplevel"], cwd)).resolve()
+    from . import commands
+    root = Path(output(["git", "rev-parse", "--show-toplevel"], cwd)).resolve()
     if root != cwd.resolve() or root.name != expected_name:
         raise Abort(f"Run from the root of repository {expected_name!r}: {root}")
     return root
 
 
 def current_branch(root):
-    from .. import gitutil
-    return gitutil.output(["git", "branch", "--show-current"], root)
+    from . import commands
+    return output(["git", "branch", "--show-current"], root)
 
 
 def head(root):
-    from .. import gitutil
-    return gitutil.output(["git", "rev-parse", "HEAD"], root)
+    from . import commands
+    return output(["git", "rev-parse", "HEAD"], root)
 
 
 def is_clean(root):
-    from .. import gitutil
-    return not gitutil.run(["git", "status", "--porcelain", "--untracked-files=all"], root).stdout
+    from . import commands
+    return not commands.run(["git", "status", "--porcelain", "--untracked-files=all"], root).stdout
 
 
 def require_clean(root):
-    from .. import gitutil
-    if not gitutil.is_clean(root):
+    from . import commands
+    if not is_clean(root):
         raise Abort("Working tree is not clean; inspect git status before continuing")
 
 
 def require_branch(root, branch):
-    from .. import gitutil
-    if gitutil.current_branch(root) != branch:
-        raise Abort(f"Expected checked-out branch {branch!r}, got {gitutil.current_branch(root)!r}")
+    from . import commands
+    if current_branch(root) != branch:
+        raise Abort(f"Expected checked-out branch {branch!r}, got {current_branch(root)!r}")
 
 
 def branch_exists(root, branch):
-    from .. import gitutil
-    result = gitutil.run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"], root,
+    from . import commands
+    result = commands.run(["git", "show-ref", "--verify", "--quiet", f"refs/heads/{branch}"], root,
                  check=False)
     if result.returncode not in {0, 1}:
         raise Abort(f"Could not check local branch {branch!r}")
@@ -57,8 +57,8 @@ def branch_exists(root, branch):
 
 
 def remote_head(root, config, branch):
-    from .. import gitutil
-    result = gitutil.run(["git", "ls-remote", "--heads", config.remote, f"refs/heads/{branch}"],
+    from . import commands
+    result = commands.run(["git", "ls-remote", "--heads", config.remote, f"refs/heads/{branch}"],
                  root, timeout=config.github_timeout_seconds)
     lines = result.stdout.splitlines()
     if not lines:
@@ -77,8 +77,8 @@ def status_paths(root, *, detect_renames=True):
             "--untracked-files=all", "-z"]
     if not detect_renames:
         args.append("--no-renames")
-    from .. import gitutil
-    data = gitutil.run(args, root, text=False).stdout
+    from . import commands
+    data = commands.run(args, root, text=False).stdout
     paths = {}
     items = data.split(b"\x00")
     i = 0
@@ -95,12 +95,12 @@ def status_paths(root, *, detect_renames=True):
 
 def worktree_fingerprint(root):
     """Capture changed bytes, executable bits, and staged Git objects and modes."""
-    from .. import gitutil
-    paths = gitutil.status_paths(root)
+    from . import commands
+    paths = status_paths(root)
     digest = hashlib.sha256()
     if paths:
-        from .. import gitutil
-        index = gitutil.run(["git", "ls-files", "--stage", "-z", "--", *sorted(paths)],
+        from . import commands
+        index = commands.run(["git", "ls-files", "--stage", "-z", "--", *sorted(paths)],
                     root, text=False).stdout
         digest.update(b"INDEX\x00" + index + b"\x00")
     for name, code in sorted(paths.items()):

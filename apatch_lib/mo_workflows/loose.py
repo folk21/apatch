@@ -9,17 +9,27 @@ from pathlib import Path
 from ..mo_core.enums import WorkflowPhase
 from ..mo_core.contracts import ActionResult
 from ..branch_guard import assert_no_unfinished_feature_branches
-from ..created_patches import persist_registry
+from apatch_lib.mo_handoff_history.registry import persist_registry
 from ..commit_scope import (NeedsVerification, WaitingForUser, assert_scope_unchanged,
                            changed_contents_fingerprint, inspect_commit_scope,
                            policy_fingerprint)
 from ..mo_presentation.console import check_result_label
-from ..gitutil import (branch_exists, confirm, current_branch, head, output,
-                      remote_head, run, status_paths, worktree_fingerprint,
-                      worktree_inventory, worktree_change_details)
-from ..model import Abort, CheckWorktreeChanged
+from apatch_lib.mo_git.repository import (
+    branch_exists,
+    current_branch,
+    head,
+    output,
+    remote_head,
+    status_paths,
+    worktree_fingerprint,
+)
+from apatch_lib.mo_presentation.confirmation import confirm
+from apatch_lib.mo_git.commands import run
+from apatch_lib.mo_git.inspection import worktree_inventory, worktree_change_details
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_workflows.api import CheckWorktreeChanged
 from ..mo_handoff.api import apply, inspect
-from ..patch_history import locked_history
+from apatch_lib.mo_handoff_history.journal import locked_history
 from ..session_continuation import (require_committed_loose_followup,
                                    require_session_continuation)
 from ..session import record_session_commit

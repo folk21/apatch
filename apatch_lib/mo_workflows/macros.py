@@ -5,12 +5,13 @@ from pathlib import Path
 
 from ..mo_cli.api import show_status_with_progress
 from ..mo_cli.api import CliRequest, MACRO_OPERATIONS
-from ..handoff_selection import HandoffSelection, SelectionKind, resolve_handoffs
-from ..model import Abort, Config
+from apatch_lib.mo_handoff.selection import HandoffSelection, SelectionKind, resolve_handoffs
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_configuration.api import Config
 from .planner import build_plan, execute_goal
 from ..progress import ProgressRecorder
 from ..state import read_state_snapshot
-from ..status import workflow_key
+from apatch_lib.mo_workflows.status import workflow_key
 
 
 MACRO_NAMES = MACRO_OPERATIONS

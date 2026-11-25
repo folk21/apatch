@@ -69,7 +69,7 @@ class HelpReferenceTests(unittest.TestCase):
         self.assertIn("not** CLI features yet", guide)
 
     def test_producer_help_explains_discovery_and_all_publishing_flags(self):
-        result = subprocess.run([sys.executable, str(TOOL / "apatch_pack.py"), "--help"],
+        result = subprocess.run([sys.executable, str(TOOL / "scripts" / "apatch_pack.py"), "--help"],
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         for expected in ("--discover", "--include", "--delete", "--output", "--prepare",
@@ -78,7 +78,7 @@ class HelpReferenceTests(unittest.TestCase):
             self.assertIn(expected, plain_help(result.stdout))
 
     def test_preflight_help_explains_mutation_and_read_only_checks(self):
-        result = subprocess.run([sys.executable, str(TOOL / "apatch_preflight.py"),
+        result = subprocess.run([sys.executable, str(TOOL / "scripts" / "apatch_preflight.py"),
                                  "--help"], capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         for expected in ("--prepare", "--project", "--json", "format_commands",

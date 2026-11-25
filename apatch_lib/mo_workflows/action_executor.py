@@ -4,8 +4,8 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from .api import ActionResult
-from ..gitutil import confirmation_was_declined
-from ..model import Abort
+from apatch_lib.mo_presentation.confirmation import confirmation_was_declined
+from apatch_lib.mo_core.api import Abort
 
 if TYPE_CHECKING:
     from .workflow import Workflow

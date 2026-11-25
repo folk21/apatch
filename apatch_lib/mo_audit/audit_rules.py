@@ -7,7 +7,8 @@ from pathlib import Path
 from typing import Mapping, cast
 
 from ..mo_core.contracts import GitHubPr, StateDocument, WorkflowRecord
-from ..model import Abort, BASENAME_PATTERN
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_handoff.api import BASENAME_PATTERN
 from ..mo_handoff_history.models import HistoryEntry
 from ..mo_handoff_history.journal import parse_history
 

@@ -53,43 +53,34 @@ class R4OwnershipTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_git_facade_keeps_patched_runner_and_public_identity(self):
-        from apatch_lib import gitutil
+    def test_git_repository_queries_use_patchable_command_runner(self):
         from apatch_lib.mo_git import repository, api, commands
-        self.assertIs(gitutil.run, commands.run)
-        self.assertIs(gitutil.output, repository.output)
-        self.assertIs(gitutil.head, api.head)
-        self.assertIs(gitutil.status_paths, repository.status_paths)
-        self.assertIs(gitutil.worktree_fingerprint, api.worktree_fingerprint)
-        with patch.object(gitutil, "run", return_value=Mock(stdout="  example\n")) as runner:
+        self.assertIs(repository.head, api.head)
+        self.assertIs(repository.status_paths, api.status_paths)
+        with patch.object(commands, "run", return_value=Mock(stdout="  example\n")) as runner:
             self.assertEqual(repository.output(["git", "rev-parse", "HEAD"], ROOT), "example")
             runner.assert_called_once_with(["git", "rev-parse", "HEAD"], ROOT, timeout=None)
 
-    def test_legacy_repository_helpers_preserve_patchable_read_seams(self):
-        from apatch_lib import gitutil
+    def test_canonical_read_seams_keep_injected_results(self):
         from apatch_lib.mo_git import repository
-        with patch.object(gitutil, "output", return_value="feature/test") as output:
+        with patch.object(repository, "output", return_value="feature/test") as output:
             self.assertEqual(repository.current_branch(ROOT), "feature/test")
             output.assert_called_once_with(["git", "branch", "--show-current"], ROOT)
-        with patch.object(gitutil, "status_paths", return_value={}) as paths:
+        with patch.object(repository, "status_paths", return_value={}) as paths:
             digest, changed = repository.worktree_fingerprint(ROOT)
             self.assertEqual(changed, {})
             self.assertEqual(len(digest), 64)
             paths.assert_called_once_with(ROOT)
 
     def test_approval_context_is_shared_and_never_skips_safety_gates(self):
-        from apatch_lib import gitutil
         from apatch_lib.mo_presentation import confirmation
-        self.assertIs(gitutil.confirm, confirmation.confirm)
-        self.assertIs(gitutil.confirmation_was_declined, confirmation.confirmation_was_declined)
-        self.assertIs(gitutil._SKIP_APPROVALS, confirmation._SKIP_APPROVALS)
-        token = gitutil.set_skip_approvals(True)
+        token = confirmation.set_skip_approvals(True)
         try:
             self.assertTrue(confirmation.confirm("Allow operation?"))
             self.assertTrue(confirmation.skip_approvals_enabled())
         finally:
             confirmation.reset_skip_approvals(token)
-        self.assertFalse(gitutil.skip_approvals_enabled())
+        self.assertFalse(confirmation.skip_approvals_enabled())
 
     def _workflow(self, *, fingerprints=("same", "same")):
         checks = [["python3", "-c", "pass"]]

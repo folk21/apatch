@@ -4,7 +4,7 @@ set -euo pipefail
 # Build a distributable project archive from the current project root.
 PROJECT_DIR="apatch"
 ARCHIVE_NAME="${PROJECT_DIR}.zip"
-PARENT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PARENT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 
 cd "$PARENT_DIR"
 rm -f "$ARCHIVE_NAME"

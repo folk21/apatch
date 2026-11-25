@@ -13,11 +13,12 @@ class ProducerReviewCharacterizationTests(LocalGitFixture):
     """Exercise public tools against a disposable repository and bare remote."""
 
     def _install_tool(self, name: str) -> None:
-        shutil.copy(TOOL / name, self.bin / name)
+        (self.bin / "scripts").mkdir(exist_ok=True)
+        shutil.copy(TOOL / "scripts" / name, self.bin / "scripts" / name)
 
     def _producer(self, name: str, *args: str):
         self._install_tool(name)
-        return run_bounded([sys.executable, str(self.bin / name),
+        return run_bounded([sys.executable, str(self.bin / "scripts" / name),
                             "--project", str(self.root), *args], cwd=self.root)
 
     def test_discover_json_does_not_publish_or_modify_source(self) -> None:

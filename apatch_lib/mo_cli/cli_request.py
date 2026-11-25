@@ -7,7 +7,8 @@ from typing import Sequence
 
 from ..mo_core.actions import action_number
 from .help_reference import HELP_EPILOG
-from ..model import Abort, BASENAME_PATTERN, BRANCH_PATTERN
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_handoff.api import BASENAME_PATTERN, BRANCH_PATTERN
 from ..sequence import OperationSequence
 
 

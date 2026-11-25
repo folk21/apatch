@@ -3,11 +3,19 @@
 from pathlib import Path
 
 from ..branch_guard import assert_no_unfinished_feature_branches
-from ..gitutil import (branch_exists, current_branch, head, output, remote_head,
-                      worktree_fingerprint)
-from ..model import Abort, Config, Handoff
+from apatch_lib.mo_git.repository import (
+    branch_exists,
+    current_branch,
+    head,
+    output,
+    remote_head,
+    worktree_fingerprint,
+)
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_configuration.api import Config
+from apatch_lib.mo_handoff.api import Handoff
 from ..state import save
-from ..status import workflow_key
+from apatch_lib.mo_workflows.status import workflow_key
 from ..mo_handoff.api import verify_applied_zip
 
 

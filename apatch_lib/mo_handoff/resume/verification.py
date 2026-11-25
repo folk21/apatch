@@ -5,8 +5,14 @@ import json
 from pathlib import Path
 
 from ...mo_core.contracts import StateDocument
-from ...gitutil import (current_branch, head, output, remote_head,
-                        status_paths, worktree_fingerprint)
+from apatch_lib.mo_git.repository import (
+    current_branch,
+    head,
+    output,
+    remote_head,
+    status_paths,
+    worktree_fingerprint,
+)
 from ...mo_core.api import Abort
 from ...mo_configuration.models import Config
 from ..constants import BRANCH_PATTERN
@@ -32,7 +38,7 @@ def verify_applied_zip(
     """Require matching checkpoint, latest journal entry, APL run and live local Git."""
     reason = ("Explicit ZIP resume is not proven; inspect op=STS and op=AUD. "
               "Do not reapply a previously recorded ZIP.")
-    from ...status import workflow_key
+    from apatch_lib.mo_workflows.status import workflow_key
 
     key = workflow_key(root, handoff.branch, handoff.patch)
     record = state["workflows"].get(key)

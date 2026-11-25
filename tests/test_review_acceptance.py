@@ -4,7 +4,7 @@ import hashlib
 import json
 import sys
 
-from apatch_lib.model import Abort
+from apatch_lib.mo_core.api import Abort
 from apatch_lib.review_evidence_api import ReviewEvidenceSession
 from apatch_lib.review_retention import export_review_summary, prune_review_artifacts
 from tests._support import LocalGitFixture, command

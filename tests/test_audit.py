@@ -6,11 +6,11 @@ import sys
 from unittest.mock import patch
 
 from tests._support import LocalGitFixture, command
-from apatch_lib.model import Abort
+from apatch_lib.mo_core.api import Abort
 from apatch_lib.operation_events import OperationRun
 from apatch_lib.progress import ProgressEvent, ProgressStore, utc_now
 from apatch_lib.reconciliation import audit_repository, format_audit
-from apatch_lib.model import load_config, load_project_config
+from apatch_lib.mo_configuration.api import load_config, load_project_config
 
 
 class AuditTests(LocalGitFixture):

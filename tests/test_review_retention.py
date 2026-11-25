@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from apatch_lib.model import Abort
+from apatch_lib.mo_core.api import Abort
 from apatch_lib.review_retention import (_retention_locked, export_review_summary,
                                          prune_review_artifacts, review_storage_lock)
 

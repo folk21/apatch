@@ -10,8 +10,15 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from ..gitutil import current_branch, head, output, status_paths, worktree_fingerprint
-from ..model import Abort, safe_relative
+from apatch_lib.mo_git.repository import (
+    current_branch,
+    head,
+    output,
+    status_paths,
+    worktree_fingerprint,
+)
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_handoff.api import safe_relative
 from .session import remote_identity, validate_feature_sessions
 
 

@@ -37,7 +37,7 @@ class ValidationTest(unittest.TestCase):
                 safe_relative(value)
 
     def test_command_line_logging_redacts_secret_arguments(self):
-        from apatch_lib.gitutil import display_command
+        from apatch_lib.mo_git.commands import display_command
         rendered = display_command(["gh", "pr", "create", "--body", "confidential-body",
                                     "--token=secret-token", "--password", "secret-password"])
         self.assertIn("--body '[REDACTED]'", rendered)

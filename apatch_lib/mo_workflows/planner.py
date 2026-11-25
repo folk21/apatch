@@ -5,16 +5,17 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
-from .. import github
+from ..mo_publication import github
 from ..commit_scope import WaitingForUser
 from ..context import (Scenario, inspect_context,
                       inspect_guarded_commit_readiness)
-from ..gitutil import (current_branch, head, output, remote_head,
-                      reset_skip_approvals, set_skip_approvals, status_paths)
-from ..handoff_selection import HandoffSelection, SelectionKind
+from apatch_lib.mo_git.repository import current_branch, head, output, remote_head, status_paths
+from apatch_lib.mo_presentation.confirmation import reset_skip_approvals, set_skip_approvals
+from apatch_lib.mo_handoff.selection import HandoffSelection, SelectionKind
 from ..local_ignore import ensure_runtime_ignored
 from ..logging_setup import LOG_FILENAME, configure
-from ..model import Abort, Config
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_configuration.api import Config
 from ..mo_handoff.api import HandoffCacheOperations, ProjectHandoffCache
 from ..mo_handoff.api import inspect
 from ..progress import ProgressRecorder
@@ -22,7 +23,7 @@ from ..session import (close_feature_session, record_session_pr,
                       remote_identity)
 from ..session_continuation import require_session_continuation
 from ..state import locked_state, read_state_snapshot
-from ..status import workflow_key
+from apatch_lib.mo_workflows.status import workflow_key
 from .workflow import Workflow
 from ..mo_handoff.api import verify_applied_zip
 

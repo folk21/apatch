@@ -9,13 +9,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ..mo_audit.audit_collectors import local_git, remote_snapshot, safe_text
-from ..gitutil import status_paths
-from ..model import Abort, Config, Handoff
+from apatch_lib.mo_git.repository import status_paths
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_configuration.api import Config
+from apatch_lib.mo_handoff.api import Handoff
 from ..mo_handoff.api import Archive, inspect
 from ..mo_handoff_history.journal import MAX_HISTORY_BYTES, parse_history
 from .session import SESSION_ID, remote_identity
 from ..mo_storage.state import read_state_snapshot
-from ..status import workflow_key
+from apatch_lib.mo_workflows.status import workflow_key
 
 
 _SHA = re.compile(r"^[a-f0-9]{40}$")

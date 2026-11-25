@@ -4,8 +4,9 @@ import json
 import re
 
 from . import github
-from ..gitutil import current_branch, output, run
-from ..model import Abort
+from apatch_lib.mo_git.repository import current_branch, output
+from apatch_lib.mo_git.commands import run
+from apatch_lib.mo_core.api import Abort
 
 
 FEATURE_PREFIX = "feature/"

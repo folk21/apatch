@@ -1,8 +1,9 @@
 """Execute configured canonical checks and record exact worktree evidence."""
 
-from ..gitutil import head, require_branch, run
+from apatch_lib.mo_git.repository import head, require_branch
+from apatch_lib.mo_git.commands import run
 from ..mo_core.enums import WorkflowPhase
-from ..model import Abort
+from apatch_lib.mo_core.api import Abort
 
 
 def run_checks(workflow) -> bool:

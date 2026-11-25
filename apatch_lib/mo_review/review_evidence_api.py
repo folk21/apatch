@@ -9,7 +9,8 @@ import threading
 from pathlib import Path
 from typing import Callable
 
-from ..model import Abort, safe_relative
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_handoff.api import safe_relative
 
 
 _REVIEW_ID = re.compile(r"review-[a-f0-9]{24}\Z")

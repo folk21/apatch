@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ..model import Abort, validate_base_branch
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_configuration.api import validate_base_branch
 
 SESSION_ID = re.compile(r"^[a-f0-9]{32}$")
 SHA = re.compile(r"^(?:[a-f0-9]{40}|[a-f0-9]{64})$")

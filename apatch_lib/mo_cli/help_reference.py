@@ -166,9 +166,9 @@ HELP_EPILOG = dedent("""
       force-push option. Remote GitHub checks remain separate from local CHK.
 
     VERIFIED ZIP PRODUCTION (SEPARATE FROM CONSUMER OPERATIONS)
-      python3 /path/to/apatch/apatch_preflight.py --project . --prepare
-      python3 /path/to/apatch/apatch_pack.py --help
-      Use apatch_pack.py for source checks and validated ZIP creation before
+      python3 /path/to/apatch/scripts/apatch_preflight.py --project . --prepare
+      python3 /path/to/apatch/scripts/apatch_pack.py --help
+      Use scripts/apatch_pack.py for source checks and validated ZIP creation before
       applying the ZIP with APL in the destination repository.
 
     DOCUMENTATION
@@ -185,8 +185,8 @@ PACK_HELP_EPILOG = dedent("""
       used later in the DESTINATION repository.
 
     FIRST REVIEW THE FILE MANIFEST (READ-ONLY)
-      python3 /path/to/apatch/apatch_pack.py --project . --discover
-      python3 /path/to/apatch/apatch_pack.py --project . --discover --json
+      python3 /path/to/apatch/scripts/apatch_pack.py --project . --discover
+      python3 /path/to/apatch/scripts/apatch_pack.py --project . --discover --json
 
       Discovery reports modified, new, renamed, and deleted Git paths and
       prints suggested --include and --delete arguments. No files are written,
@@ -195,7 +195,7 @@ PACK_HELP_EPILOG = dedent("""
       Discovery is NOT approval to include any path in an archive.
 
     THEN BUILD AN EXPLICIT ZIP
-      python3 /path/to/apatch/apatch_pack.py \\
+      python3 /path/to/apatch/scripts/apatch_pack.py \\
         --project . \\
         --output /path/outside/source/project-PATCH-feature.zip \\
         --branch feature/example \\
@@ -236,7 +236,7 @@ PACK_HELP_EPILOG = dedent("""
       --json writes one result to stdout; command logs go to stderr.
 
     RELATED COMMANDS
-      apatch_preflight.py --help  Standalone source verification/formatting.
+      scripts/apatch_preflight.py --help  Standalone source verification/formatting.
       apatch.sh --help            Full consumer workflow/configuration guide.
       docs/ARCHITECTURE.md       Security, module boundaries and developer checks.
 """).strip()
@@ -244,8 +244,8 @@ PACK_HELP_EPILOG = dedent("""
 
 PREFLIGHT_HELP_EPILOG = dedent("""
     SOURCE PREFLIGHT BEFORE PATCH CREATION
-      python3 /path/to/apatch/apatch_preflight.py --project . --prepare
-      python3 /path/to/apatch/apatch_preflight.py --project . --json
+      python3 /path/to/apatch/scripts/apatch_preflight.py --project . --prepare
+      python3 /path/to/apatch/scripts/apatch_preflight.py --project . --json
 
       Run from the SOURCE Git repository root. This command does not build
       a ZIP, apply a patch, commit, stage, or publish anything. It requires
@@ -270,7 +270,7 @@ PREFLIGHT_HELP_EPILOG = dedent("""
 
     BEFORE DELIVERING A ZIP
       The source may change after preflight. For a ZIP tied to the exact
-      verified bytes, use apatch_pack.py: it reruns preflight and rejects
+      verified bytes, use scripts/apatch_pack.py: it reruns preflight and rejects
       source drift before publishing the archive. CHK remains mandatory in
       the destination repository after ZIP application.
 """).strip()

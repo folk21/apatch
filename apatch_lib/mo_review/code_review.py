@@ -8,8 +8,10 @@ import tempfile
 from pathlib import Path
 
 from ..commit_scope import policy_fingerprint
-from ..gitutil import current_branch, head, run, worktree_fingerprint
-from ..model import Abort, safe_relative
+from apatch_lib.mo_git.repository import current_branch, head, worktree_fingerprint
+from apatch_lib.mo_git.commands import run
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_handoff.api import safe_relative
 from .review_artifacts import ReviewArtifacts
 from .review_context import build_review_context
 from .review_normalizer import normalize_report

@@ -8,10 +8,11 @@ import sys
 from unittest.mock import patch
 import zipfile
 
-import apatch_lib.artifact_packaging as packaging
-from apatch_lib.artifact_packaging import discover_source_paths, pack_source
-from apatch_lib.model import Abort, load_config, load_project_config
-from apatch_lib.patch import handoff_from_zip, inspect
+from apatch_lib.mo_handoff_producer import packaging
+from apatch_lib.mo_handoff_producer.packaging import discover_source_paths, pack_source
+from apatch_lib.mo_core.api import Abort
+from apatch_lib.mo_configuration.api import load_config, load_project_config
+from apatch_lib.mo_handoff.api import handoff_from_zip, inspect
 from tests._support import TOOL, LocalGitFixture, command
 
 
@@ -77,8 +78,9 @@ class ArtifactPackagingTests(LocalGitFixture):
             discover_source_paths(self.root)
 
     def test_discovery_json_does_not_require_packaging_options(self):
-        shutil.copy(TOOL / "apatch_pack.py", self.bin / "apatch_pack.py")
-        command_line = [sys.executable, str(self.bin / "apatch_pack.py"),
+        (self.bin / "scripts").mkdir(exist_ok=True)
+        shutil.copy(TOOL / "scripts" / "apatch_pack.py", self.bin / "scripts" / "apatch_pack.py")
+        command_line = [sys.executable, str(self.bin / "scripts" / "apatch_pack.py"),
                         "--project", str(self.root), "--discover", "--json"]
         completed = subprocess.run(command_line, cwd=self.root, capture_output=True,
                                    text=True, timeout=15)
@@ -107,7 +109,7 @@ class ArtifactPackagingTests(LocalGitFixture):
             (self.root / "new.txt").write_text("unverified\n")
             return evidence
 
-        with patch("apatch_lib.artifact_packaging.preflight", side_effect=change_source):
+        with patch("apatch_lib.mo_handoff_producer.packaging.preflight", side_effect=change_source):
             with self.assertRaisesRegex(Abort, "Source changed after preflight"):
                 self.build()
         self.assertFalse(self.destination.exists())
@@ -120,7 +122,7 @@ class ArtifactPackagingTests(LocalGitFixture):
             (self.root / name).write_text("new content after read\n")
             return result
 
-        with patch("apatch_lib.artifact_packaging._read_source_file",
+        with patch("apatch_lib.mo_handoff_producer.packaging._read_source_file",
                    side_effect=change_after_read):
             with self.assertRaisesRegex(Abort, "Source changed during ZIP creation"):
                 self.build()
@@ -128,7 +130,7 @@ class ArtifactPackagingTests(LocalGitFixture):
         self.assertEqual(list(self.destination.parent.glob(".apatch-pack-*.tmp")), [])
 
     def test_archive_member_must_match_verified_source_bytes(self):
-        with patch("apatch_lib.artifact_packaging._read_source_file",
+        with patch("apatch_lib.mo_handoff_producer.packaging._read_source_file",
                    return_value=(b"different bytes\n", 0o644)):
             with self.assertRaisesRegex(Abort, "Packaged source bytes or mode changed"):
                 self.build()
@@ -212,8 +214,9 @@ class ArtifactPackagingTests(LocalGitFixture):
             self.assertEqual(archive.read("example_service/new.txt"), b"formatted\n")
 
     def test_json_cli_returns_single_result_for_both_outcomes(self):
-        shutil.copy(TOOL / "apatch_pack.py", self.bin / "apatch_pack.py")
-        command_line = [sys.executable, str(self.bin / "apatch_pack.py"),
+        (self.bin / "scripts").mkdir(exist_ok=True)
+        shutil.copy(TOOL / "scripts" / "apatch_pack.py", self.bin / "scripts" / "apatch_pack.py")
+        command_line = [sys.executable, str(self.bin / "scripts" / "apatch_pack.py"),
                         "--project", str(self.root), "--output", str(self.destination),
                         "--branch", "feature/producer-packaging",
                         "--message", "feat: package checked source", "--include", "new.txt",

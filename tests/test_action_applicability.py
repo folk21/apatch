@@ -6,7 +6,7 @@ from dataclasses import replace
 from apatch_lib.action_applicability import (
     ActionFacts, PENDING_BRANCH_REASON, action_unavailable,
 )
-from apatch_lib.status import recommend_next_action
+from apatch_lib.mo_workflows.status import recommend_next_action
 from tests._support import LocalGitFixture, command
 
 

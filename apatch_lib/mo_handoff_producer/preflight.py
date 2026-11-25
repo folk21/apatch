@@ -4,7 +4,8 @@ from pathlib import Path
 
 from ..mo_git.api import (current_branch, head, worktree_change_details,
                         worktree_fingerprint, worktree_inventory)
-from ..gitutil import output, run
+from apatch_lib.mo_git.repository import output
+from apatch_lib.mo_git.commands import run
 from ..mo_configuration.api import load_config, load_project_config
 from ..mo_core.api import Abort
 from .models import PreflightResult
