@@ -1,0 +1,36 @@
+SOURCE PREFLIGHT BEFORE PATCH CREATION
+  python3 /path/to/apatch/scripts/apatch_preflight.py --project . --prepare
+  python3 /path/to/apatch/scripts/apatch_preflight.py --project . --json
+
+  Run from the SOURCE Git repository root. This command does not build
+  a ZIP, apply a patch, commit, stage, or publish anything. It requires
+  <project>/.apatch/config.yaml with schema_version: 1 and checks.
+
+PROJECT CONFIGURATION EXAMPLE
+  schema_version: 1
+  format_commands:
+    - ["./run-checks.sh", "--prepare"]
+  checks:
+    - ["./run-tests.sh"]
+    - ["dart", "format", "--output=none", "--set-exit-if-changed", "app/lib", "app/test"]
+  check_timeout_seconds: 900
+  check_idle_timeout_seconds: 30
+
+  --prepare is explicitly MUTATING: it runs configured format_commands
+  before canonical checks. Omit it for READ-ONLY verification. A missing
+  format_commands list makes --prepare fail. The checks MUST NOT change
+  tracked or untracked source files or the Git index. Git whitespace
+  checks also fail closed. Missing tools, nonzero exits, and timeouts
+  return nonzero; successful checks identify the current Git snapshot.
+
+CHECK EVIDENCE AND FAILURE HANDLING
+  Checks run as explicit argv with total and idle timeouts. They must not
+  mutate the source worktree or Git index. A passed check applies only to
+  the observed branch, HEAD, index and worktree snapshot; any drift blocks
+  the later packaging step. This command never runs GitHub operations.
+
+BEFORE DELIVERING A ZIP
+  The source may change after preflight. For a ZIP tied to the exact
+  verified bytes, use scripts/apatch_pack.py: it reruns preflight and rejects
+  source drift before publishing the archive. CHK remains mandatory in
+  the destination repository after ZIP application.

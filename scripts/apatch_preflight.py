@@ -10,7 +10,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from apatch_lib.mo_handoff.api import ProducerOperations, VerifiedSourceProducer
-from apatch_lib.mo_cli.help_reference import PREFLIGHT_HELP_EPILOG
+from apatch_lib.mo_cli.help_reference import PREFLIGHT_HELP_EPILOG, render_help
 from apatch_lib.mo_core.api import Abort
 
 
@@ -18,7 +18,7 @@ def main(argv=None, *, producer: ProducerOperations | None = None) -> int:
     producer = VerifiedSourceProducer() if producer is None else producer
     parser = argparse.ArgumentParser(
         description="Prepare and verify a source Git snapshot before ZIP generation",
-        epilog=PREFLIGHT_HELP_EPILOG,
+        epilog=render_help(PREFLIGHT_HELP_EPILOG),
         formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--project", type=Path, default=Path.cwd(),
                         help="Root of the source Git repository (default: current directory)")

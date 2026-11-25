@@ -1,0 +1,70 @@
+PURPOSE
+  This is the PRODUCER-side command. Run it in the source Git checkout
+  before delivering a patch ZIP. The normal apatch APL/CHK workflow is
+  used later in the DESTINATION repository.
+
+FIRST REVIEW THE FILE MANIFEST (READ-ONLY)
+  python3 /path/to/apatch/scripts/apatch_pack.py --project . --discover
+  python3 /path/to/apatch/scripts/apatch_pack.py --project . --discover --json
+
+  Discovery reports modified, new, renamed, and deleted Git paths and
+  prints suggested --include and --delete arguments. No files are written,
+  no formatters/checks run, and no ZIP is created. Untracked files are
+  shown separately: inspect them for secrets and unwanted content.
+  Discovery is NOT approval to include any path in an archive.
+
+THEN BUILD AN EXPLICIT ZIP
+  python3 /path/to/apatch/scripts/apatch_pack.py \
+    --project . \
+    --output /path/outside/source/project-PATCH-feature.zip \
+    --branch feature/example \
+    --message "feat: implement example" \
+    --include app/lib/example.dart \
+    --include app/test/example_test.dart \
+    --prepare
+
+  Repeat --include for each new/changed source file, and --delete for
+  each removed tracked file. All Git changes must be accounted for; use a
+  dedicated source worktree if unrelated untracked files are present.
+  Output must be outside source Git, must be a .zip basename, and must
+  not exist. Destination feature branch must start with feature/.
+
+CONFIGURE FORMATTERS AND CHECKS
+  Create <source-repository>/.apatch/config.yaml, for example:
+
+    schema_version: 1
+    format_commands:
+      - ["./run-checks.sh", "--prepare"]
+    checks:
+      - ["./run-tests.sh"]
+
+  --prepare explicitly runs MUTATING format_commands, followed by
+  READ-ONLY checks. Without --prepare, only checks run. Missing tools,
+  failed formatters, nonzero checks, Git whitespace errors, and changes
+  caused by read-only checks prevent publication. Commands are argv lists
+  (no implicit shell expansion). Use the real Dart/Rust formatters for
+  your project. Do not list a mutating formatter under checks.
+
+SOURCE CONSISTENCY AND FAILURES
+  The packer always invokes preflight; a previous standalone preflight
+  success is not reused. ZIP members must match the source bytes and
+  executable modes checked during preflight. Branch/HEAD/index/worktree
+  drift stops packaging. Existing ZIP files are never overwritten.
+  --base-commit optionally binds the handoff to an exact DESTINATION
+  commit SHA. Never guess it from the producer checkout HEAD.
+  --json writes one result to stdout; command logs go to stderr.
+
+ARCHIVE HANDOFF AND SECURITY
+  The ZIP contains <repository>/.apatch/params.json (schema_version: 1),
+  repository and feature-branch identity, patch_file, and a complete commit
+  subject and body. It may contain verified tracked delete_paths and an
+  explicitly supplied destination base_commit. It MUST NOT contain an
+  embedded patch_sha256: that digest is calculated on the finished ZIP.
+  Inspect the source manifest and external paths before delivery. A ZIP is
+  source code, not a sandbox, and producing it does not imply application,
+  commit, push, PR or merge.
+
+RELATED COMMANDS
+  scripts/apatch_preflight.py --help  Standalone source verification/formatting.
+  apatch.sh --help            Full consumer workflow/configuration guide.
+  docs/ARCHITECTURE.md       Security, module boundaries and developer checks.
