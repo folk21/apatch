@@ -11,7 +11,7 @@ WORKFLOW STAGES
   BRN  Create or safely select the feature branch for the applied patch.
   FMT  Run project-defined MUTATING formatters; optional, before CHK.
   CHK  Run project-defined READ-ONLY checks; required before safe commit.
-  REV  Independent script/LLM code review of the checked bytes; optional.
+  REV  Script/LLM review after CHK; optional unchecked diagnostic mode.
   CMT  Commit confirmed changes without pushing (LOOSE mode).
   PSH  Push the commit; PR creates the pull request.
   MRG  Merge after GitHub checks; SYN synchronizes the local base branch.
@@ -88,6 +88,7 @@ OPTIONAL CODE REVIEW (REV)
   Config keys and examples in .apatch/config.yaml:
 
     review_required: false
+    review_allow_without_chk: false
     review_timeout_seconds: 180
     review_max_bytes: 131072
     reviewers:
@@ -101,6 +102,10 @@ OPTIONAL CODE REVIEW (REV)
 
   Review is OPTIONAL by default. Set review_required: true to block commits
   unless all configured reviewers pass on the current checked snapshot.
+  Set review_allow_without_chk: true for diagnostic REV on main or before
+  CHK; unchecked results NEVER unlock CMT and do not replace CHK.
+  On a clean tree, only script reviewers that scan repository files may run.
+  apatch.sh opSeq=REV,STS skipApproves=true
   A script reviewer receives the diff on stdin and must exit 0 to pass.
   A model reviewer must return a JSON verdict: PASS, CHANGES_REQUIRED, or
   ESCALATE. The configured external CLI owns authentication and billing.
